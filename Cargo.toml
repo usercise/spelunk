@@ -1,0 +1,99 @@
+[package]
+name = "codeanalysis"
+version = "0.1.0"
+edition = "2024"
+description = "Local code search and understanding via RAG — indexed with tree-sitter, stored in SQLite"
+license = "MIT"
+
+[[bin]]
+name = "ca"
+path = "src/main.rs"
+
+# ---------------------------------------------------------------------------
+# Inference backend feature flags.
+#
+# Each backend is an independent feature that gates its concrete module.
+# To add a new backend (e.g. CUDA, CoreML, CPU):
+#   1. Add a feature flag here (e.g. `backend-cuda = ["candle-core/cuda", ...]`)
+#   2. Implement EmbeddingBackend + LlmBackend in src/embeddings/ and src/llm/
+#   3. Wire it up in src/backends.rs
+#
+# The rest of the codebase never imports concrete backend types directly —
+# only the traits in src/embeddings/mod.rs and src/llm/mod.rs.
+# ---------------------------------------------------------------------------
+[features]
+default = ["backend-metal"]
+backend-metal = [
+    "dep:candle-core",
+    "dep:candle-nn",
+    "dep:candle-transformers",
+    "candle-core/metal",
+    "candle-nn/metal",
+    "candle-transformers/metal",
+]
+
+[dependencies]
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Config file
+toml = "0.8"
+dirs = "5"
+
+# SQLite
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Vector extension for SQLite
+sqlite-vec = "0.1"
+
+# Tree-sitter core + language grammars
+tree-sitter     = "0.22"
+tree-sitter-rust       = "0.21"
+tree-sitter-python     = "0.21"
+tree-sitter-javascript = "0.21"
+tree-sitter-typescript = "0.21"
+tree-sitter-go         = "0.21"
+tree-sitter-java       = "0.21"
+tree-sitter-c          = "0.21"
+tree-sitter-cpp        = "0.21"
+
+# ML inference (optional — only pulled in by a backend feature)
+candle-core         = { version = "0.8", optional = true }
+candle-nn           = { version = "0.8", optional = true }
+candle-transformers = { version = "0.8", optional = true }
+
+# HuggingFace Hub — model download & caching
+hf-hub = { version = "0.3", features = ["tokio"] }
+
+# Tokenization
+tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
+
+# Content hashing (change detection for incremental indexing)
+blake3 = "1"
+
+# Filesystem traversal
+walkdir = "2"
+
+# Progress bars
+indicatif = "0.17"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
