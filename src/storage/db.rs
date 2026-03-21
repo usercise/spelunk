@@ -124,6 +124,7 @@ impl Database {
     }
 
     /// Return all chunk IDs and their embedding text for a given file.
+    #[allow(dead_code)]
     pub fn chunks_for_embedding(
         &self,
         file_id: i64,

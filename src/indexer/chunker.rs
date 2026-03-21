@@ -32,7 +32,9 @@ impl std::fmt::Display for ChunkKind {
 /// A single unit of source code to be embedded and stored.
 #[derive(Debug, Clone)]
 pub struct Chunk {
+    #[allow(dead_code)]
     pub file_path: String,
+    #[allow(dead_code)]
     pub language: String,
     pub kind: ChunkKind,
     /// Symbol name, if the node has one (e.g. function or struct name).

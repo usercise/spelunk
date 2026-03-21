@@ -83,6 +83,9 @@ hf-hub = { version = "0.5", features = ["tokio"] }
 # Tokenization
 tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
 
+# Token sampling for LLM generation
+rand = "0.9"
+
 # Content hashing (change detection for incremental indexing)
 blake3 = "1"
 

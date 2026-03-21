@@ -4,6 +4,7 @@ use anyhow::Result;
 pub mod candle;
 
 /// The embedding vector dimension produced by EmbeddingGemma.
+#[allow(dead_code)]
 pub const EMBEDDING_DIM: usize = 768;
 
 /// Trait every embedding backend must implement.
@@ -17,5 +18,6 @@ pub trait EmbeddingBackend: Send + Sync {
     async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>>;
 
     /// Dimensionality of the output vectors.
+    #[allow(dead_code)]
     fn dimension(&self) -> usize;
 }

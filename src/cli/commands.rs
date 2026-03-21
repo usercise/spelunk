@@ -4,7 +4,7 @@ use walkdir::WalkDir;
 
 use crate::{
     config::Config,
-    embeddings::{candle::vec_to_blob, EmbeddingBackend},
+    embeddings::{candle::vec_to_blob, EmbeddingBackend as _},
     indexer::parser::{detect_language, SourceParser},
     storage::Database,
 };
@@ -106,7 +106,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
     let models_dir = cfg.models_dir.clone();
     let model_id = cfg.embedding_model.clone();
-    let embedder = crate::embeddings::candle::CandleEmbedder::load(&model_id, &models_dir)
+    let embedder = crate::backends::ActiveEmbedder::load(&model_id, &models_dir)
         .await
         .with_context(|| format!("loading embedding model '{model_id}'"))?;
 
@@ -157,7 +157,7 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     sp.enable_steady_tick(std::time::Duration::from_millis(80));
 
     let embedder =
-        crate::embeddings::candle::CandleEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
+        crate::backends::ActiveEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
             .await
             .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
 
@@ -186,8 +186,102 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     Ok(())
 }
 
-pub async fn ask(_args: AskArgs, _cfg: Config) -> Result<()> {
-    todo!("Phase 5: RAG pipeline with Gemma 3n")
+pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
+    use crate::llm::LlmBackend;
+    use std::io::Write;
+
+    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No index at {}.\nRun `ca index <path>` first.",
+            db_path.display()
+        );
+    }
+
+    // ── Step 1: embed the question + search ──────────────────────────────────
+    let sp = ProgressBar::new_spinner();
+    sp.set_message("Loading embedding model…");
+    sp.enable_steady_tick(std::time::Duration::from_millis(80));
+
+    let embedder =
+        crate::backends::ActiveEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
+            .await
+            .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
+
+    sp.set_message("Searching for relevant context…");
+    let query_text = format!("Represent this query for searching code: {}", args.question);
+    let vecs = embedder.embed(&[&query_text]).await?;
+    let query_blob = vec_to_blob(vecs.first().context("no embedding")?);
+
+    let db = Database::open(db_path)?;
+    let results = db.search_similar(&query_blob, args.context_chunks)?;
+    sp.finish_and_clear();
+
+    if results.is_empty() {
+        println!("No relevant code found in the index.");
+        return Ok(());
+    }
+
+    // ── Step 2: assemble context ─────────────────────────────────────────────
+    let context = results
+        .iter()
+        .map(|r| {
+            let name = r.name.as_deref().unwrap_or("<anonymous>");
+            format!(
+                "### {path}  [{kind}: {name}, lines {start}–{end}]\n```{lang}\n{code}\n```",
+                path = r.file_path,
+                kind = r.node_type,
+                name = name,
+                start = r.start_line,
+                end = r.end_line,
+                lang = r.language,
+                code = r.content,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    // ── Step 3: build prompt ─────────────────────────────────────────────────
+    let prompt = format!(
+        "<bos><start_of_turn>user\n\
+         You are an expert code analyst. \
+         Answer the user's question concisely using the code context below.\n\n\
+         {context}\n\n\
+         Question: {question}<end_of_turn>\n\
+         <start_of_turn>model\n",
+        context = context,
+        question = args.question,
+    );
+
+    // ── Step 4: load LLM + stream answer ─────────────────────────────────────
+    let sp2 = ProgressBar::new_spinner();
+    sp2.set_message(format!("Loading LLM ({})…", cfg.llm_model));
+    sp2.enable_steady_tick(std::time::Duration::from_millis(80));
+
+    let llm = crate::backends::ActiveLlm::load(&cfg.llm_model, &cfg.models_dir)
+        .await
+        .with_context(|| format!("loading LLM '{}'. \
+            If gated, run: huggingface-cli login", cfg.llm_model))?;
+
+    sp2.finish_and_clear();
+    println!();
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(128);
+
+    // Stream tokens in a background task
+    let generate = llm.generate(&prompt, 512, tx);
+
+    let print_tokens = async move {
+        while let Some(token) = rx.recv().await {
+            print!("{token}");
+            std::io::stdout().flush().ok();
+        }
+        println!("\n");
+    };
+
+    tokio::try_join!(generate, async { Ok(print_tokens.await) })?;
+
+    Ok(())
 }
 
 pub async fn status(cfg: Config) -> Result<()> {

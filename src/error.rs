@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum IndexError {
     #[error("unsupported language: {0}")]
     UnsupportedLanguage(String),
@@ -13,6 +14,7 @@ pub enum IndexError {
 }
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum EmbeddingError {
     #[error("model not loaded")]
     ModelNotLoaded,
@@ -25,6 +27,7 @@ pub enum EmbeddingError {
 }
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum SearchError {
     #[error("index is empty — run `ca index <path>` first")]
     EmptyIndex,

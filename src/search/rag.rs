@@ -3,6 +3,7 @@ use crate::{embeddings::EmbeddingBackend, llm::LlmBackend, storage::Database};
 use super::SearchResult;
 
 /// Full RAG pipeline: embed query → vector search → assemble context → LLM.
+#[allow(dead_code)]
 pub struct RagPipeline<E, L> {
     pub embedder: E,
     pub llm: L,
@@ -10,6 +11,7 @@ pub struct RagPipeline<E, L> {
     pub top_k: usize,
 }
 
+#[allow(dead_code)]
 impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
     /// Semantic vector search. Returns the top-k closest chunks.
     pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>> {

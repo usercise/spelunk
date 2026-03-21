@@ -33,7 +33,9 @@ impl Default for Config {
             // Swap to "google/gemma-embedding" once its architecture is
             // confirmed and candle-transformers support is available.
             embedding_model: "BAAI/bge-base-en-v1.5".to_string(),
-            llm_model: "google/gemma-3n".to_string(),
+            // Gemma 3n E2B instruction-tuned — requires huggingface-cli login (accept licence first).
+            // For the larger variant: set to "google/gemma-3n-e4b-it".
+            llm_model: "google/gemma-3n-e2b-it".to_string(),
             batch_size: 32,
         }
     }
