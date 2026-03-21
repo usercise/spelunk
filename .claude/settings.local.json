@@ -6,7 +6,9 @@
       "Bash(git commit:*)",
       "Bash(cargo check:*)",
       "Bash(cargo run:*)",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Bash(cargo build:*)",
+      "Bash(cargo tree:*)"
     ]
   }
 }

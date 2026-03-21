@@ -8,7 +8,10 @@ pub struct Database {
 }
 
 impl Database {
-    /// Open (or create) the database at `path` and run migrations.
+    /// Open (or create) the database at `path` and run all migrations.
+    ///
+    /// Assumes `sqlite3_auto_extension` has already been called in `main` to
+    /// load the sqlite-vec extension into every new connection.
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -18,28 +21,27 @@ impl Database {
         let conn = Connection::open(path)
             .with_context(|| format!("opening database at {}", path.display()))?;
 
-        // Load the sqlite-vec extension
-        // Phase 4: unsafe { sqlite_vec::load(&conn)?; }
+        // WAL mode: better concurrent read performance
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
 
         let db = Self { conn };
         db.migrate()?;
+        db.apply_vector_migration()?;
         Ok(db)
     }
 
-    /// Apply base schema migrations (files + chunks tables).
     fn migrate(&self) -> Result<()> {
         self.conn
             .execute_batch(include_str!("../../migrations/001_initial.sql"))
-            .context("running migrations")?;
+            .context("running base migrations")?;
         Ok(())
     }
 
-    /// Apply the vector table migration (Phase 4).
-    /// Must be called *after* the sqlite-vec extension is loaded.
+    /// Create the sqlite-vec virtual table. Idempotent (`IF NOT EXISTS`).
     pub fn apply_vector_migration(&self) -> Result<()> {
         self.conn
             .execute_batch(include_str!("../../migrations/002_vectors.sql"))
-            .context("running vector migration")?;
+            .context("running vector migration (is the sqlite-vec extension loaded?)")?;
         Ok(())
     }
 
@@ -68,7 +70,13 @@ impl Database {
             rusqlite::params![path, language, hash, now],
         )?;
 
-        Ok(self.conn.last_insert_rowid())
+        // ON CONFLICT UPDATE doesn't reset last_insert_rowid; fetch it explicitly.
+        let id: i64 = self.conn.query_row(
+            "SELECT id FROM files WHERE path = ?1",
+            rusqlite::params![path],
+            |r| r.get(0),
+        )?;
+        Ok(id)
     }
 
     /// Returns the stored hash for a file path, or None if not indexed.
@@ -111,6 +119,47 @@ impl Database {
             "DELETE FROM chunks WHERE file_id = ?1",
             rusqlite::params![file_id],
         )?;
+        // Cascade in SQL handles embeddings deletion via chunk_id FK
+        Ok(())
+    }
+
+    /// Return all chunk IDs and their embedding text for a given file.
+    pub fn chunks_for_embedding(
+        &self,
+        file_id: i64,
+    ) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, content FROM chunks WHERE file_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![file_id], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    // -----------------------------------------------------------------------
+    // Embeddings (sqlite-vec)
+    // -----------------------------------------------------------------------
+
+    /// Insert or replace an embedding for a chunk.
+    ///
+    /// `blob` must be raw little-endian F32 bytes (`vec_to_blob` in candle.rs).
+    pub fn insert_embedding(&self, chunk_id: i64, blob: &[u8]) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO embeddings (chunk_id, embedding) VALUES (?1, ?2)",
+            rusqlite::params![chunk_id, blob],
+        )?;
+        Ok(())
+    }
+
+    /// Delete all embeddings associated with chunks of a given file.
+    pub fn delete_embeddings_for_file(&self, file_id: i64) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM embeddings WHERE chunk_id IN (
+                 SELECT id FROM chunks WHERE file_id = ?1
+             )",
+            rusqlite::params![file_id],
+        )?;
         Ok(())
     }
 
@@ -123,7 +172,9 @@ impl Database {
             self.conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
         let chunk_count: i64 =
             self.conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0))?;
-        Ok(IndexStats { file_count, chunk_count })
+        let embedding_count: i64 =
+            self.conn.query_row("SELECT COUNT(*) FROM embeddings", [], |r| r.get(0))?;
+        Ok(IndexStats { file_count, chunk_count, embedding_count })
     }
 }
 
@@ -131,4 +182,5 @@ impl Database {
 pub struct IndexStats {
     pub file_count: i64,
     pub chunk_count: i64,
+    pub embedding_count: i64,
 }

@@ -16,6 +16,15 @@ use clap::Parser;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Register sqlite-vec for every SQLite connection opened in this process.
+    // SAFETY: sqlite3_auto_extension stores the pointer and SQLite calls it
+    // with the correct (db, err_msg, api) arguments at connection time.
+    unsafe {
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
+    }
+
     // Logging: RUST_LOG=debug ca ...
     tracing_subscriber::registry()
         .with(fmt::layer())

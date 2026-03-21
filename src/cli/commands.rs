@@ -1,19 +1,20 @@
 use anyhow::{Context, Result};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use walkdir::WalkDir;
 
 use crate::{
     config::Config,
+    embeddings::{candle::vec_to_blob, EmbeddingBackend},
     indexer::parser::{detect_language, SourceParser},
     storage::Database,
 };
 use super::{AskArgs, IndexArgs, SearchArgs};
 
 pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
-    let db_path = args.db.unwrap_or(cfg.db_path);
-    let db = Database::open(&db_path)?;
+    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
+    let db = Database::open(db_path)?;
 
-    // Collect all files upfront so we can show a total in the progress bar
+    // ── Collect source files ─────────────────────────────────────────────────
     let files: Vec<_> = WalkDir::new(&args.path)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -21,59 +22,51 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         .filter(|e| detect_language(e.path()).is_some())
         .collect();
 
-    let total = files.len() as u64;
-    if total == 0 {
+    if files.is_empty() {
         println!("No supported source files found in {}", args.path.display());
         return Ok(());
     }
 
-    let bar = ProgressBar::new(total);
-    bar.set_style(
-        ProgressStyle::with_template(
-            "{bar:40.cyan/blue} {pos}/{len} {wide_msg}",
-        )
-        .unwrap(),
-    );
+    // ── Phase 1: parse + store chunks ────────────────────────────────────────
+    let mp = MultiProgress::new();
+    let parse_bar = mp.add(ProgressBar::new(files.len() as u64));
+    parse_bar.set_style(progress_style("Parsing  "));
 
+    let mut chunk_ids_and_texts: Vec<(i64, String)> = Vec::new();
     let mut indexed = 0u64;
     let mut skipped = 0u64;
-    let mut total_chunks = 0usize;
 
     for entry in &files {
         let path = entry.path();
         let path_str = path.to_string_lossy();
-        bar.set_message(path_str.to_string());
+        parse_bar.set_message(short_path(&path_str));
 
-        let language = detect_language(path).unwrap(); // filtered above
-
-        // Read and hash the file
+        let language = detect_language(path).unwrap();
         let source = std::fs::read_to_string(path)
             .with_context(|| format!("reading {}", path.display()))?;
         let hash = format!("{}", blake3::hash(source.as_bytes()));
 
-        // Skip unchanged files unless --force
         if !args.force {
             if let Some(existing) = db.file_hash(&path_str)? {
                 if existing == hash {
                     skipped += 1;
-                    bar.inc(1);
+                    parse_bar.inc(1);
                     continue;
                 }
             }
         }
 
-        // Parse into chunks
         let chunks = match SourceParser::parse(&source, &path_str, language) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("parse error for {path_str}: {e}");
-                bar.inc(1);
+                parse_bar.inc(1);
                 continue;
             }
         };
 
-        // Store file + chunks
         let file_id = db.upsert_file(&path_str, Some(language), &hash)?;
+        db.delete_embeddings_for_file(file_id)?;
         db.delete_chunks_for_file(file_id)?;
 
         for chunk in &chunks {
@@ -81,7 +74,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
                 "docstring": chunk.docstring,
                 "parent_scope": chunk.parent_scope,
             });
-            db.insert_chunk(
+            let chunk_id = db.insert_chunk(
                 file_id,
                 &chunk.kind.to_string(),
                 chunk.name.as_deref(),
@@ -90,24 +83,59 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
                 &chunk.content,
                 Some(&metadata.to_string()),
             )?;
+            chunk_ids_and_texts.push((chunk_id, chunk.embedding_text()));
         }
 
-        total_chunks += chunks.len();
         indexed += 1;
-        bar.inc(1);
+        parse_bar.inc(1);
     }
 
-    bar.finish_and_clear();
+    parse_bar.finish_with_message(format!(
+        "{} files parsed ({} skipped)",
+        indexed, skipped
+    ));
 
+    if chunk_ids_and_texts.is_empty() {
+        println!("Nothing new to embed.");
+        return Ok(());
+    }
+
+    // ── Phase 2: embed chunks ────────────────────────────────────────────────
+    println!("Loading embedding model: {}", cfg.embedding_model);
+
+    let models_dir = cfg.models_dir.clone();
+    let model_id = cfg.embedding_model.clone();
+    let embedder = crate::embeddings::candle::CandleEmbedder::load(&model_id, &models_dir)
+        .await
+        .with_context(|| format!("loading embedding model '{model_id}'"))?;
+
+    let batch_size = args.batch_size.max(1);
+    let total_chunks = chunk_ids_and_texts.len() as u64;
+
+    let embed_bar = mp.add(ProgressBar::new(total_chunks));
+    embed_bar.set_style(progress_style("Embedding"));
+
+    for batch in chunk_ids_and_texts.chunks(batch_size) {
+        let texts: Vec<&str> = batch.iter().map(|(_, t)| t.as_str()).collect();
+        let embeddings = embedder
+            .embed(&texts)
+            .await
+            .context("generating embeddings")?;
+
+        for ((chunk_id, _), embedding) in batch.iter().zip(embeddings.iter()) {
+            let blob = vec_to_blob(embedding);
+            db.insert_embedding(*chunk_id, &blob)?;
+        }
+        embed_bar.inc(batch.len() as u64);
+    }
+
+    embed_bar.finish_with_message(format!("{total_chunks} chunks embedded"));
+
+    let stats = db.stats()?;
     println!(
-        "Indexed {} files ({} chunks extracted). {} files skipped (unchanged).",
-        indexed, total_chunks, skipped
+        "\nIndex: {} files, {} chunks, {} embeddings",
+        stats.file_count, stats.chunk_count, stats.embedding_count
     );
-
-    // Phase 3: embed all chunks and write to sqlite-vec
-    if indexed > 0 {
-        println!("Note: embedding not yet implemented (Phase 3). Chunks are stored; vector search will be available after Phase 3.");
-    }
 
     Ok(())
 }
@@ -121,17 +149,20 @@ pub async fn ask(_args: AskArgs, _cfg: Config) -> Result<()> {
 }
 
 pub async fn status(cfg: Config) -> Result<()> {
-    let db_path = cfg.db_path;
+    let db_path = &cfg.db_path;
     if !db_path.exists() {
-        println!("No index found at {}. Run `ca index <path>` to create one.", db_path.display());
+        println!(
+            "No index found at {}.\nRun `ca index <path>` to create one.",
+            db_path.display()
+        );
         return Ok(());
     }
-
-    let db = Database::open(&db_path)?;
-    let stats = db.stats()?;
-    println!("Index: {}", db_path.display());
-    println!("  Files:  {}", stats.file_count);
-    println!("  Chunks: {}", stats.chunk_count);
+    let db = Database::open(db_path)?;
+    let s = db.stats()?;
+    println!("Index:      {}", db_path.display());
+    println!("Files:      {}", s.file_count);
+    println!("Chunks:     {}", s.chunk_count);
+    println!("Embeddings: {}", s.embedding_count);
     Ok(())
 }
 
@@ -142,4 +173,18 @@ pub fn languages() -> Result<()> {
         println!("  {lang}");
     }
     Ok(())
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+fn progress_style(prefix: &str) -> ProgressStyle {
+    ProgressStyle::with_template(&format!(
+        "{{spinner:.cyan}} {prefix} [{{bar:38.cyan/blue}}] {{pos}}/{{len}} {{wide_msg}}"
+    ))
+    .unwrap()
+    .progress_chars("=>-")
+}
+
+fn short_path(path: &str) -> String {
+    path.rsplit('/').next().unwrap_or(path).to_string()
 }

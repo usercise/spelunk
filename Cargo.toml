@@ -78,7 +78,7 @@ candle-nn           = { version = "0.8", optional = true }
 candle-transformers = { version = "0.8", optional = true }
 
 # HuggingFace Hub — model download & caching
-hf-hub = { version = "0.3", features = ["tokio"] }
+hf-hub = { version = "0.5", features = ["tokio"] }
 
 # Tokenization
 tokenizers = { version = "0.19", default-features = false, features = ["onig"] }

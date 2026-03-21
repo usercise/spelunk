@@ -29,7 +29,10 @@ impl Default for Config {
         Self {
             db_path: base.join("index.db"),
             models_dir: base.join("models"),
-            embedding_model: "google/gemma-embedding".to_string(),
+            // Default: BAAI/bge-base-en-v1.5 (BERT, 768-dim, works today).
+            // Swap to "google/gemma-embedding" once its architecture is
+            // confirmed and candle-transformers support is available.
+            embedding_model: "BAAI/bge-base-en-v1.5".to_string(),
             llm_model: "google/gemma-3n".to_string(),
             batch_size: 32,
         }
