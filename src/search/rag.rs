@@ -38,16 +38,16 @@ impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
         let prompt = build_prompt(question, &context);
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-        let gen = self.llm.generate(&prompt, 512, tx);
+        let generate = self.llm.generate(&prompt, 512, tx);
 
-        let print = async move {
+        let print_tokens = async move {
             while let Some(token) = rx.recv().await {
                 print!("{token}");
             }
             println!();
         };
 
-        tokio::try_join!(gen, async { Ok(print.await) })?;
+        tokio::try_join!(generate, async { Ok(print_tokens.await) })?;
         Ok(())
     }
 }

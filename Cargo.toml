@@ -40,6 +40,9 @@ clap = { version = "4", features = ["derive", "env"] }
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
+# Async traits
+async-trait = "0.1"
+
 # Error handling
 anyhow = "1"
 thiserror = "1"

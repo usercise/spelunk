@@ -19,12 +19,8 @@ CREATE TABLE IF NOT EXISTS chunks (
     metadata   TEXT              -- JSON: docstring, parent_scope, etc.
 );
 
--- Vector index — one embedding row per chunk
--- Requires sqlite-vec to be loaded before this statement executes.
-CREATE VIRTUAL TABLE IF NOT EXISTS embeddings USING vec0(
-    chunk_id INTEGER PRIMARY KEY,
-    embedding FLOAT[768]
-);
+-- Note: the embeddings virtual table (vec0) is created in 002_vectors.sql,
+-- which runs only after the sqlite-vec extension is loaded (Phase 4).
 
 CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id);
 CREATE INDEX IF NOT EXISTS idx_files_path     ON files(path);

@@ -26,11 +26,20 @@ impl Database {
         Ok(db)
     }
 
-    /// Apply the embedded migration SQL.
+    /// Apply base schema migrations (files + chunks tables).
     fn migrate(&self) -> Result<()> {
         self.conn
             .execute_batch(include_str!("../../migrations/001_initial.sql"))
             .context("running migrations")?;
+        Ok(())
+    }
+
+    /// Apply the vector table migration (Phase 4).
+    /// Must be called *after* the sqlite-vec extension is loaded.
+    pub fn apply_vector_migration(&self) -> Result<()> {
+        self.conn
+            .execute_batch(include_str!("../../migrations/002_vectors.sql"))
+            .context("running vector migration")?;
         Ok(())
     }
 
