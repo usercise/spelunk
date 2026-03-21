@@ -164,6 +164,63 @@ impl Database {
     }
 
     // -----------------------------------------------------------------------
+    // Vector search
+    // -----------------------------------------------------------------------
+
+    /// K-nearest-neighbour search using sqlite-vec.
+    ///
+    /// `query_blob` must be raw little-endian F32 bytes produced by
+    /// `vec_to_blob`. Returns results ordered by ascending distance
+    /// (closest first).
+    pub fn search_similar(
+        &self,
+        query_blob: &[u8],
+        limit: usize,
+    ) -> Result<Vec<crate::search::SearchResult>> {
+        // sqlite-vec requires k to appear as a literal or bound value in the
+        // WHERE clause of the vec0 scan. We inject it as a format arg since
+        // it is a trusted usize, then bind the query vector blob normally.
+        let sql = format!(
+            "WITH knn AS (
+                 SELECT chunk_id, distance
+                 FROM   embeddings
+                 WHERE  embedding MATCH ?1
+                   AND  k = {limit}
+             )
+             SELECT  k.chunk_id,
+                     CAST(k.distance AS REAL),
+                     c.node_type,
+                     c.name,
+                     CAST(c.start_line AS INTEGER),
+                     CAST(c.end_line   AS INTEGER),
+                     c.content,
+                     f.path,
+                     f.language
+             FROM knn k
+             JOIN chunks c ON c.id = k.chunk_id
+             JOIN files  f ON f.id = c.file_id
+             ORDER BY k.distance"
+        );
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params![query_blob], |row| {
+            Ok(crate::search::SearchResult {
+                chunk_id:   row.get(0)?,
+                distance:   row.get(1)?,
+                node_type:  row.get(2)?,
+                name:       row.get(3)?,
+                start_line: row.get::<_, i64>(4)? as usize,
+                end_line:   row.get::<_, i64>(5)? as usize,
+                content:    row.get(6)?,
+                file_path:  row.get(7)?,
+                language:   row.get(8)?,
+            })
+        })?;
+
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    // -----------------------------------------------------------------------
     // Stats
     // -----------------------------------------------------------------------
 

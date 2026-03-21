@@ -13,16 +13,12 @@ pub struct RagPipeline<E, L> {
 impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
     /// Semantic vector search. Returns the top-k closest chunks.
     pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        let vecs = self.embedder.embed(&[query]).await?;
-        let _query_vec = vecs.into_iter().next().unwrap();
+        use crate::embeddings::candle::vec_to_blob;
 
-        // Phase 4: call sqlite-vec KNN query
-        // SELECT chunk_id, distance
-        // FROM embeddings
-        // WHERE embedding MATCH ?
-        //   AND k = ?
-        // ORDER BY distance
-        todo!("Phase 4: sqlite-vec KNN query")
+        let query_text = format!("Represent this query for searching code: {query}");
+        let vecs = self.embedder.embed(&[&query_text]).await?;
+        let blob = vec_to_blob(vecs.first().ok_or_else(|| anyhow::anyhow!("no embedding"))?);
+        self.db.search_similar(&blob, self.top_k)
     }
 
     /// Ask a natural language question; streams the answer to stdout.

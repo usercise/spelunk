@@ -8,7 +8,8 @@
       "Bash(cargo run:*)",
       "Bash(grep -v \"^$\")",
       "Bash(cargo build:*)",
-      "Bash(cargo tree:*)"
+      "Bash(cargo tree:*)",
+      "Bash(grep -v \"^\\\\s*$\")"
     ]
   }
 }

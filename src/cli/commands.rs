@@ -17,6 +17,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     // ── Collect source files ─────────────────────────────────────────────────
     let files: Vec<_> = WalkDir::new(&args.path)
         .into_iter()
+        .filter_entry(|e| !is_ignored_dir(e))
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .filter(|e| detect_language(e.path()).is_some())
@@ -140,8 +141,49 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     Ok(())
 }
 
-pub async fn search(_args: SearchArgs, _cfg: Config) -> Result<()> {
-    todo!("Phase 4: vector search")
+pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
+    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
+
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No index at {}.\nRun `ca index <path>` first.",
+            db_path.display()
+        );
+    }
+
+    // Load model + embed the query (show a simple spinner, no full progress bar)
+    let sp = ProgressBar::new_spinner();
+    sp.set_message("Loading model…");
+    sp.enable_steady_tick(std::time::Duration::from_millis(80));
+
+    let embedder =
+        crate::embeddings::candle::CandleEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
+            .await
+            .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
+
+    sp.set_message("Embedding query…");
+    // Asymmetric search prefix: document side uses "Represent this code: …",
+    // query side uses a search-oriented prefix for better retrieval quality.
+    let query_text = format!("Represent this query for searching code: {}", args.query);
+    let vecs = embedder.embed(&[&query_text]).await?;
+    let query_blob = vec_to_blob(vecs.first().context("no embedding returned")?);
+
+    sp.set_message("Searching…");
+    let db = Database::open(db_path)?;
+    let results = db.search_similar(&query_blob, args.limit)?;
+    sp.finish_and_clear();
+
+    if results.is_empty() {
+        println!("No results found. Make sure the index has embeddings (`ca index <path>`).");
+        return Ok(());
+    }
+
+    match args.format.as_str() {
+        "json" => println!("{}", serde_json::to_string_pretty(&results)?),
+        _ => print_results_text(&results),
+    }
+
+    Ok(())
 }
 
 pub async fn ask(_args: AskArgs, _cfg: Config) -> Result<()> {
@@ -185,6 +227,47 @@ fn progress_style(prefix: &str) -> ProgressStyle {
     .progress_chars("=>-")
 }
 
+/// Returns true for directory entries that should be skipped entirely.
+fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {
+    if !entry.file_type().is_dir() {
+        return false;
+    }
+    matches!(
+        entry.file_name().to_string_lossy().as_ref(),
+        "target" | "node_modules" | ".git" | "__pycache__" | "venv" | ".venv"
+            | "dist" | "build" | ".gradle" | ".idea" | ".next" | "vendor"
+            | ".tox" | "out" | ".svn" | ".hg" | "coverage" | ".cache"
+    )
+}
+
 fn short_path(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
+}
+
+fn print_results_text(results: &[crate::search::SearchResult]) {
+    for (i, r) in results.iter().enumerate() {
+        let name = r.name.as_deref().unwrap_or("<anonymous>");
+        // Header line
+        println!(
+            "{:2}. \x1b[1m{}\x1b[0m  \x1b[2m{}:{}-{}\x1b[0m  \x1b[33m[{}: {}]\x1b[0m  dist: {:.4}",
+            i + 1,
+            r.file_path,
+            r.language,
+            r.start_line,
+            r.end_line,
+            r.node_type,
+            name,
+            r.distance,
+        );
+        // Content preview (first 6 lines, indented)
+        let lines: Vec<&str> = r.content.lines().collect();
+        let preview_lines = lines.len().min(6);
+        for line in &lines[..preview_lines] {
+            println!("    {line}");
+        }
+        if lines.len() > preview_lines {
+            println!("    \x1b[2m… ({} more lines)\x1b[0m", lines.len() - preview_lines);
+        }
+        println!();
+    }
 }
