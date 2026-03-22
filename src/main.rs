@@ -41,5 +41,6 @@ async fn main() -> Result<()> {
         Command::Status       => cli::commands::status(cfg).await,
         Command::Languages    => cli::commands::languages(),
         Command::Graph(args)  => cli::commands::graph(args, cfg),
+        Command::Chunks(args) => cli::commands::chunks(args, cfg),
     }
 }

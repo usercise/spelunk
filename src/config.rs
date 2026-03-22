@@ -2,6 +2,36 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Walk up from `start` looking for `.codeanalysis/index.db`.
+/// Returns the first match found, or `None` if the filesystem root is reached.
+pub fn find_project_db(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        let candidate = dir.join(".codeanalysis").join("index.db");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// Resolve the database path.
+///
+/// Priority: explicit `--db` arg > project DB (walk up from CWD) > `cfg_default`.
+pub fn resolve_db(explicit: Option<&PathBuf>, cfg_default: &PathBuf) -> PathBuf {
+    if let Some(p) = explicit {
+        return p.clone();
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(p) = find_project_db(&cwd) {
+            return p;
+        }
+    }
+    cfg_default.clone()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Path to the SQLite database file

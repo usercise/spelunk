@@ -1,18 +1,38 @@
+use std::io::IsTerminal as _;
+
 use anyhow::{Context, Result};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use walkdir::WalkDir;
 
 use crate::{
-    config::Config,
+    config::{resolve_db, Config},
     embeddings::{candle::vec_to_blob, EmbeddingBackend as _},
     indexer::{graph::EdgeExtractor, parser::{detect_language, SourceParser}},
     storage::Database,
 };
-use super::{AskArgs, GraphArgs, IndexArgs, SearchArgs};
+use super::{AskArgs, ChunksArgs, GraphArgs, IndexArgs, SearchArgs};
+
+fn is_tty() -> bool {
+    std::io::stderr().is_terminal()
+}
+
+fn spinner(message: impl Into<std::borrow::Cow<'static, str>>) -> ProgressBar {
+    if is_tty() {
+        let sp = ProgressBar::new_spinner();
+        sp.set_message(message);
+        sp.enable_steady_tick(std::time::Duration::from_millis(80));
+        sp
+    } else {
+        ProgressBar::hidden()
+    }
+}
 
 pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
-    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
-    let db = Database::open(db_path)?;
+    // Default DB lives inside the indexed directory, scoping the index to the project.
+    let db_path = args.db.clone().unwrap_or_else(|| {
+        args.path.join(".codeanalysis").join("index.db")
+    });
+    let db = Database::open(&db_path)?;
 
     // ── Collect source files ─────────────────────────────────────────────────
     let files: Vec<_> = WalkDir::new(&args.path)
@@ -30,8 +50,13 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
     // ── Phase 1: parse + store chunks ────────────────────────────────────────
     let mp = MultiProgress::new();
-    let parse_bar = mp.add(ProgressBar::new(files.len() as u64));
-    parse_bar.set_style(progress_style("Parsing  "));
+    let parse_bar = if is_tty() {
+        let bar = mp.add(ProgressBar::new(files.len() as u64));
+        bar.set_style(progress_style("Parsing  "));
+        bar
+    } else {
+        ProgressBar::hidden()
+    };
 
     let mut chunk_ids_and_texts: Vec<(i64, String)> = Vec::new();
     let mut indexed = 0u64;
@@ -102,17 +127,39 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     }
 
     parse_bar.finish_with_message(format!(
-        "{} files parsed ({} skipped)",
-        indexed, skipped
+        "{indexed} files parsed ({skipped} skipped, {indexed} new/changed)"
     ));
 
+    // ── Stale file cleanup ────────────────────────────────────────────────────
+    // Remove index records for files that no longer exist under the project root.
+    let root_str = args.path.to_string_lossy().to_string();
+    let visited: std::collections::HashSet<String> = files
+        .iter()
+        .map(|e| e.path().to_string_lossy().to_string())
+        .collect();
+    let all_indexed = db.file_paths_under(&root_str)?;
+    let mut removed = 0u64;
+    for (id, path) in all_indexed {
+        if !visited.contains(&path) {
+            db.delete_file(id, &path)?;
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        eprintln!("Removed {removed} stale file(s) from index.");
+    }
+
     if chunk_ids_and_texts.is_empty() {
-        println!("Nothing new to embed.");
+        let stats = db.stats()?;
+        println!(
+            "Index: {} files, {} chunks, {} embeddings (nothing new to embed)",
+            stats.file_count, stats.chunk_count, stats.embedding_count
+        );
         return Ok(());
     }
 
     // ── Phase 2: embed chunks ────────────────────────────────────────────────
-    println!("Loading embedding model: {}", cfg.embedding_model);
+    eprintln!("Loading embedding model: {}", cfg.embedding_model);
 
     let models_dir = cfg.models_dir.clone();
     let model_id = cfg.embedding_model.clone();
@@ -123,8 +170,13 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     let batch_size = args.batch_size.max(1);
     let total_chunks = chunk_ids_and_texts.len() as u64;
 
-    let embed_bar = mp.add(ProgressBar::new(total_chunks));
-    embed_bar.set_style(progress_style("Embedding"));
+    let embed_bar = if is_tty() {
+        let bar = mp.add(ProgressBar::new(total_chunks));
+        bar.set_style(progress_style("Embedding"));
+        bar
+    } else {
+        ProgressBar::hidden()
+    };
 
     for batch in chunk_ids_and_texts.chunks(batch_size) {
         let texts: Vec<&str> = batch.iter().map(|(_, t)| t.as_str()).collect();
@@ -152,19 +204,16 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 }
 
 pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
-    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
+    let db_path = resolve_db(args.db.as_ref(), &cfg.db_path);
 
     if !db_path.exists() {
         anyhow::bail!(
-            "No index at {}.\nRun `ca index <path>` first.",
-            db_path.display()
+            "No index found (checked current directory and parents).\n\
+             Run `ca index <path>` inside your project first."
         );
     }
 
-    // Load model + embed the query (show a simple spinner, no full progress bar)
-    let sp = ProgressBar::new_spinner();
-    sp.set_message("Loading model…");
-    sp.enable_steady_tick(std::time::Duration::from_millis(80));
+    let sp = spinner("Loading model…");
 
     let embedder =
         crate::backends::ActiveEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
@@ -179,7 +228,7 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     let query_blob = vec_to_blob(vecs.first().context("no embedding returned")?);
 
     sp.set_message("Searching…");
-    let db = Database::open(db_path)?;
+    let db = Database::open(&db_path)?;
     let results = db.search_similar(&query_blob, args.limit)?;
     sp.finish_and_clear();
 
@@ -200,18 +249,16 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     use crate::llm::LlmBackend;
     use std::io::Write;
 
-    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
+    let db_path = resolve_db(args.db.as_ref(), &cfg.db_path);
     if !db_path.exists() {
         anyhow::bail!(
-            "No index at {}.\nRun `ca index <path>` first.",
-            db_path.display()
+            "No index found (checked current directory and parents).\n\
+             Run `ca index <path>` inside your project first."
         );
     }
 
     // ── Step 1: embed the question + search ──────────────────────────────────
-    let sp = ProgressBar::new_spinner();
-    sp.set_message("Loading embedding model…");
-    sp.enable_steady_tick(std::time::Duration::from_millis(80));
+    let sp = spinner("Loading embedding model…");
 
     let embedder =
         crate::backends::ActiveEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
@@ -223,7 +270,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     let vecs = embedder.embed(&[&query_text]).await?;
     let query_blob = vec_to_blob(vecs.first().context("no embedding")?);
 
-    let db = Database::open(db_path)?;
+    let db = Database::open(&db_path)?;
     let mut results = db.search_similar(&query_blob, args.context_chunks)?;
     sp.finish_and_clear();
     drop(embedder); // free GPU memory before loading the LLM
@@ -288,9 +335,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     );
 
     // ── Step 4: load LLM + stream answer ─────────────────────────────────────
-    let sp2 = ProgressBar::new_spinner();
-    sp2.set_message(format!("Loading LLM ({})…", cfg.llm_model));
-    sp2.enable_steady_tick(std::time::Duration::from_millis(80));
+    let sp2 = spinner(format!("Loading LLM ({})…", cfg.llm_model));
 
     let llm = crate::backends::ActiveLlm::load(&cfg.llm_model, &cfg.models_dir)
         .await
@@ -319,33 +364,44 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
 }
 
 pub async fn status(cfg: Config) -> Result<()> {
-    let db_path = &cfg.db_path;
+    let db_path = resolve_db(None, &cfg.db_path);
     if !db_path.exists() {
-        println!(
-            "No index found at {}.\nRun `ca index <path>` to create one.",
-            db_path.display()
-        );
+        println!("No index found (checked current directory and parents).");
+        println!("Run `ca index <path>` inside your project first.");
         return Ok(());
     }
-    let db = Database::open(db_path)?;
+    let db = Database::open(&db_path)?;
     let s = db.stats()?;
     println!("Index:      {}", db_path.display());
     println!("Files:      {}", s.file_count);
     println!("Chunks:     {}", s.chunk_count);
     println!("Embeddings: {}", s.embedding_count);
+    if let Some(ts) = s.last_indexed {
+        use std::time::{Duration, UNIX_EPOCH};
+        if let Ok(t) = UNIX_EPOCH.checked_add(Duration::from_secs(ts as u64)).ok_or(()) {
+            if let Ok(elapsed) = std::time::SystemTime::now().duration_since(t) {
+                let secs = elapsed.as_secs();
+                let age = if secs < 60 { format!("{secs}s ago") }
+                    else if secs < 3600 { format!("{}m ago", secs / 60) }
+                    else if secs < 86400 { format!("{}h ago", secs / 3600) }
+                    else { format!("{}d ago", secs / 86400) };
+                println!("Last index: {age}");
+            }
+        }
+    }
     Ok(())
 }
 
 pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
-    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
+    let db_path = resolve_db(args.db.as_ref(), &cfg.db_path);
     if !db_path.exists() {
         anyhow::bail!(
-            "No index at {}.\nRun `ca index <path>` first.",
-            db_path.display()
+            "No index found (checked current directory and parents).\n\
+             Run `ca index <path>` inside your project first."
         );
     }
 
-    let db = Database::open(db_path)?;
+    let db = Database::open(&db_path)?;
     let symbol = &args.symbol;
 
     // Decide whether the query looks like a file path or a symbol name.
@@ -382,6 +438,31 @@ pub fn languages() -> Result<()> {
     for lang in langs {
         println!("  {lang}");
     }
+    Ok(())
+}
+
+pub fn chunks(args: ChunksArgs, cfg: Config) -> Result<()> {
+    let db_path = resolve_db(args.db.as_ref(), &cfg.db_path);
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No index found (checked current directory and parents).\n\
+             Run `ca index <path>` inside your project first."
+        );
+    }
+
+    let db = Database::open(&db_path)?;
+    let results = db.chunks_for_file(&args.path)?;
+
+    if results.is_empty() {
+        println!("No chunks found for '{}'.", args.path);
+        return Ok(());
+    }
+
+    match args.format.as_str() {
+        "json" => println!("{}", serde_json::to_string_pretty(&results)?),
+        _ => print_chunks_text(&results),
+    }
+
     Ok(())
 }
 
@@ -435,6 +516,25 @@ fn print_results_text(results: &[crate::search::SearchResult]) {
         }
         if lines.len() > preview_lines {
             println!("    \x1b[2m… ({} more lines)\x1b[0m", lines.len() - preview_lines);
+        }
+        println!();
+    }
+}
+
+fn print_chunks_text(chunks: &[crate::search::SearchResult]) {
+    for (i, c) in chunks.iter().enumerate() {
+        let name = c.name.as_deref().unwrap_or("<anonymous>");
+        println!(
+            "{:2}. \x1b[2m{}:{}-{}\x1b[0m  \x1b[33m[{}: {}]\x1b[0m",
+            i + 1, c.language, c.start_line, c.end_line, c.node_type, name,
+        );
+        let lines: Vec<&str> = c.content.lines().collect();
+        let preview = lines.len().min(6);
+        for line in &lines[..preview] {
+            println!("    {line}");
+        }
+        if lines.len() > preview {
+            println!("    \x1b[2m… ({} more lines)\x1b[0m", lines.len() - preview);
         }
         println!();
     }

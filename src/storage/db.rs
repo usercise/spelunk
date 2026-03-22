@@ -353,6 +353,61 @@ impl Database {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
     }
 
+    /// Return all chunks for a file path (exact match or LIKE suffix).
+    /// Used by the `chunks` subcommand.
+    pub fn chunks_for_file(&self, path: &str) -> Result<Vec<crate::search::SearchResult>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT c.id, c.node_type, c.name,
+                    CAST(c.start_line AS INTEGER), CAST(c.end_line AS INTEGER),
+                    c.content, f.path, f.language
+             FROM chunks c
+             JOIN files f ON f.id = c.file_id
+             WHERE f.path = ?1 OR f.path LIKE '%' || ?1
+             ORDER BY c.start_line",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![path], |row| {
+            Ok(crate::search::SearchResult {
+                chunk_id:   row.get(0)?,
+                distance:   0.0,
+                node_type:  row.get(1)?,
+                name:       row.get(2)?,
+                start_line: row.get::<_, i64>(3)? as usize,
+                end_line:   row.get::<_, i64>(4)? as usize,
+                content:    row.get(5)?,
+                file_path:  row.get(6)?,
+                language:   row.get(7)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    /// List all indexed file paths under the given root prefix.
+    pub fn file_paths_under(&self, root: &str) -> Result<Vec<(i64, String)>> {
+        let prefix = format!("{root}%");
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, path FROM files WHERE path LIKE ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![prefix], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    /// Delete a file record and all its chunks, embeddings, and graph edges.
+    pub fn delete_file(&self, file_id: i64, file_path: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE file_id = ?1)",
+            rusqlite::params![file_id],
+        )?;
+        self.conn.execute("DELETE FROM chunks WHERE file_id = ?1", rusqlite::params![file_id])?;
+        self.conn.execute(
+            "DELETE FROM graph_edges WHERE source_file = ?1",
+            rusqlite::params![file_path],
+        )?;
+        self.conn.execute("DELETE FROM files WHERE id = ?1", rusqlite::params![file_id])?;
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Stats
     // -----------------------------------------------------------------------
@@ -364,7 +419,10 @@ impl Database {
             self.conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0))?;
         let embedding_count: i64 =
             self.conn.query_row("SELECT COUNT(*) FROM embeddings", [], |r| r.get(0))?;
-        Ok(IndexStats { file_count, chunk_count, embedding_count })
+        let last_indexed: Option<i64> = self.conn.query_row(
+            "SELECT MAX(indexed_at) FROM files", [], |r| r.get(0),
+        ).ok().flatten();
+        Ok(IndexStats { file_count, chunk_count, embedding_count, last_indexed })
     }
 }
 
@@ -393,4 +451,5 @@ pub struct IndexStats {
     pub file_count: i64,
     pub chunk_count: i64,
     pub embedding_count: i64,
+    pub last_indexed: Option<i64>,
 }

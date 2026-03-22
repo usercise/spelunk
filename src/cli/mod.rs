@@ -29,6 +29,8 @@ pub enum Command {
     Languages,
     /// Query the code graph (imports, calls, extends/implements)
     Graph(GraphArgs),
+    /// Show the raw indexed chunks for a file (useful for debugging/agent use)
+    Chunks(ChunksArgs),
 }
 
 #[derive(Args, Debug)]
@@ -89,6 +91,20 @@ pub struct GraphArgs {
     /// Filter to a specific edge kind: imports, calls, extends, implements
     #[arg(long)]
     pub kind: Option<String>,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct ChunksArgs {
+    /// File path (exact or suffix match against indexed paths)
+    pub path: String,
 
     /// Output format: text or json
     #[arg(long, default_value = "text")]
