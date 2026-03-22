@@ -16,7 +16,53 @@ use anyhow::{Context, Result};
 use candle_core::{DType, Device, Module, Tensor, D};
 use candle_nn::{linear_b as linear, Activation, Linear, VarBuilder};
 
-pub use candle_transformers::models::gemma3::Config;
+// ---------------------------------------------------------------------------
+// Config
+// EmbeddingGemma's config.json omits several decoder-only fields
+// (`sliding_window`, `sliding_window_pattern`, etc.).  We define our own
+// struct with serde defaults so we can deserialise both Gemma 3 LM configs
+// and EmbeddingGemma encoder configs from the same file.
+// ---------------------------------------------------------------------------
+
+fn default_false() -> bool { false }
+fn default_rope_local_base_freq() -> f64 { 10000.0 }
+fn default_sliding_window() -> usize { 4096 }
+fn default_sliding_window_pattern() -> usize { 1 }  // 1 → all layers are "global"
+fn default_query_pre_attn_scalar() -> usize { 256 }
+fn default_hidden_activation() -> candle_nn::Activation { candle_nn::Activation::GeluPytorchTanh }
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct Config {
+    #[serde(default = "default_false")]
+    pub attention_bias: bool,
+    pub head_dim: usize,
+    #[serde(default = "default_hidden_activation")]
+    pub hidden_activation: candle_nn::Activation,
+    pub hidden_size: usize,
+    pub intermediate_size: usize,
+    pub num_attention_heads: usize,
+    pub num_hidden_layers: usize,
+    pub num_key_value_heads: usize,
+    pub rms_norm_eps: f64,
+    pub rope_theta: f64,
+    #[serde(default = "default_rope_local_base_freq")]
+    pub rope_local_base_freq: f64,
+    pub vocab_size: usize,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub final_logit_softcapping: Option<f64>,
+    #[serde(default)]
+    pub attn_logit_softcapping: Option<f64>,
+    #[serde(default = "default_query_pre_attn_scalar")]
+    #[allow(dead_code)]
+    pub query_pre_attn_scalar: usize,
+    #[serde(default = "default_sliding_window")]
+    #[allow(dead_code)]
+    pub sliding_window: usize,
+    #[serde(default = "default_sliding_window_pattern")]
+    pub sliding_window_pattern: usize,
+    pub max_position_embeddings: usize,
+}
 
 // ---------------------------------------------------------------------------
 // RmsNorm
