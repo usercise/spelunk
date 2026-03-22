@@ -29,10 +29,10 @@ impl Default for Config {
         Self {
             db_path: base.join("index.db"),
             models_dir: base.join("models"),
-            // Default: BAAI/bge-base-en-v1.5 (BERT, 768-dim, works today).
-            // Swap to "google/gemma-embedding" once its architecture is
-            // confirmed and candle-transformers support is available.
-            embedding_model: "BAAI/bge-base-en-v1.5".to_string(),
+            // EmbeddingGemma 300M — bidirectional Gemma 3 encoder, 768-dim output.
+            // Requires huggingface-cli login (gated model).
+            // Falls back to BAAI/bge-base-en-v1.5 (BERT) if you prefer an ungated model.
+            embedding_model: "google/embeddinggemma-300m".to_string(),
             // Gemma 3 1B instruction-tuned. Requires candle-transformers >=0.9
             // which added sliding-window and per-layer RoPE support for Gemma 3.
             // Gemma 3n (e2b/e4b) has a non-transformer architecture not yet

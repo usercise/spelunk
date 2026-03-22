@@ -2,8 +2,11 @@ use anyhow::Result;
 
 #[cfg(feature = "backend-metal")]
 pub mod candle;
+#[cfg(feature = "backend-metal")]
+pub(crate) mod gemma3_encoder;
 
-/// The embedding vector dimension produced by EmbeddingGemma.
+/// The embedding vector dimension.
+/// `google/embeddinggemma-300m` and `BAAI/bge-base-en-v1.5` both output 768 dims.
 #[allow(dead_code)]
 pub const EMBEDDING_DIM: usize = 768;
 
