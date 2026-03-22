@@ -4,7 +4,7 @@ use super::chunker::{sliding_window, Chunk, ChunkKind};
 /// All languages with tree-sitter grammar support.
 pub const SUPPORTED_LANGUAGES: &[&str] =
     &["rust", "python", "javascript", "typescript", "go", "java", "c", "cpp",
-      "json", "html", "css"];
+      "json", "html", "css", "hcl", "sql", "proto"];
 
 /// Detect language from file extension.
 pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
@@ -20,6 +20,9 @@ pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
         "json"                               => Some("json"),
         "html" | "htm"                       => Some("html"),
         "css"                                => Some("css"),
+        "tf" | "hcl"                         => Some("hcl"),
+        "sql" | "sequel"                     => Some("sql"),
+        "proto"                              => Some("proto"),
         _ => None,
     }
 }
@@ -29,21 +32,25 @@ pub(crate) fn ts_language_pub(name: &str) -> Result<tree_sitter::Language> {
 }
 
 fn ts_language(name: &str) -> Result<tree_sitter::Language> {
-    // tree-sitter 0.21.x crates expose a `language()` fn, not a `LANGUAGE` const.
-    match name {
-        "rust"       => Ok(tree_sitter_rust::language()),
-        "python"     => Ok(tree_sitter_python::language()),
-        "javascript" => Ok(tree_sitter_javascript::language()),
-        "typescript" => Ok(tree_sitter_typescript::language_typescript()),
-        "go"         => Ok(tree_sitter_go::language()),
-        "java"       => Ok(tree_sitter_java::language()),
-        "c"          => Ok(tree_sitter_c::language()),
-        "cpp"        => Ok(tree_sitter_cpp::language()),
-        "json"       => Ok(tree_sitter_json::language()),
-        "html"       => Ok(tree_sitter_html::language()),
-        "css"        => Ok(tree_sitter_css::language()),
+    // Grammar crates 0.23+ expose a `LANGUAGE: LanguageFn` constant via the
+    // stable `tree-sitter-language` ABI crate; `.into()` converts to Language.
+    Ok(match name {
+        "rust"       => tree_sitter_rust::LANGUAGE.into(),
+        "python"     => tree_sitter_python::LANGUAGE.into(),
+        "javascript" => tree_sitter_javascript::LANGUAGE.into(),
+        "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        "go"         => tree_sitter_go::LANGUAGE.into(),
+        "java"       => tree_sitter_java::LANGUAGE.into(),
+        "c"          => tree_sitter_c::LANGUAGE.into(),
+        "cpp"        => tree_sitter_cpp::LANGUAGE.into(),
+        "json"       => tree_sitter_json::LANGUAGE.into(),
+        "html"       => tree_sitter_html::LANGUAGE.into(),
+        "css"        => tree_sitter_css::LANGUAGE.into(),
+        "hcl"        => tree_sitter_hcl::LANGUAGE.into(),
+        "sql"        => tree_sitter_sequel::LANGUAGE.into(),
+        "proto"      => tree_sitter_proto::LANGUAGE.into(),
         other        => bail!("unsupported language: {other}"),
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +138,27 @@ fn node_specs(language: &str) -> Vec<NodeSpec> {
             s("media_statement",     Module,  None),
             s("keyframes_statement", Function, None),
             s("supports_statement",  Module,  None),
+        ],
+        // HCL/Terraform: top-level blocks (resource, data, module, locals, …).
+        // Name extraction is handled by hcl_block_name (identifier + string labels).
+        "hcl" => vec![
+            s("block", Module, None),
+        ],
+        // Protobuf: message, enum, service, and rpc definitions.
+        // Name extraction finds the *_name child node.
+        "proto" => vec![
+            s("message", Struct,     None),
+            s("enum",    Enum,       None),
+            s("service", Interface,  None),
+            s("rpc",     Method,     None),
+        ],
+        // SQL: major DDL statements.
+        // Name extraction finds the object_reference child.
+        "sql" => vec![
+            s("create_table",    Struct,    None),
+            s("create_view",     TypeAlias, None),
+            s("create_function", Function,  None),
+            s("create_index",    Constant,  None),
         ],
         _ => vec![],
     }
@@ -249,6 +277,9 @@ fn extract_name(node: &tree_sitter::Node<'_>, src: &[u8], language: &str, spec: 
         "c" | "cpp" => c_function_name(node, src),
         "css"       => css_chunk_name(node, src),
         "html"      => html_chunk_name(node, src),
+        "hcl"       => hcl_block_name(node, src),
+        "proto"     => proto_named_child(node, src),
+        "sql"       => sql_object_name(node, src),
         _           => None,
     }
 }
@@ -327,6 +358,54 @@ fn find_identifier(node: tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
         if let Some(child) = node.child(i) {
             if let Some(name) = find_identifier(child, src) {
                 return Some(name);
+            }
+        }
+    }
+    None
+}
+
+/// Build an HCL block name from its type identifier and string labels.
+/// e.g. `resource "aws_instance" "main"` → `"resource.aws_instance.main"`.
+fn hcl_block_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            match child.kind() {
+                "identifier" => {
+                    if let Ok(t) = child.utf8_text(src) {
+                        parts.push(t.to_owned());
+                    }
+                }
+                "string_lit" => {
+                    if let Ok(t) = child.utf8_text(src) {
+                        parts.push(t.trim_matches('"').to_owned());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if parts.is_empty() { None } else { Some(parts.join(".")) }
+}
+
+/// Return the text of the first `*_name` child node (used for proto grammars).
+fn proto_named_child(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if child.kind().ends_with("_name") {
+                return child.utf8_text(src).ok().map(str::to_owned);
+            }
+        }
+    }
+    None
+}
+
+/// Return the text of the first `object_reference` child (used for SQL DDL nodes).
+fn sql_object_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if child.kind() == "object_reference" {
+                return child.utf8_text(src).ok().map(str::to_owned);
             }
         }
     }
