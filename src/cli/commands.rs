@@ -226,6 +226,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     let db = Database::open(db_path)?;
     let mut results = db.search_similar(&query_blob, args.context_chunks)?;
     sp.finish_and_clear();
+    drop(embedder); // free GPU memory before loading the LLM
 
     if results.is_empty() {
         println!("No relevant code found in the index.");
