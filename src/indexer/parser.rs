@@ -3,7 +3,8 @@ use super::chunker::{sliding_window, Chunk, ChunkKind};
 
 /// All languages with tree-sitter grammar support.
 pub const SUPPORTED_LANGUAGES: &[&str] =
-    &["rust", "python", "javascript", "typescript", "go", "java", "c", "cpp"];
+    &["rust", "python", "javascript", "typescript", "go", "java", "c", "cpp",
+      "json", "html", "css"];
 
 /// Detect language from file extension.
 pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
@@ -16,8 +17,15 @@ pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
         "java"                    => Some("java"),
         "c" | "h"                 => Some("c"),
         "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some("cpp"),
+        "json"                               => Some("json"),
+        "html" | "htm"                       => Some("html"),
+        "css"                                => Some("css"),
         _ => None,
     }
+}
+
+pub(crate) fn ts_language_pub(name: &str) -> Result<tree_sitter::Language> {
+    ts_language(name)
 }
 
 fn ts_language(name: &str) -> Result<tree_sitter::Language> {
@@ -31,6 +39,9 @@ fn ts_language(name: &str) -> Result<tree_sitter::Language> {
         "java"       => Ok(tree_sitter_java::language()),
         "c"          => Ok(tree_sitter_c::language()),
         "cpp"        => Ok(tree_sitter_cpp::language()),
+        "json"       => Ok(tree_sitter_json::language()),
+        "html"       => Ok(tree_sitter_html::language()),
+        "css"        => Ok(tree_sitter_css::language()),
         other        => bail!("unsupported language: {other}"),
     }
 }
@@ -107,6 +118,20 @@ fn node_specs(language: &str) -> Vec<NodeSpec> {
             s("struct_specifier",     Struct,   Some("name")),
             s("function_declarator",  Function, Some("declarator")),
         ],
+        // JSON: no semantic node types — falls back to sliding-window automatically.
+        "json" => vec![],
+        // HTML: capture inline script and style blocks as code chunks.
+        "html" => vec![
+            s("script_element", Function, None),
+            s("style_element",  Module,   None),
+        ],
+        // CSS: each rule set and named @-rule becomes its own chunk.
+        "css" => vec![
+            s("rule_set",            Rule,    None),
+            s("media_statement",     Module,  None),
+            s("keyframes_statement", Function, None),
+            s("supports_statement",  Module,  None),
+        ],
         _ => vec![],
     }
 }
@@ -158,12 +183,7 @@ fn walk_node(
     out: &mut Vec<Chunk>,
 ) {
     if let Some(spec) = specs.iter().find(|s| s.kind == node.kind()) {
-        let name = spec
-            .name_field
-            .and_then(|field| node.child_by_field_name(field))
-            .and_then(|n| n.utf8_text(src).ok())
-            .map(str::to_owned)
-            .or_else(|| c_function_name(&node, src));
+        let name = extract_name(&node, src, language, spec);
 
         let content = node
             .utf8_text(src)
@@ -205,6 +225,90 @@ fn walk_node(
             }
         }
     }
+}
+
+/// Language-aware name extraction for a chunk node.
+fn extract_name(node: &tree_sitter::Node<'_>, src: &[u8], language: &str, spec: &NodeSpec) -> Option<String> {
+    // Try the declared name field first.
+    let from_field = spec
+        .name_field
+        .and_then(|field| node.child_by_field_name(field))
+        .and_then(|n| n.utf8_text(src).ok())
+        .map(|text| match language {
+            // JSON keys are wrapped in quotes — strip them.
+            "json" => text.trim_matches('"').to_owned(),
+            _      => text.to_owned(),
+        });
+
+    if from_field.is_some() {
+        return from_field;
+    }
+
+    // Language-specific fallbacks when no name field is declared.
+    match language {
+        "c" | "cpp" => c_function_name(node, src),
+        "css"       => css_chunk_name(node, src),
+        "html"      => html_chunk_name(node, src),
+        _           => None,
+    }
+}
+
+/// Return the selector text from a CSS `rule_set` node, or the @-keyword for
+/// at-rules, to use as the chunk name.
+fn css_chunk_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if child.kind() == "selectors" {
+                return child.utf8_text(src).ok().map(|s| s.trim().to_owned());
+            }
+            // @-rule keyword (e.g. "media", "keyframes")
+            if matches!(child.kind(), "at_keyword" | "keyword") {
+                return child.utf8_text(src).ok().map(|s| s.to_owned());
+            }
+        }
+    }
+    None
+}
+
+/// Return the `src`/`id` attribute value of an HTML chunk element as its name,
+/// falling back to the tag name.  tree-sitter-html uses child kinds
+/// (`attribute_name`, `attribute_value`) rather than named fields.
+fn html_chunk_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+    for i in 0..node.child_count() {
+        if let Some(start_tag) = node.child(i) {
+            if start_tag.kind() != "start_tag" {
+                continue;
+            }
+            let mut tag_name: Option<String> = None;
+            for j in 0..start_tag.child_count() {
+                let child = match start_tag.child(j) { Some(c) => c, None => continue };
+                if child.kind() == "tag_name" {
+                    tag_name = child.utf8_text(src).ok().map(str::to_owned);
+                }
+                if child.kind() == "attribute" {
+                    let mut name = "";
+                    let mut value = "";
+                    for k in 0..child.child_count() {
+                        if let Some(attr_child) = child.child(k) {
+                            match attr_child.kind() {
+                                "attribute_name"  => name  = attr_child.utf8_text(src).unwrap_or(""),
+                                "attribute_value" | "quoted_attribute_value"
+                                                  => value = attr_child.utf8_text(src).unwrap_or(""),
+                                _ => {}
+                            }
+                        }
+                    }
+                    if matches!(name, "src" | "id") && !value.is_empty() {
+                        return Some(
+                            value.trim_matches('"').trim_matches('\'').to_owned()
+                        );
+                    }
+                }
+            }
+            return tag_name;
+        }
+    }
+    None
 }
 
 /// Extract the function name from a C/C++ `function_definition` node, which

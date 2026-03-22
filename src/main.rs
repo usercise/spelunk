@@ -35,10 +35,11 @@ async fn main() -> Result<()> {
     let cfg = config::Config::load(cli.config.as_deref())?;
 
     match cli.command {
-        Command::Index(args) => cli::commands::index(args, cfg).await,
+        Command::Index(args)  => cli::commands::index(args, cfg).await,
         Command::Search(args) => cli::commands::search(args, cfg).await,
-        Command::Ask(args) => cli::commands::ask(args, cfg).await,
-        Command::Status => cli::commands::status(cfg).await,
-        Command::Languages => cli::commands::languages(),
+        Command::Ask(args)    => cli::commands::ask(args, cfg).await,
+        Command::Status       => cli::commands::status(cfg).await,
+        Command::Languages    => cli::commands::languages(),
+        Command::Graph(args)  => cli::commands::graph(args, cfg),
     }
 }

@@ -5,10 +5,10 @@ use walkdir::WalkDir;
 use crate::{
     config::Config,
     embeddings::{candle::vec_to_blob, EmbeddingBackend as _},
-    indexer::parser::{detect_language, SourceParser},
+    indexer::{graph::EdgeExtractor, parser::{detect_language, SourceParser}},
     storage::Database,
 };
-use super::{AskArgs, IndexArgs, SearchArgs};
+use super::{AskArgs, GraphArgs, IndexArgs, SearchArgs};
 
 pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
@@ -69,6 +69,16 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         let file_id = db.upsert_file(&path_str, Some(language), &hash)?;
         db.delete_embeddings_for_file(file_id)?;
         db.delete_chunks_for_file(file_id)?;
+
+        // Extract and store graph edges for this file.
+        match EdgeExtractor::extract(&source, &path_str, language) {
+            Ok(edges) => {
+                if let Err(e) = db.replace_edges(&path_str, &edges) {
+                    tracing::warn!("graph edge storage failed for {path_str}: {e}");
+                }
+            }
+            Err(e) => tracing::warn!("graph extraction failed for {path_str}: {e}"),
+        }
 
         for chunk in &chunks {
             let metadata = serde_json::json!({
@@ -214,12 +224,28 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     let query_blob = vec_to_blob(vecs.first().context("no embedding")?);
 
     let db = Database::open(db_path)?;
-    let results = db.search_similar(&query_blob, args.context_chunks)?;
+    let mut results = db.search_similar(&query_blob, args.context_chunks)?;
     sp.finish_and_clear();
 
     if results.is_empty() {
         println!("No relevant code found in the index.");
         return Ok(());
+    }
+
+    // ── Step 1b: graph neighbour enrichment ───────────────────────────────────
+    // For each top-k result that has a named symbol, fetch 1-hop call neighbours
+    // and append any new chunks not already in the result set.
+    let seen_ids: std::collections::HashSet<i64> = results.iter().map(|r| r.chunk_id).collect();
+    let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
+    if !names.is_empty() {
+        if let Ok(neighbor_ids) = db.graph_neighbor_chunks(&names) {
+            let new_ids: Vec<i64> = neighbor_ids.into_iter().filter(|id| !seen_ids.contains(id)).collect();
+            if !new_ids.is_empty() {
+                if let Ok(extra) = db.chunks_by_ids(&new_ids) {
+                    results.extend(extra);
+                }
+            }
+        }
     }
 
     // ── Step 2: assemble context ─────────────────────────────────────────────
@@ -302,6 +328,46 @@ pub async fn status(cfg: Config) -> Result<()> {
     Ok(())
 }
 
+pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
+    let db_path = args.db.as_ref().unwrap_or(&cfg.db_path);
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No index at {}.\nRun `ca index <path>` first.",
+            db_path.display()
+        );
+    }
+
+    let db = Database::open(db_path)?;
+    let symbol = &args.symbol;
+
+    // Decide whether the query looks like a file path or a symbol name.
+    let mut edges = if symbol.contains('/') || symbol.contains('\\') || symbol.ends_with(".rs")
+        || symbol.ends_with(".py") || symbol.ends_with(".go") || symbol.ends_with(".java")
+        || symbol.ends_with(".ts") || symbol.ends_with(".js")
+    {
+        db.edges_for_file(symbol)?
+    } else {
+        db.edges_for_symbol(symbol)?
+    };
+
+    // Optional kind filter
+    if let Some(kind) = &args.kind {
+        edges.retain(|e| e.kind == *kind);
+    }
+
+    if edges.is_empty() {
+        println!("No graph edges found for '{symbol}'.");
+        return Ok(());
+    }
+
+    match args.format.as_str() {
+        "json" => println!("{}", serde_json::to_string_pretty(&edges)?),
+        _ => print_edges(&edges, symbol),
+    }
+
+    Ok(())
+}
+
 pub fn languages() -> Result<()> {
     let langs = crate::indexer::parser::SUPPORTED_LANGUAGES;
     println!("Supported languages:");
@@ -363,5 +429,45 @@ fn print_results_text(results: &[crate::search::SearchResult]) {
             println!("    \x1b[2m… ({} more lines)\x1b[0m", lines.len() - preview_lines);
         }
         println!();
+    }
+}
+
+fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
+    // Group into outgoing (source) and incoming (target) edges.
+    let outgoing: Vec<_> = edges.iter().filter(|e| {
+        e.source_name.as_deref() == Some(query) || e.source_file == query
+    }).collect();
+    let incoming: Vec<_> = edges.iter().filter(|e| e.target_name == query).collect();
+    let other: Vec<_> = edges.iter().filter(|e| {
+        e.source_name.as_deref() != Some(query)
+            && e.source_file != query
+            && e.target_name != query
+    }).collect();
+
+    if !outgoing.is_empty() {
+        println!("\x1b[1mOutgoing from '{query}':\x1b[0m");
+        for e in &outgoing {
+            let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
+            println!("  \x1b[33m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
+                e.kind, e.target_name, loc, e.line);
+        }
+        println!();
+    }
+    if !incoming.is_empty() {
+        println!("\x1b[1mIncoming to '{query}':\x1b[0m");
+        for e in &incoming {
+            let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
+            println!("  \x1b[36m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
+                e.kind, e.source_file, loc, e.line);
+        }
+        println!();
+    }
+    if !other.is_empty() {
+        println!("\x1b[1mRelated edges:\x1b[0m");
+        for e in &other {
+            let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
+            println!("  {} -- \x1b[33m{}\x1b[0m --> {}  \x1b[2m({}:{})\x1b[0m",
+                loc, e.kind, e.target_name, e.source_file, e.line);
+        }
     }
 }

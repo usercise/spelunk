@@ -27,6 +27,8 @@ pub enum Command {
     Status,
     /// List supported languages
     Languages,
+    /// Query the code graph (imports, calls, extends/implements)
+    Graph(GraphArgs),
 }
 
 #[derive(Args, Debug)]
@@ -73,6 +75,24 @@ pub struct AskArgs {
     /// Number of chunks to retrieve as context
     #[arg(long, default_value = "10")]
     pub context_chunks: usize,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct GraphArgs {
+    /// Symbol name or file path to look up in the graph
+    pub symbol: String,
+
+    /// Filter to a specific edge kind: imports, calls, extends, implements
+    #[arg(long)]
+    pub kind: Option<String>,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
 
     /// Path to the SQLite database (overrides config)
     #[arg(short, long)]

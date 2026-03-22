@@ -160,3 +160,12 @@ RUST_LOG=debug cargo run -- index .
   (see `storage/db.rs`). The extension binary is bundled by the crate.
 - `tokenizers` uses the `onig` feature to avoid requiring a system regex
   library on non-Linux targets.
+- **LLM model compatibility**: Gemma 3 requires `candle-transformers >=0.9`.
+  Version 0.8.x was missing the sliding-window attention and per-layer RoPE
+  bases, producing multilingual garbage despite healthy logits. We run 0.9.2.
+  Gemma 3n (`google/gemma-3n-e2b-it`, `e4b-it`) uses a non-transformer
+  architecture not yet implemented in candle — it is not supported.
+- **Tokenizer BOS handling**: Gemma's tokenizer post-processor adds a BOS token
+  when `add_special_tokens=true`. The normalizer does NOT add BOS. Use
+  `add_special_tokens=false` and manually prepend BOS (token ID 2) to guarantee
+  exactly one BOS regardless of tokenizer configuration.

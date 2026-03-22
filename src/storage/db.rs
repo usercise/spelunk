@@ -27,6 +27,7 @@ impl Database {
         let db = Self { conn };
         db.migrate()?;
         db.apply_vector_migration()?;
+        db.apply_graph_migration()?;
         Ok(db)
     }
 
@@ -42,6 +43,14 @@ impl Database {
         self.conn
             .execute_batch(include_str!("../../migrations/002_vectors.sql"))
             .context("running vector migration (is the sqlite-vec extension loaded?)")?;
+        Ok(())
+    }
+
+    /// Create the graph_edges table. Idempotent (`IF NOT EXISTS`).
+    pub fn apply_graph_migration(&self) -> Result<()> {
+        self.conn
+            .execute_batch(include_str!("../../migrations/003_graph.sql"))
+            .context("running graph migration")?;
         Ok(())
     }
 
@@ -121,6 +130,47 @@ impl Database {
         )?;
         // Cascade in SQL handles embeddings deletion via chunk_id FK
         Ok(())
+    }
+
+    /// Fetch full `SearchResult` rows for a list of chunk IDs (used for graph
+    /// neighbour enrichment in `ask`).
+    pub fn chunks_by_ids(&self, ids: &[i64]) -> Result<Vec<crate::search::SearchResult>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let placeholders = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT c.id, 0.0, c.node_type, c.name,
+                    CAST(c.start_line AS INTEGER), CAST(c.end_line AS INTEGER),
+                    c.content, f.path, f.language
+             FROM chunks c
+             JOIN files f ON f.id = c.file_id
+             WHERE c.id IN ({placeholders})"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok(crate::search::SearchResult {
+                chunk_id:   row.get(0)?,
+                distance:   row.get(1)?,
+                node_type:  row.get(2)?,
+                name:       row.get(3)?,
+                start_line: row.get::<_, i64>(4)? as usize,
+                end_line:   row.get::<_, i64>(5)? as usize,
+                content:    row.get(6)?,
+                file_path:  row.get(7)?,
+                language:   row.get(8)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
     }
 
     /// Return all chunk IDs and their embedding text for a given file.
@@ -222,6 +272,88 @@ impl Database {
     }
 
     // -----------------------------------------------------------------------
+    // Graph edges
+    // -----------------------------------------------------------------------
+
+    /// Insert a batch of edges for one file. Existing rows for that file are
+    /// removed first (called during re-index).
+    pub fn replace_edges(&self, file_path: &str, edges: &[crate::indexer::graph::Edge]) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM graph_edges WHERE source_file = ?1",
+            rusqlite::params![file_path],
+        )?;
+        for e in edges {
+            self.conn.execute(
+                "INSERT INTO graph_edges (source_file, source_name, target_name, kind, line)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    e.source_file, e.source_name, e.target_name,
+                    e.kind.to_string(), e.line as i64
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// All edges where `name` appears as source_name OR target_name.
+    pub fn edges_for_symbol(&self, name: &str) -> Result<Vec<GraphEdge>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT source_file, source_name, target_name, kind, line
+             FROM graph_edges
+             WHERE source_name = ?1 OR target_name = ?1
+             ORDER BY kind, target_name",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![name], row_to_edge)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    /// All edges originating from `file_path`.
+    pub fn edges_for_file(&self, file_path: &str) -> Result<Vec<GraphEdge>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT source_file, source_name, target_name, kind, line
+             FROM graph_edges
+             WHERE source_file = ?1
+             ORDER BY kind, target_name",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![file_path], row_to_edge)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    /// Return chunk IDs of symbols that are called-by or call the given chunk names.
+    /// Used by `ca ask` to enrich context with graph neighbours.
+    pub fn graph_neighbor_chunks(&self, names: &[&str]) -> Result<Vec<i64>> {
+        if names.is_empty() {
+            return Ok(vec![]);
+        }
+        // Build a parameterised IN clause at runtime (trusted internal data).
+        let placeholders = names
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT DISTINCT c.id
+             FROM chunks c
+             WHERE c.name IN (
+                 SELECT target_name FROM graph_edges
+                 WHERE source_name IN ({ph}) AND kind = 'calls'
+                 UNION
+                 SELECT source_name FROM graph_edges
+                 WHERE target_name IN ({ph}) AND kind = 'calls'
+             )",
+            ph = placeholders
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = names
+            .iter()
+            .map(|n| n as &dyn rusqlite::ToSql)
+            .collect();
+        let rows = stmt.query_map(params.as_slice(), |r| r.get::<_, i64>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    // -----------------------------------------------------------------------
     // Stats
     // -----------------------------------------------------------------------
 
@@ -234,6 +366,26 @@ impl Database {
             self.conn.query_row("SELECT COUNT(*) FROM embeddings", [], |r| r.get(0))?;
         Ok(IndexStats { file_count, chunk_count, embedding_count })
     }
+}
+
+/// A graph edge as returned by query methods.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GraphEdge {
+    pub source_file: String,
+    pub source_name: Option<String>,
+    pub target_name: String,
+    pub kind: String,
+    pub line: usize,
+}
+
+fn row_to_edge(row: &rusqlite::Row<'_>) -> rusqlite::Result<GraphEdge> {
+    Ok(GraphEdge {
+        source_file: row.get(0)?,
+        source_name: row.get(1)?,
+        target_name: row.get(2)?,
+        kind:        row.get(3)?,
+        line:        row.get::<_, i64>(4)? as usize,
+    })
 }
 
 #[derive(Debug)]

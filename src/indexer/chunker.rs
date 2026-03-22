@@ -15,6 +15,8 @@ pub enum ChunkKind {
     Module,
     Constant,
     TypeAlias,
+    /// A CSS rule set (selector + declarations block)
+    Rule,
     /// Fallback: plain line range (unsupported language or oversized node)
     Verbatim,
 }

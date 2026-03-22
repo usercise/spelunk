@@ -71,17 +71,20 @@ tree-sitter-go         = "0.21"
 tree-sitter-java       = "0.21"
 tree-sitter-c          = "0.21"
 tree-sitter-cpp        = "0.21"
+tree-sitter-json       = "0.21"
+tree-sitter-html       = "0.20"
+tree-sitter-css        = "0.21"
 
 # ML inference (optional — only pulled in by a backend feature)
-candle-core         = { version = "0.8", optional = true }
-candle-nn           = { version = "0.8", optional = true }
-candle-transformers = { version = "0.8", optional = true }
+candle-core         = { version = "0.9", optional = true }
+candle-nn           = { version = "0.9", optional = true }
+candle-transformers = { version = "0.9", optional = true }
 
 # HuggingFace Hub — model download & caching
 hf-hub = { version = "0.5", features = ["tokio"] }
 
 # Tokenization
-tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
+tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 
 # Token sampling for LLM generation
 rand = "0.9"

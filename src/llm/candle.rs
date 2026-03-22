@@ -1,11 +1,17 @@
 //! Text generation via candle with the Metal GPU (Apple Silicon).
 //!
 //! Supports `model_type = "gemma"` (Gemma 1/2) and `model_type = "gemma3"`
-//! (Gemma 3 / Gemma 3n).  Both variants expose the same forward API in
-//! candle-transformers 0.8, handled by an internal enum.
+//! (Gemma 3).  Both variants use `candle_transformers::models::gemma` or
+//! `gemma3` respectively, selected by the `model_type` field in `config.json`.
 //!
 //! # Gemma 3n
-//! Set `llm_model = "google/gemma-3n-e2b-it"` (or e4b) in config.toml.
+//! Gemma 3n (`gemma3n`) has a different architecture (mixed sparse/dense
+//! attention, different layer structure) and is **not compatible** with the
+//! `gemma3::Config` in candle-transformers 0.8.  Attempting to load a Gemma 3n
+//! model will fail at config parsing.  Support requires a newer candle release.
+//!
+//! # Recommended model
+//! Set `llm_model = "google/gemma-3-1b-it"` in config.toml (default).
 //! All Gemma models are gated — accept the licence on HuggingFace first:
 //!   huggingface-cli login
 //!
@@ -129,7 +135,15 @@ impl CandleLlm {
 
         // ── Build model variant ───────────────────────────────────────────────
         let model = match model_type {
-            "gemma3" | "gemma3n" => {
+            "gemma3n" => {
+                anyhow::bail!(
+                    "Gemma 3n is not supported by candle-transformers 0.9 — its architecture \
+                     differs from standard transformers and has no candle implementation yet."
+                );
+            }
+            // "gemma3_text" is the model_type in google/gemma-3-*-it config.json;
+            // "gemma3" appears in some community re-uploads.
+            "gemma3" | "gemma3_text" => {
                 let cfg: candle_transformers::models::gemma3::Config =
                     serde_json::from_str(&config_str).context("parsing gemma3 config")?;
                 GemmaModel::V3(
@@ -208,10 +222,25 @@ fn run_generation(
 ) -> Result<Vec<String>> {
     model.clear_kv_cache();
 
+    // Gemma requires exactly one BOS token at position 0.
+    // The tokenizer's post-processor may add BOS (add_special_tokens=true) on
+    // top of a BOS the normalizer already produces, resulting in double BOS
+    // which corrupts the model's attention.  Instead, encode without the
+    // post-processor and ensure exactly one BOS at the front.
+    let bos_id = tokenizer.token_to_id("<bos>").unwrap_or(2);
     let encoding = tokenizer
-        .encode(prompt, true)
+        .encode(prompt, false)
         .map_err(|e| anyhow!("tokenising prompt: {e}"))?;
-    let prompt_tokens: Vec<u32> = encoding.get_ids().to_vec();
+    let raw_ids = encoding.get_ids();
+    let prompt_tokens: Vec<u32> = if raw_ids.first().copied() == Some(bos_id) {
+        // Normalizer already added BOS — use as-is.
+        raw_ids.to_vec()
+    } else {
+        // No BOS from normalizer — prepend one.
+        let mut v = vec![bos_id];
+        v.extend_from_slice(raw_ids);
+        v
+    };
     let prompt_len = prompt_tokens.len();
 
     let mut all_tokens = prompt_tokens.clone();
@@ -221,7 +250,10 @@ fn run_generation(
     // Prefill: process entire prompt, get logits for last position.
     {
         let input = Tensor::new(prompt_tokens.as_slice(), device)?.unsqueeze(0)?;
-        let logits = model.forward(&input, 0).map_err(anyhow::Error::from)?;
+        let logits_all = model.forward(&input, 0).map_err(anyhow::Error::from)?;
+        // logits_all: [1, prompt_len, vocab] — only the last position is meaningful.
+        let last = logits_all.dim(1)? - 1;
+        let logits = logits_all.narrow(1, last, 1)?;  // [1, 1, vocab]
         let next = sample_token(&logits, 0.7)?;
         if stop_tokens.contains(&next) {
             return Ok(output);
@@ -292,7 +324,16 @@ fn incremental_decode(
     let full = tokenizer
         .decode(&all_tokens[prompt_len..], true)
         .map_err(|e| anyhow!("decode: {e}"))?;
-    let delta = full[decoded_so_far.len()..].to_string();
+    // Guard against the byte offset landing mid-character (can happen when
+    // sentencepiece merges across previously decoded boundaries).
+    let split = decoded_so_far.len();
+    let delta = if split <= full.len() && full.is_char_boundary(split) {
+        full[split..].to_string()
+    } else {
+        // Fallback: find the first char boundary at or after split.
+        let safe = (split..=full.len()).find(|&i| full.is_char_boundary(i)).unwrap_or(full.len());
+        full[safe..].to_string()
+    };
     *decoded_so_far = full;
     Ok(delta)
 }

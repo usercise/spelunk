@@ -33,9 +33,12 @@ impl Default for Config {
             // Swap to "google/gemma-embedding" once its architecture is
             // confirmed and candle-transformers support is available.
             embedding_model: "BAAI/bge-base-en-v1.5".to_string(),
-            // Gemma 3n E2B instruction-tuned — requires huggingface-cli login (accept licence first).
-            // For the larger variant: set to "google/gemma-3n-e4b-it".
-            llm_model: "google/gemma-3n-e2b-it".to_string(),
+            // Gemma 3 1B instruction-tuned. Requires candle-transformers >=0.9
+            // which added sliding-window and per-layer RoPE support for Gemma 3.
+            // Gemma 3n (e2b/e4b) has a non-transformer architecture not yet
+            // implemented in candle — use a standard Gemma 3 model for now.
+            // All Gemma models require: huggingface-cli login (accept licence first).
+            llm_model: "google/gemma-3-1b-it".to_string(),
             batch_size: 32,
         }
     }

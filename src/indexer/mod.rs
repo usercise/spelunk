@@ -1,4 +1,5 @@
 pub mod chunker;
+pub mod graph;
 pub mod parser;
 
 #[allow(unused_imports)]
