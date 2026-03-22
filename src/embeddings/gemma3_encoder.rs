@@ -310,14 +310,17 @@ impl Gemma3Encoder {
     /// Weight paths must follow the standard Gemma 3 convention:
     ///   `model.embed_tokens`, `model.layers.N.*`, `model.norm`.
     pub fn new(cfg: &Config, vb: VarBuilder) -> Result<Self> {
-        let vb_m = vb.pp("model");
+        // EmbeddingGemma is saved as Gemma3TextModel (standalone encoder), so weights
+        // are stored without a "model." prefix: embed_tokens.weight, layers.N.*, norm.weight.
+        // Gemma3ForCausalLM (used for generation) nests everything under "model.", but that
+        // is the LLM path — this encoder path is exclusively for embedding models.
         let embed_tokens =
-            candle_nn::embedding(cfg.vocab_size, cfg.hidden_size, vb_m.pp("embed_tokens"))
+            candle_nn::embedding(cfg.vocab_size, cfg.hidden_size, vb.pp("embed_tokens"))
                 .context("loading embed_tokens")?;
-        let vb_l = vb_m.pp("layers");
+        let vb_l = vb.pp("layers");
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
         for i in 0..cfg.num_hidden_layers {
-            // Mirror gemma3::Model: a layer is "local" (sliding-window) when
+            // A layer is "local" (uses rope_local_base_freq) when
             // (layer_idx + 1) % sliding_window_pattern != 0.
             let local = (i + 1) % cfg.sliding_window_pattern > 0;
             layers.push(
@@ -325,7 +328,7 @@ impl Gemma3Encoder {
                     .with_context(|| format!("building layer {i}"))?,
             );
         }
-        let norm = RmsNorm::new(cfg.hidden_size, cfg.rms_norm_eps, vb_m.pp("norm"))
+        let norm = RmsNorm::new(cfg.hidden_size, cfg.rms_norm_eps, vb.pp("norm"))
             .context("loading final norm")?;
         Ok(Self { embed_tokens, layers, norm, hidden_size: cfg.hidden_size })
     }
