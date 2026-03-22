@@ -126,7 +126,8 @@ async fn load_gemma3(
         .with_context(|| format!("downloading weights for '{model_id}'"))?;
 
     let cfg: crate::embeddings::gemma3_encoder::Config =
-        serde_json::from_str(config_str).context("parsing Gemma3 config")?;
+        serde_json::from_str(config_str)
+            .context("parsing Gemma3 embedding config (config.json)")?;
     let dim = cfg.hidden_size;
 
     let refs: Vec<&std::path::Path> = weights.iter().map(|p| p.as_path()).collect();
