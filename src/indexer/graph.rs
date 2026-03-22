@@ -197,12 +197,49 @@ fn rust_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind
         }
         "call_expression" => {
             if let Some(func) = node.child_by_field_name("function") {
-                if matches!(func.kind(), "identifier" | "scoped_identifier") {
-                    if let Ok(name) = func.utf8_text(src) {
-                        if !is_rust_builtin(name) {
-                            out.push((name.to_owned(), EdgeKind::Calls));
+                match func.kind() {
+                    "identifier" => {
+                        if let Ok(name) = func.utf8_text(src) {
+                            if !is_rust_builtin(name) {
+                                out.push((name.to_owned(), EdgeKind::Calls));
+                            }
                         }
                     }
+                    // Type::method(…) — index the full form, the type, and the method.
+                    "scoped_identifier" => {
+                        if let Ok(full) = func.utf8_text(src) {
+                            if !is_rust_builtin(full) {
+                                out.push((full.to_owned(), EdgeKind::Calls));
+                            }
+                        }
+                        // Emit the method name: `EdgeExtractor::extract` → `extract`
+                        if let Some(name_node) = func.child_by_field_name("name") {
+                            if let Ok(name) = name_node.utf8_text(src) {
+                                if !is_rust_builtin(name) {
+                                    out.push((name.to_owned(), EdgeKind::Calls));
+                                }
+                            }
+                        }
+                        // Emit the type/path: `EdgeExtractor::extract` → `EdgeExtractor`
+                        if let Some(path_node) = func.child_by_field_name("path") {
+                            if let Ok(path) = path_node.utf8_text(src) {
+                                if !is_rust_builtin(path) {
+                                    out.push((path.to_owned(), EdgeKind::Calls));
+                                }
+                            }
+                        }
+                    }
+                    // obj.method(…) — index the method name.
+                    "field_expression" => {
+                        if let Some(field) = func.child_by_field_name("field") {
+                            if let Ok(name) = field.utf8_text(src) {
+                                if !is_rust_builtin(name) {
+                                    out.push((name.to_owned(), EdgeKind::Calls));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -243,12 +280,25 @@ fn python_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKi
         }
         "call" => {
             if let Some(func) = node.child_by_field_name("function") {
-                if func.kind() == "identifier" {
-                    if let Ok(name) = func.utf8_text(src) {
-                        if !is_python_builtin(name) {
-                            out.push((name.to_owned(), EdgeKind::Calls));
+                match func.kind() {
+                    "identifier" => {
+                        if let Ok(name) = func.utf8_text(src) {
+                            if !is_python_builtin(name) {
+                                out.push((name.to_owned(), EdgeKind::Calls));
+                            }
                         }
                     }
+                    // obj.method(…)
+                    "attribute" => {
+                        if let Some(attr) = func.child_by_field_name("attribute") {
+                            if let Ok(name) = attr.utf8_text(src) {
+                                if !is_python_builtin(name) {
+                                    out.push((name.to_owned(), EdgeKind::Calls));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -270,12 +320,25 @@ fn js_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)>
         }
         "call_expression" => {
             if let Some(func) = node.child_by_field_name("function") {
-                if func.kind() == "identifier" {
-                    if let Ok(name) = func.utf8_text(src) {
-                        if !is_js_builtin(name) {
-                            out.push((name.to_owned(), EdgeKind::Calls));
+                match func.kind() {
+                    "identifier" => {
+                        if let Ok(name) = func.utf8_text(src) {
+                            if !is_js_builtin(name) {
+                                out.push((name.to_owned(), EdgeKind::Calls));
+                            }
                         }
                     }
+                    // obj.method(…)
+                    "member_expression" => {
+                        if let Some(prop) = func.child_by_field_name("property") {
+                            if let Ok(name) = prop.utf8_text(src) {
+                                if !is_js_builtin(name) {
+                                    out.push((name.to_owned(), EdgeKind::Calls));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
