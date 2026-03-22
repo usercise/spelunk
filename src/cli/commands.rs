@@ -234,13 +234,20 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     }
 
     // ── Step 1b: graph neighbour enrichment ───────────────────────────────────
-    // For each top-k result that has a named symbol, fetch 1-hop call neighbours
-    // and append any new chunks not already in the result set.
+    // Fetch 1-hop call neighbours for each named result and append new chunks.
+    // Capped at 5 extra chunks to keep the LLM prompt within Metal's attention
+    // buffer limits (Gemma 3 1B has 4 heads; global attention needs ~32×L² bytes,
+    // which exceeds Metal's ~4 GB single-buffer limit around L = 11 500 tokens).
+    const MAX_GRAPH_EXTRA: usize = 5;
     let seen_ids: std::collections::HashSet<i64> = results.iter().map(|r| r.chunk_id).collect();
     let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
     if !names.is_empty() {
         if let Ok(neighbor_ids) = db.graph_neighbor_chunks(&names) {
-            let new_ids: Vec<i64> = neighbor_ids.into_iter().filter(|id| !seen_ids.contains(id)).collect();
+            let new_ids: Vec<i64> = neighbor_ids
+                .into_iter()
+                .filter(|id| !seen_ids.contains(id))
+                .take(MAX_GRAPH_EXTRA)
+                .collect();
             if !new_ids.is_empty() {
                 if let Ok(extra) = db.chunks_by_ids(&new_ids) {
                     results.extend(extra);

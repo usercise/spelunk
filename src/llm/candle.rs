@@ -241,6 +241,28 @@ fn run_generation(
         v.extend_from_slice(raw_ids);
         v
     };
+
+    // Safety: Gemma 3 1B has 4 attention heads; Metal's ~4 GB single-buffer
+    // limit constrains full-context (global) attention layers to ~L < 11 500
+    // tokens (32 × L² bytes for two simultaneous attn buffers).  Truncate to
+    // a conservative 6 144 tokens, always keeping the tail so the question at
+    // the end of the Gemma chat prompt is never dropped.
+    const MAX_PROMPT_TOKENS: usize = 6144;
+    let prompt_tokens = if prompt_tokens.len() > MAX_PROMPT_TOKENS {
+        tracing::warn!(
+            "Prompt is {} tokens — truncating to {} to fit Metal attention limits. \
+             Use fewer context chunks to avoid this.",
+            prompt_tokens.len(),
+            MAX_PROMPT_TOKENS,
+        );
+        let mut truncated = vec![bos_id];
+        let keep = MAX_PROMPT_TOKENS - 1;
+        truncated.extend_from_slice(&prompt_tokens[prompt_tokens.len() - keep..]);
+        truncated
+    } else {
+        prompt_tokens
+    };
+
     let prompt_len = prompt_tokens.len();
 
     let mut all_tokens = prompt_tokens.clone();
