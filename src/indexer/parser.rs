@@ -211,6 +211,18 @@ fn walk_node(
     out: &mut Vec<Chunk>,
 ) {
     if let Some(spec) = specs.iter().find(|s| s.kind == node.kind()) {
+        // Skip keyword leaf tokens: grammars like proto reuse the node kind
+        // name for both the keyword token ("message") and the structural block.
+        // Structural nodes always have named children; keyword leaves do not.
+        if node.named_child_count() == 0 {
+            for i in 0..node.child_count() {
+                if let Some(child) = node.child(i) {
+                    walk_node(child, src, file_path, language, specs, parent_scope, out);
+                }
+            }
+            return;
+        }
+
         let name = extract_name(&node, src, language, spec);
 
         let content = node
