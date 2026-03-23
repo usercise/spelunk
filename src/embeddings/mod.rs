@@ -1,11 +1,5 @@
 use anyhow::Result;
 
-#[cfg(feature = "backend-metal")]
-pub mod candle;
-#[cfg(feature = "backend-metal")]
-pub(crate) mod gemma3_encoder;
-
-#[cfg(feature = "backend-lmstudio")]
 pub mod lmstudio;
 
 /// The embedding vector dimension.

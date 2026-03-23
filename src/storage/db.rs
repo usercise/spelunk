@@ -195,7 +195,7 @@ impl Database {
 
     /// Insert or replace an embedding for a chunk.
     ///
-    /// `blob` must be raw little-endian F32 bytes (`vec_to_blob` in candle.rs).
+    /// `blob` must be raw little-endian F32 bytes (see `embeddings::vec_to_blob`).
     pub fn insert_embedding(&self, chunk_id: i64, blob: &[u8]) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO embeddings (chunk_id, embedding) VALUES (?1, ?2)",

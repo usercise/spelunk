@@ -9,7 +9,9 @@
       "Bash(grep -v \"^$\")",
       "Bash(cargo build:*)",
       "Bash(cargo tree:*)",
-      "Bash(grep -v \"^\\\\s*$\")"
+      "Bash(grep -v \"^\\\\s*$\")",
+      "Read(//Users/johan/.config/**)",
+      "Bash(cargo search:*)"
     ]
   }
 }

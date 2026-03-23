@@ -9,29 +9,9 @@ license = "MIT"
 name = "ca"
 path = "src/main.rs"
 
-# ---------------------------------------------------------------------------
-# Inference backend feature flags.
-#
-# Each backend is an independent feature that gates its concrete module.
-# To add a new backend (e.g. CUDA, CoreML, CPU):
-#   1. Add a feature flag here (e.g. `backend-cuda = ["candle-core/cuda", ...]`)
-#   2. Implement EmbeddingBackend + LlmBackend in src/embeddings/ and src/llm/
-#   3. Wire it up in src/backends.rs
-#
-# The rest of the codebase never imports concrete backend types directly —
-# only the traits in src/embeddings/mod.rs and src/llm/mod.rs.
-# ---------------------------------------------------------------------------
 [features]
 default = ["backend-lmstudio"]
 backend-lmstudio = ["dep:reqwest", "dep:futures-util"]
-backend-metal = [
-    "dep:candle-core",
-    "dep:candle-nn",
-    "dep:candle-transformers",
-    "candle-core/metal",
-    "candle-nn/metal",
-    "candle-transformers/metal",
-]
 
 [dependencies]
 
@@ -79,23 +59,9 @@ tree-sitter-hcl        = "1.1"
 tree-sitter-proto      = "0.4"
 tree-sitter-sequel     = "0.3"
 
-# ML inference (optional — only pulled in by a backend feature)
-candle-core         = { version = "0.9", optional = true }
-candle-nn           = { version = "0.9", optional = true }
-candle-transformers = { version = "0.9", optional = true }
-
 # HTTP client for LM Studio backend
 reqwest      = { version = "0.12", features = ["json", "stream"], optional = true }
 futures-util = { version = "0.3", optional = true }
-
-# HuggingFace Hub — model download & caching
-hf-hub = { version = "0.5", features = ["tokio"] }
-
-# Tokenization
-tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
-
-# Token sampling for LLM generation
-rand = "0.9"
 
 # Content hashing (change detection for incremental indexing)
 blake3 = "1"

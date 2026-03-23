@@ -1,10 +1,6 @@
 use anyhow::Result;
 use tokio::sync::mpsc;
 
-#[cfg(feature = "backend-metal")]
-pub mod candle;
-
-#[cfg(feature = "backend-lmstudio")]
 pub mod lmstudio;
 
 /// A streamed token from the LLM.
