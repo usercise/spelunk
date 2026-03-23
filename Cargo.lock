@@ -223,6 +223,7 @@ dependencies = [
  "futures-util",
  "ignore",
  "indicatif",
+ "regex",
  "reqwest",
  "rusqlite",
  "serde",

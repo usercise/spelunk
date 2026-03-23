@@ -30,6 +30,9 @@ fn spinner(message: impl Into<std::borrow::Cow<'static, str>>) -> ProgressBar {
 }
 
 pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
+    // Compile secret-scanning regexes once before the hot loop.
+    crate::indexer::secrets::init();
+
     // Default DB lives inside the indexed directory, scoping the index to the project.
     let db_path = args.db.clone().unwrap_or_else(|| {
         args.path.join(".codeanalysis").join("index.db")
@@ -41,8 +44,23 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
     // ── Collect source files ─────────────────────────────────────────────────
     // WalkBuilder respects .gitignore, .ignore, and global gitignore rules.
-    let files: Vec<_> = WalkBuilder::new(&args.path)
-        .standard_filters(true)
+    // The override below excludes sensitive files unconditionally — even when
+    // no .gitignore is present or when they are explicitly un-ignored.
+    let sensitive_patterns = [
+        "!.env", "!.env.*",
+        "!*.pem", "!*.key", "!*.p12", "!*.pfx", "!*.p8",
+        "!*.cer", "!*.crt", "!*.der",
+        "!id_rsa", "!id_ecdsa", "!id_ed25519", "!id_dsa",
+        "!*.keystore", "!*.jks",
+        "!.netrc", "!.npmrc",
+    ];
+    let mut walk = WalkBuilder::new(&args.path);
+    walk.standard_filters(true);
+    let mut ob = ignore::overrides::OverrideBuilder::new(&args.path);
+    for pat in &sensitive_patterns { ob.add(pat).ok(); }
+    if let Ok(ov) = ob.build() { walk.overrides(ov); }
+
+    let files: Vec<_> = walk
         .build()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
@@ -123,6 +141,15 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         }
 
         for chunk in &chunks {
+            // Skip chunks that appear to contain secrets.
+            if crate::indexer::secrets::contains_secret(&chunk.content) {
+                tracing::warn!(
+                    "skipping chunk '{}' in {path_str} (possible secret detected)",
+                    chunk.name.as_deref().unwrap_or("<anonymous>"),
+                );
+                continue;
+            }
+
             let metadata = serde_json::json!({
                 "docstring": chunk.docstring,
                 "parent_scope": chunk.parent_scope,
@@ -241,7 +268,7 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     let query_blob = vec_to_blob(vecs.first().context("no embedding returned")?);
 
     sp.set_message("Searching…");
-    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.limit)?;
+    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.limit.min(100))?;
     sp.finish_and_clear();
 
     if results.is_empty() {
@@ -303,7 +330,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     let vecs = embedder.embed(&[&query_text]).await?;
     let query_blob = vec_to_blob(vecs.first().context("no embedding")?);
 
-    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.context_chunks)?;
+    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.context_chunks.min(100))?;
     sp.finish_and_clear();
     drop(embedder); // free GPU memory before loading the LLM
 
@@ -353,6 +380,24 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n\n");
 
+    // ── Step 2b: prompt injection pre-flight ────────────────────────────────
+    const INJECTION_PATTERNS: &[&str] = &[
+        "ignore previous instructions",
+        "ignore all previous",
+        "disregard your instructions",
+        "disregard the above",
+        "new instructions:",
+        "system prompt:",
+        "you are now",
+        "pretend you are",
+        "act as if you",
+        "jailbreak",
+    ];
+    let question_lower = args.question.to_lowercase();
+    if INJECTION_PATTERNS.iter().any(|p| question_lower.contains(p)) {
+        anyhow::bail!("Question contains a disallowed pattern and cannot be processed.");
+    }
+
     // ── Step 3: build chat messages ──────────────────────────────────────────
     let (system_prompt, json_schema) = if args.json {
         (
@@ -372,7 +417,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     let messages = vec![
         crate::llm::Message::system(system_prompt),
         crate::llm::Message::user(format!(
-            "{context}\n\nQuestion: {question}",
+            "<code_context>\n{context}\n</code_context>\n\n<question>\n{question}\n</question>",
             context = context,
             question = args.question,
         )),
@@ -399,14 +444,16 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
             buf
         };
         let (_, raw) = tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+        // Sanitize before parsing: remove any ANSI escape sequences the model may emit.
+        let raw = crate::utils::strip_ansi(&raw);
         match serde_json::from_str::<serde_json::Value>(&raw) {
             Ok(v)  => println!("{}", serde_json::to_string_pretty(&v)?),
-            Err(_) => print!("{raw}"),  // model didn't produce valid JSON — print as-is
+            Err(_) => print!("{raw}"),
         }
     } else {
         let print_tokens = async move {
             while let Some(token) = rx.recv().await {
-                print!("{token}");
+                print!("{}", crate::utils::strip_ansi(&token));
                 std::io::stdout().flush().ok();
             }
             println!("\n");

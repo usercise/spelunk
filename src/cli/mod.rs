@@ -62,7 +62,7 @@ pub struct SearchArgs {
     /// Natural language search query
     pub query: String,
 
-    /// Number of results to return
+    /// Number of results to return (max 100)
     #[arg(short, long, default_value = "10")]
     pub limit: usize,
 
@@ -88,7 +88,7 @@ pub struct AskArgs {
     /// Question to answer using the indexed codebase
     pub question: String,
 
-    /// Number of chunks to retrieve as context
+    /// Number of chunks to retrieve as context (max 100)
     #[arg(long, default_value = "20")]
     pub context_chunks: usize,
 

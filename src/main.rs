@@ -11,6 +11,7 @@ mod llm;
 mod registry;
 mod search;
 mod storage;
+mod utils;
 
 use cli::{Cli, Command};
 use clap::Parser;

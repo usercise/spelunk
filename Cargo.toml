@@ -63,6 +63,9 @@ tree-sitter-sequel     = "0.3"
 reqwest      = { version = "0.12", features = ["json", "stream"], optional = true }
 futures-util = { version = "0.3", optional = true }
 
+# Secret scanning in indexer
+regex = { version = "1", default-features = false, features = ["std"] }
+
 # Content hashing (change detection for incremental indexing)
 blake3 = "1"
 

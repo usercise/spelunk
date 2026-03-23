@@ -229,9 +229,11 @@ impl Database {
         query_blob: &[u8],
         limit: usize,
     ) -> Result<Vec<crate::search::SearchResult>> {
+        // Hard cap: prevents resource exhaustion regardless of call site.
+        let limit = limit.min(1_000);
         // sqlite-vec requires k to appear as a literal or bound value in the
         // WHERE clause of the vec0 scan. We inject it as a format arg since
-        // it is a trusted usize, then bind the query vector blob normally.
+        // it is a validated usize, then bind the query vector blob normally.
         let sql = format!(
             "WITH knn AS (
                  SELECT chunk_id, distance
