@@ -1,7 +1,8 @@
 # ca — AI Agent Skill Reference
 
 How to use `ca` as an AI agent to understand, search, and answer questions
-about a codebase.
+about a codebase — and to build up a persistent memory of why it was built
+the way it was.
 
 ---
 
@@ -81,48 +82,168 @@ ca status --list            # brief one-line-per-project table
 
 ---
 
-## Multi-project search
+## Project memory
+
+The memory store is a semantic database of decisions, context, and
+requirements that persists alongside the code index. It answers the question
+"why was this built this way?" rather than "what does this code do?".
+
+Memory lives at `<project>/.codeanalysis/memory.db`, separate from the code
+index, and is never overwritten by re-indexing.
+
+### Storing a memory entry
 
 ```bash
-# Make searches in project A also return results from project B
-ca link <path-to-B>
+# Record an architectural decision
+ca memory add \
+  --kind decision \
+  --title "Use sqlite-vec for KNN instead of a separate vector DB" \
+  --body "Evaluated Qdrant and Chroma. Chose sqlite-vec to keep the tool
+self-contained with no external process dependency. Acceptable at our
+scale (<1M chunks). Revisit if we need filtering + ANN at the same time." \
+  --tags "architecture,storage,embeddings" \
+  --files "src/storage/db.rs,migrations/002_vectors.sql"
 
-# Remove the dependency
-ca unlink <path-to-B>
+# Record context or requirements from a human
+ca memory add \
+  --kind context \
+  --title "Target users are solo developers and small teams" \
+  --body "Primary use case is a single developer understanding a codebase
+they didn't write. Multi-user / concurrent write is out of scope for v1."
 
-# Remove registry entries for deleted projects
-ca autoclean
+# Record a requirement
+ca memory add \
+  --kind requirement \
+  --title "Must work offline — no cloud API calls during search" \
+  --body "All inference must be local. LM Studio is acceptable as a local
+server. No Anthropic/OpenAI API keys should be required."
+
+# General note
+ca memory add \
+  --kind note \
+  --title "Tree-sitter grammar version pinning" \
+  --body "Grammar versions must match the tree-sitter core version. Bumping
+core without checking grammars produces silent parse failures."
 ```
 
-Once linked, `ca search` and `ca ask` query both indexes and merge results
-by semantic distance.
+**Kinds:**
+- `decision` — an architectural or design choice and the reasoning behind it
+- `context` — background, constraints, or requirements from a human
+- `requirement` — a hard constraint the codebase must satisfy
+- `note` — anything that doesn't fit the above but should be remembered
+
+### Querying memory
+
+```bash
+# Semantic search — finds entries by meaning, not keywords
+ca memory search "why did we choose this database"
+ca memory search "authentication approach"
+ca memory search "what constraints did the user specify"
+
+# List recent entries
+ca memory list
+ca memory list --kind decision
+ca memory list --kind context --limit 5
+
+# Show full content of an entry
+ca memory show 3
+
+# Machine-readable output
+ca memory search "storage decisions" --format json
+ca memory list --format json
+```
+
+---
+
+## Agent obligations — memory
+
+**These are not optional.** Building up project memory is part of the agent's
+responsibility on every session.
+
+### At the start of a session
+Before beginning any significant work, check what has already been recorded:
+
+```bash
+ca memory list --kind decision --limit 10
+ca memory search "<topic you are about to work on>"
+```
+
+This prevents re-litigating decisions that have already been made and gives
+context for why the code looks the way it does.
+
+### During a session — what to store
+
+Store a memory entry whenever any of the following occurs:
+
+1. **A human states a constraint or requirement** — even informally.
+   > "we don't want external API calls" → `ca memory add --kind requirement …`
+
+2. **A significant design decision is made** — especially when alternatives
+   were considered and rejected.
+   > Chose X over Y because Z → `ca memory add --kind decision …`
+
+3. **A surprising or non-obvious fact is discovered** — about the codebase,
+   its dependencies, or its environment.
+   > "tree-sitter grammar versions must match core" → `ca memory add --kind note …`
+
+4. **A human provides background context** about the project, its users, or
+   its goals.
+   > "this is used by solo developers" → `ca memory add --kind context …`
+
+**What NOT to store:**
+- Things already visible in the code or git history
+- Ephemeral task state ("currently working on X")
+- Debugging steps that didn't lead to a conclusion
+
+### Writing good memory entries
+
+- **Title**: one sentence, past tense for decisions ("Chose X"), present tense
+  for context ("Target users are…")
+- **Body**: include *why*, not just *what*. What alternatives were considered?
+  What constraint drove the choice? What will break if someone ignores this?
+- **Tags**: use consistent tags so `ca memory list --kind decision` stays useful
+- **Files**: link to the files most affected so future searches surface this
+  entry when those files are relevant
 
 ---
 
 ## Recommended agent workflow
 
+**At the start of any session:**
+1. `ca memory list --kind decision` — review prior decisions
+2. `ca memory search "<topic>"` — find relevant context before starting
+
 **For code understanding questions:**
-1. `ca search "<topic>"` — find the most relevant chunks
+1. `ca search "<topic>"` — find the most relevant code chunks
 2. Read the files at the reported line ranges
-3. `ca graph <symbol>` if you need to trace call chains or imports
-4. `ca ask "<question>"` for a synthesised answer when the question is
-   conceptual rather than locational
+3. `ca graph <symbol>` to trace call chains or imports
+4. `ca memory search "<topic>"` — check if there's recorded context explaining *why*
+5. `ca ask "<question>"` for a synthesised answer when needed
 
-**For locating a specific function/type:**
-- `ca search "<name or description>"` is faster than `ca ask` and doesn't
-  require the LLM to be loaded
+**For code changes:**
+1. Search and read before changing
+2. After making a significant decision, store it: `ca memory add --kind decision …`
+3. If the human explains a constraint that shaped your approach, store it too
 
-**For structured answers (agent pipelines):**
+**For structured answers (pipelines):**
 ```bash
 ca ask "<question>" --json | jq '.answer'
-ca ask "<question>" --json | jq '.relevant_files[]'
+ca memory search "<topic>" --format json | jq '.[].body'
 ```
 
-**For bulk inspection:**
+---
+
+## Multi-project search
+
 ```bash
-ca search "<topic>" --format json | jq '.[].file_path' | sort -u
-ca chunks src/some/file.rs --format json | jq '.[].content'
+# Make searches in project A also return results from project B
+ca link <path-to-B>
+ca unlink <path-to-B>
+ca autoclean        # remove registry entries for deleted projects
 ```
+
+Once linked, `ca search` and `ca ask` query both indexes and merge results
+by semantic distance. Memory is always per-project.
 
 ---
 
@@ -131,8 +252,9 @@ ca chunks src/some/file.rs --format json | jq '.[].content'
 - `ca index` must be pointed at the project root; all other commands can be
   run from any subdirectory — the DB is auto-discovered by walking up.
 - After changing the embedding model, run `ca index <path> --force` to
-  regenerate all embeddings with the new model.
-- `ca search` does not require LM Studio's chat model — only the embedding
-  model is needed. `ca ask` requires both.
+  regenerate all embeddings. Also re-run `ca memory add` for important entries
+  so their embeddings reflect the new model.
+- `ca search` and `ca memory search` only need the embedding model.
+  `ca ask` requires both the embedding model and a chat model.
 - Secret-containing chunks (AWS keys, PEM headers, tokens, etc.) are
   automatically skipped during indexing and will not appear in results.

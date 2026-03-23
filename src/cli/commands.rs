@@ -10,9 +10,12 @@ use crate::{
     indexer::{graph::EdgeExtractor, parser::{detect_language, detect_text_language, is_binary_file, SourceParser}},
     registry::Registry,
     search::SearchResult,
-    storage::Database,
+    storage::{Database, MemoryStore},
 };
-use super::{AskArgs, ChunksArgs, GraphArgs, IndexArgs, LinkArgs, SearchArgs, StatusArgs, UnlinkArgs};
+use super::{
+    AskArgs, ChunksArgs, GraphArgs, IndexArgs, LinkArgs, MemoryArgs, MemoryCommand,
+    SearchArgs, StatusArgs, UnlinkArgs,
+};
 
 fn is_tty() -> bool {
     std::io::stderr().is_terminal()
@@ -743,6 +746,154 @@ pub fn autoclean(_cfg: Config) -> Result<()> {
         }
     }
     Ok(())
+}
+
+// ── memory ───────────────────────────────────────────────────────────────────
+
+pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
+    let mem_path = args.db.clone().unwrap_or_else(|| {
+        resolve_db(None, &cfg.db_path).with_file_name("memory.db")
+    });
+    match args.command {
+        MemoryCommand::Add(a)    => memory_add(a, &mem_path, &cfg).await,
+        MemoryCommand::Search(a) => memory_search(a, &mem_path, &cfg).await,
+        MemoryCommand::List(a)   => memory_list(a, &mem_path),
+        MemoryCommand::Show(a)   => memory_show(a, &mem_path),
+    }
+}
+
+async fn memory_add(
+    args: super::MemoryAddArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
+    let store = MemoryStore::open(mem_path)?;
+
+    let tags: Vec<&str> = args.tags.as_deref()
+        .map(|s| s.split(',').map(str::trim).collect())
+        .unwrap_or_default();
+    let files: Vec<&str> = args.files.as_deref()
+        .map(|s| s.split(',').map(str::trim).collect())
+        .unwrap_or_default();
+
+    let note_id = store.add_note(&args.kind, &args.title, &args.body, &tags, &files)?;
+
+    // Embed and store so the note is immediately searchable.
+    let embed_text = format!("title: {} | text: {}", args.title, args.body);
+    let sp = spinner("Embedding…");
+    let embedder = crate::backends::ActiveEmbedder::load(cfg)
+        .await
+        .context("loading embedding model")?;
+    let vecs = embedder.embed(&[&embed_text]).await?;
+    sp.finish_and_clear();
+
+    if let Some(vec) = vecs.first() {
+        store.insert_embedding(note_id, &vec_to_blob(vec))?;
+    }
+
+    println!("Stored [{kind}] #{id}: {title}",
+        kind = args.kind, id = note_id, title = args.title);
+    Ok(())
+}
+
+async fn memory_search(
+    args: super::MemorySearchArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
+    let store = MemoryStore::open(mem_path)?;
+
+    let query_text = format!("task: question answering | query: {}", args.query);
+    let sp = spinner("Embedding query…");
+    let embedder = crate::backends::ActiveEmbedder::load(cfg)
+        .await
+        .context("loading embedding model")?;
+    let vecs = embedder.embed(&[&query_text]).await?;
+    sp.finish_and_clear();
+
+    let blob = vec_to_blob(vecs.first().context("no embedding returned")?);
+    let notes = store.search(&blob, args.limit)?;
+
+    if notes.is_empty() {
+        println!("No memory entries found.");
+        return Ok(());
+    }
+
+    match args.format.as_str() {
+        "json" => println!("{}", serde_json::to_string_pretty(&notes)?),
+        _ => {
+            for n in &notes {
+                print_note_summary(n);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path) -> Result<()> {
+    let store = MemoryStore::open(mem_path)?;
+    let notes = store.list(args.kind.as_deref(), args.limit)?;
+
+    if notes.is_empty() {
+        println!("No memory entries found.");
+        return Ok(());
+    }
+
+    match args.format.as_str() {
+        "json" => println!("{}", serde_json::to_string_pretty(&notes)?),
+        _ => {
+            for n in &notes {
+                print_note_summary(n);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn memory_show(args: super::MemoryShowArgs, mem_path: &std::path::Path) -> Result<()> {
+    let store = MemoryStore::open(mem_path)?;
+    match store.get(args.id)? {
+        None => anyhow::bail!("No memory entry with id {}.", args.id),
+        Some(n) => match args.format.as_str() {
+            "json" => println!("{}", serde_json::to_string_pretty(&n)?),
+            _ => {
+                println!("\x1b[1m#{} [{}] {}\x1b[0m", n.id, n.kind, n.title);
+                println!("\x1b[2m{}\x1b[0m", format_age(n.created_at));
+                if !n.tags.is_empty() {
+                    println!("tags: {}", n.tags.join(", "));
+                }
+                if !n.linked_files.is_empty() {
+                    println!("files: {}", n.linked_files.join(", "));
+                }
+                println!();
+                println!("{}", n.body);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_note_summary(n: &crate::storage::memory::Note) {
+    let dist = n.distance.map(|d| format!("  dist: {d:.4}")).unwrap_or_default();
+    println!(
+        "\x1b[1m#{id}\x1b[0m  \x1b[33m[{kind}]\x1b[0m  {title}\x1b[2m{dist}\x1b[0m",
+        id = n.id, kind = n.kind, title = n.title, dist = dist,
+    );
+    if !n.tags.is_empty() {
+        println!("     tags: {}", n.tags.join(", "));
+    }
+    if !n.linked_files.is_empty() {
+        println!("     files: {}", n.linked_files.join(", "));
+    }
+    // Show first 2 lines of body as preview
+    let preview: Vec<&str> = n.body.lines().take(2).collect();
+    for line in &preview {
+        println!("     \x1b[2m{line}\x1b[0m");
+    }
+    if n.body.lines().count() > 2 {
+        println!("     \x1b[2m…\x1b[0m");
+    }
+    println!();
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

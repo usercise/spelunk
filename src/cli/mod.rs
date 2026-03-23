@@ -37,6 +37,8 @@ pub enum Command {
     Unlink(UnlinkArgs),
     /// Remove registry entries for projects whose root path no longer exists
     Autoclean,
+    /// Project memory: store and query decisions, context, and requirements
+    Memory(MemoryArgs),
 }
 
 #[derive(Args, Debug)]
@@ -162,4 +164,88 @@ pub struct UnlinkArgs {
     /// Path to the SQLite database for the current project (overrides auto-detect)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryArgs {
+    #[command(subcommand)]
+    pub command: MemoryCommand,
+
+    /// Path to the memory database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MemoryCommand {
+    /// Store a decision, context, requirement, or note
+    Add(MemoryAddArgs),
+    /// Semantic search over stored memory
+    Search(MemorySearchArgs),
+    /// List memory entries (newest first)
+    List(MemoryListArgs),
+    /// Show the full content of a memory entry
+    Show(MemoryShowArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryAddArgs {
+    /// Short title summarising the entry
+    #[arg(short, long)]
+    pub title: String,
+
+    /// Full body text
+    #[arg(short, long)]
+    pub body: String,
+
+    /// Kind: decision, context, requirement, note
+    #[arg(short, long, default_value = "note")]
+    pub kind: String,
+
+    /// Comma-separated tags (e.g. auth,database)
+    #[arg(long)]
+    pub tags: Option<String>,
+
+    /// Comma-separated file paths this entry relates to
+    #[arg(long)]
+    pub files: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct MemorySearchArgs {
+    /// Natural language query
+    pub query: String,
+
+    /// Number of results to return
+    #[arg(short, long, default_value = "10")]
+    pub limit: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryListArgs {
+    /// Filter by kind: decision, context, requirement, note
+    #[arg(short, long)]
+    pub kind: Option<String>,
+
+    /// Number of entries to show
+    #[arg(short, long, default_value = "20")]
+    pub limit: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryShowArgs {
+    /// Entry ID (from list or search output)
+    pub id: i64,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
 }

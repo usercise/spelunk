@@ -47,5 +47,6 @@ async fn main() -> Result<()> {
         Command::Link(args)      => cli::commands::link(args, cfg),
         Command::Unlink(args)    => cli::commands::unlink(args, cfg),
         Command::Autoclean       => cli::commands::autoclean(cfg),
+        Command::Memory(args)    => cli::commands::memory(args, cfg).await,
     }
 }
