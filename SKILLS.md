@@ -155,6 +155,29 @@ ca memory list --format json
 
 ---
 
+## Agent obligations — keeping the index current
+
+Re-indexing is incremental: only files whose content has changed since the
+last run are re-parsed and re-embedded, so it is fast enough to run routinely.
+
+**Re-index after:**
+- Every `git commit` — even small changes move the index out of sync
+- Any refactor that renames, moves, or restructures files
+- Adding a significant new feature (new files, new symbols)
+- Updating dependencies that change generated or vendored code
+
+```bash
+ca index <project-root>
+```
+
+If you changed the embedding model or prompt format, add `--force` to
+regenerate all embeddings from scratch.
+
+Not re-indexing means searches and `ca ask` will miss new code and may
+surface deleted code. Make it the last step of any commit workflow.
+
+---
+
 ## Agent obligations — memory
 
 **These are not optional.** Building up project memory is part of the agent's
@@ -224,6 +247,7 @@ Store a memory entry whenever any of the following occurs:
 1. Search and read before changing
 2. After making a significant decision, store it: `ca memory add --kind decision …`
 3. If the human explains a constraint that shaped your approach, store it too
+4. After committing, re-index: `ca index <project-root>`
 
 **For structured answers (pipelines):**
 ```bash
