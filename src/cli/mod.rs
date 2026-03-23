@@ -64,6 +64,14 @@ pub struct SearchArgs {
     #[arg(long, default_value = "text")]
     pub format: String,
 
+    /// Enrich results with 1-hop call-graph neighbours (callers + callees)
+    #[arg(short, long)]
+    pub graph: bool,
+
+    /// Maximum number of graph-expanded results to add (when --graph is set)
+    #[arg(long, default_value = "10")]
+    pub graph_limit: usize,
+
     /// Path to the SQLite database (overrides config)
     #[arg(short, long)]
     pub db: Option<PathBuf>,

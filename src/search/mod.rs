@@ -14,5 +14,10 @@ pub struct SearchResult {
     pub end_line: usize,
     pub content: String,
     /// Cosine distance to the query vector (lower = more similar).
+    /// For graph-expanded results this is 0.0 (not meaningful).
     pub distance: f32,
+    /// True when this result was added via graph traversal rather than
+    /// vector similarity — only set when `--graph` is used with `search`.
+    #[serde(default)]
+    pub from_graph: bool,
 }

@@ -229,12 +229,38 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
 
     sp.set_message("Searching…");
     let db = Database::open(&db_path)?;
-    let results = db.search_similar(&query_blob, args.limit)?;
+    let mut results = db.search_similar(&query_blob, args.limit)?;
     sp.finish_and_clear();
 
     if results.is_empty() {
         println!("No results found. Make sure the index has embeddings (`ca index <path>`).");
         return Ok(());
+    }
+
+    // ── Graph-aware enrichment ────────────────────────────────────────────────
+    if args.graph {
+        let seen_ids: std::collections::HashSet<i64> =
+            results.iter().map(|r| r.chunk_id).collect();
+        let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
+
+        if !names.is_empty() {
+            if let Ok(neighbor_ids) = db.graph_neighbor_chunks(&names) {
+                let new_ids: Vec<i64> = neighbor_ids
+                    .into_iter()
+                    .filter(|id| !seen_ids.contains(id))
+                    .take(args.graph_limit)
+                    .collect();
+
+                if !new_ids.is_empty() {
+                    if let Ok(mut extra) = db.chunks_by_ids(&new_ids) {
+                        for r in &mut extra {
+                            r.from_graph = true;
+                        }
+                        results.extend(extra);
+                    }
+                }
+            }
+        }
     }
 
     match args.format.as_str() {
@@ -494,21 +520,40 @@ fn short_path(path: &str) -> String {
 }
 
 fn print_results_text(results: &[crate::search::SearchResult]) {
-    for (i, r) in results.iter().enumerate() {
+    let knn_count = results.iter().filter(|r| !r.from_graph).count();
+    let has_graph = results.iter().any(|r| r.from_graph);
+    let mut printed_graph_header = false;
+    let mut display_idx = 0usize;
+
+    for r in results {
+        if r.from_graph && !printed_graph_header {
+            println!("\x1b[2m── Graph neighbours ─────────────────────────────────────────\x1b[0m");
+            println!();
+            display_idx = 0;
+            printed_graph_header = true;
+            let _ = (knn_count, has_graph); // suppress unused warnings
+        }
+
+        display_idx += 1;
         let name = r.name.as_deref().unwrap_or("<anonymous>");
-        // Header line
+        let suffix = if r.from_graph {
+            "\x1b[2m [via graph]\x1b[0m".to_string()
+        } else {
+            format!("  dist: {:.4}", r.distance)
+        };
+
         println!(
-            "{:2}. \x1b[1m{}\x1b[0m  \x1b[2m{}:{}-{}\x1b[0m  \x1b[33m[{}: {}]\x1b[0m  dist: {:.4}",
-            i + 1,
+            "{:2}. \x1b[1m{}\x1b[0m  \x1b[2m{}:{}-{}\x1b[0m  \x1b[33m[{}: {}]\x1b[0m{}",
+            display_idx,
             r.file_path,
             r.language,
             r.start_line,
             r.end_line,
             r.node_type,
             name,
-            r.distance,
+            suffix,
         );
-        // Content preview (first 6 lines, indented)
+
         let lines: Vec<&str> = r.content.lines().collect();
         let preview_lines = lines.len().min(6);
         for line in &lines[..preview_lines] {

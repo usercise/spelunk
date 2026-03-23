@@ -168,6 +168,7 @@ impl Database {
                 content:    row.get(6)?,
                 file_path:  row.get(7)?,
                 language:   row.get(8)?,
+                from_graph: false,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
@@ -265,6 +266,7 @@ impl Database {
                 content:    row.get(6)?,
                 file_path:  row.get(7)?,
                 language:   row.get(8)?,
+                from_graph: false,
             })
         })?;
 
@@ -376,6 +378,7 @@ impl Database {
                 content:    row.get(5)?,
                 file_path:  row.get(6)?,
                 language:   row.get(7)?,
+                from_graph: false,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
