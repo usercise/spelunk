@@ -22,7 +22,8 @@ path = "src/main.rs"
 # only the traits in src/embeddings/mod.rs and src/llm/mod.rs.
 # ---------------------------------------------------------------------------
 [features]
-default = ["backend-metal"]
+default = ["backend-lmstudio"]
+backend-lmstudio = ["dep:reqwest", "dep:futures-util"]
 backend-metal = [
     "dep:candle-core",
     "dep:candle-nn",
@@ -83,6 +84,10 @@ candle-core         = { version = "0.9", optional = true }
 candle-nn           = { version = "0.9", optional = true }
 candle-transformers = { version = "0.9", optional = true }
 
+# HTTP client for LM Studio backend
+reqwest      = { version = "0.12", features = ["json", "stream"], optional = true }
+futures-util = { version = "0.3", optional = true }
+
 # HuggingFace Hub — model download & caching
 hf-hub = { version = "0.5", features = ["tokio"] }
 
@@ -95,8 +100,8 @@ rand = "0.9"
 # Content hashing (change detection for incremental indexing)
 blake3 = "1"
 
-# Filesystem traversal
-walkdir = "2"
+# Filesystem traversal + .gitignore support
+ignore = "0.4"
 
 # Progress bars
 indicatif = "0.17"

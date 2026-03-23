@@ -5,6 +5,9 @@ pub mod candle;
 #[cfg(feature = "backend-metal")]
 pub(crate) mod gemma3_encoder;
 
+#[cfg(feature = "backend-lmstudio")]
+pub mod lmstudio;
+
 /// The embedding vector dimension.
 /// `google/embeddinggemma-300m` and `BAAI/bge-base-en-v1.5` both output 768 dims.
 #[allow(dead_code)]
@@ -23,4 +26,17 @@ pub trait EmbeddingBackend: Send + Sync {
     /// Dimensionality of the output vectors.
     #[allow(dead_code)]
     fn dimension(&self) -> usize;
+}
+
+/// Serialise a float vector to raw little-endian bytes for sqlite-vec storage.
+pub fn vec_to_blob(v: &[f32]) -> Vec<u8> {
+    v.iter().flat_map(|f| f.to_le_bytes()).collect()
+}
+
+/// Deserialise raw little-endian bytes back to a float vector.
+#[allow(dead_code)]
+pub fn blob_to_vec(b: &[u8]) -> Vec<f32> {
+    b.chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }

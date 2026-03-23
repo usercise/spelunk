@@ -17,6 +17,8 @@ pub enum ChunkKind {
     TypeAlias,
     /// A CSS rule set (selector + declarations block)
     Rule,
+    /// A Markdown heading + its body content
+    Section,
     /// Fallback: plain line range (unsupported language or oversized node)
     Verbatim,
 }
@@ -52,12 +54,15 @@ pub struct Chunk {
 
 impl Chunk {
     /// The text that gets passed to the embedding model.
-    /// Follows the EmbeddingGemma input format from the cookbook notebook.
+    /// Uses EmbeddingGemma's recommended document retrieval format:
+    /// `title: {title | "none"} | text: {content}`
     pub fn embedding_text(&self) -> String {
-        match &self.docstring {
-            Some(doc) => format!("Represent this code: {doc}\n{}", self.content),
-            None => format!("Represent this code: {}", self.content),
-        }
+        let title = self.name.as_deref().unwrap_or("none");
+        let body = match &self.docstring {
+            Some(doc) => format!("{doc}\n{}", self.content),
+            None => self.content.clone(),
+        };
+        format!("title: {title} | text: {body}")
     }
 }
 

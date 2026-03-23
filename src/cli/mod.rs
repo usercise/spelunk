@@ -23,14 +23,20 @@ pub enum Command {
     Search(SearchArgs),
     /// Ask a natural language question (full RAG pipeline)
     Ask(AskArgs),
-    /// Show index statistics
-    Status,
+    /// Show index statistics (for current project or all registered projects)
+    Status(StatusArgs),
     /// List supported languages
     Languages,
     /// Query the code graph (imports, calls, extends/implements)
     Graph(GraphArgs),
     /// Show the raw indexed chunks for a file (useful for debugging/agent use)
     Chunks(ChunksArgs),
+    /// Add a dependency: current project also searches another project's index
+    Link(LinkArgs),
+    /// Remove a previously added dependency
+    Unlink(UnlinkArgs),
+    /// Remove registry entries for projects whose root path no longer exists
+    Autoclean,
 }
 
 #[derive(Args, Debug)]
@@ -83,8 +89,12 @@ pub struct AskArgs {
     pub question: String,
 
     /// Number of chunks to retrieve as context
-    #[arg(long, default_value = "10")]
+    #[arg(long, default_value = "20")]
     pub context_chunks: usize,
+
+    /// Return structured JSON: { answer, relevant_files, confidence }
+    #[arg(long)]
+    pub json: bool,
 
     /// Path to the SQLite database (overrides config)
     #[arg(short, long)]
@@ -119,6 +129,37 @@ pub struct ChunksArgs {
     pub format: String,
 
     /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct StatusArgs {
+    /// Show stats for all registered projects, not just the current one
+    #[arg(short, long)]
+    pub all: bool,
+
+    /// Brief list format (one line per project) — implies --all
+    #[arg(short, long)]
+    pub list: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct LinkArgs {
+    /// Path to the project to add as a dependency
+    pub path: PathBuf,
+
+    /// Path to the SQLite database for the current project (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct UnlinkArgs {
+    /// Path to the project to remove as a dependency
+    pub path: PathBuf,
+
+    /// Path to the SQLite database for the current project (overrides auto-detect)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
 }

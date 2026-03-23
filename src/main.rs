@@ -8,6 +8,7 @@ mod embeddings;
 mod error;
 mod indexer;
 mod llm;
+mod registry;
 mod search;
 mod storage;
 
@@ -35,12 +36,15 @@ async fn main() -> Result<()> {
     let cfg = config::Config::load(cli.config.as_deref())?;
 
     match cli.command {
-        Command::Index(args)  => cli::commands::index(args, cfg).await,
-        Command::Search(args) => cli::commands::search(args, cfg).await,
-        Command::Ask(args)    => cli::commands::ask(args, cfg).await,
-        Command::Status       => cli::commands::status(cfg).await,
-        Command::Languages    => cli::commands::languages(),
-        Command::Graph(args)  => cli::commands::graph(args, cfg),
-        Command::Chunks(args) => cli::commands::chunks(args, cfg),
+        Command::Index(args)     => cli::commands::index(args, cfg).await,
+        Command::Search(args)    => cli::commands::search(args, cfg).await,
+        Command::Ask(args)       => cli::commands::ask(args, cfg).await,
+        Command::Status(args)    => cli::commands::status(args, cfg).await,
+        Command::Languages       => cli::commands::languages(),
+        Command::Graph(args)     => cli::commands::graph(args, cfg),
+        Command::Chunks(args)    => cli::commands::chunks(args, cfg),
+        Command::Link(args)      => cli::commands::link(args, cfg),
+        Command::Unlink(args)    => cli::commands::unlink(args, cfg),
+        Command::Autoclean       => cli::commands::autoclean(cfg),
     }
 }

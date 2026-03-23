@@ -3,8 +3,10 @@ use super::chunker::{sliding_window, Chunk, ChunkKind};
 
 /// All languages with tree-sitter grammar support.
 pub const SUPPORTED_LANGUAGES: &[&str] =
-    &["rust", "python", "javascript", "typescript", "go", "java", "c", "cpp",
-      "json", "html", "css", "hcl", "sql", "proto"];
+    &["rust", "python", "javascript", "jsx", "typescript", "tsx", "go", "java",
+      "c", "cpp", "json", "html", "css", "hcl", "sql", "proto",
+      // text formats (sliding-window / heading-based, no tree-sitter)
+      "markdown", "text"];
 
 /// Detect language from file extension.
 pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
@@ -12,7 +14,9 @@ pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
         "rs"                      => Some("rust"),
         "py"                      => Some("python"),
         "js" | "mjs" | "cjs"     => Some("javascript"),
+        "jsx"                     => Some("jsx"),
         "ts" | "mts"              => Some("typescript"),
+        "tsx"                     => Some("tsx"),
         "go"                      => Some("go"),
         "java"                    => Some("java"),
         "c" | "h"                 => Some("c"),
@@ -31,14 +35,48 @@ pub(crate) fn ts_language_pub(name: &str) -> Result<tree_sitter::Language> {
     ts_language(name)
 }
 
+/// Detect text-format languages (markdown, plain text) from file path.
+/// These are handled without tree-sitter.
+pub fn detect_text_language(path: &std::path::Path) -> Option<&'static str> {
+    // Check extension first
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        return match ext.to_lowercase().as_str() {
+            "md" | "mdx" | "markdown" => Some("markdown"),
+            "txt" | "rst" | "adoc" | "asciidoc" => Some("text"),
+            _ => None,
+        };
+    }
+    // Extensionless files: README, CHANGELOG, etc.
+    let name = path.file_name()?.to_str()?.to_uppercase();
+    match name.as_str() {
+        "README" | "CHANGELOG" | "CHANGES" | "CONTRIBUTING"
+        | "NOTICE" | "AUTHORS" | "HISTORY" => Some("text"),
+        _ => None,
+    }
+}
+
+/// Return true if the file appears to be binary (contains null bytes in the
+/// first 512 bytes). Used to skip compiled or binary assets.
+pub fn is_binary_file(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    if let Ok(mut f) = std::fs::File::open(path) {
+        let mut buf = [0u8; 512];
+        if let Ok(n) = f.read(&mut buf) {
+            return buf[..n].contains(&0u8);
+        }
+    }
+    false
+}
+
 fn ts_language(name: &str) -> Result<tree_sitter::Language> {
     // Grammar crates 0.23+ expose a `LANGUAGE: LanguageFn` constant via the
     // stable `tree-sitter-language` ABI crate; `.into()` converts to Language.
     Ok(match name {
         "rust"       => tree_sitter_rust::LANGUAGE.into(),
         "python"     => tree_sitter_python::LANGUAGE.into(),
-        "javascript" => tree_sitter_javascript::LANGUAGE.into(),
+        "javascript" | "jsx" => tree_sitter_javascript::LANGUAGE.into(),
         "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        "tsx"        => tree_sitter_typescript::LANGUAGE_TSX.into(),
         "go"         => tree_sitter_go::LANGUAGE.into(),
         "java"       => tree_sitter_java::LANGUAGE.into(),
         "c"          => tree_sitter_c::LANGUAGE.into(),
@@ -88,13 +126,13 @@ fn node_specs(language: &str) -> Vec<NodeSpec> {
             s("function_definition", Function, Some("name")),
             s("class_definition",    Class,    Some("name")),
         ],
-        "javascript" => vec![
+        "javascript" | "jsx" => vec![
             s("function_declaration",           Function, Some("name")),
             s("method_definition",              Method,   Some("name")),
             s("class_declaration",              Class,    Some("name")),
             s("generator_function_declaration", Function, Some("name")),
         ],
-        "typescript" => vec![
+        "typescript" | "tsx" => vec![
             s("function_declaration",           Function,  Some("name")),
             s("method_definition",              Method,    Some("name")),
             s("class_declaration",              Class,     Some("name")),
@@ -174,6 +212,14 @@ impl SourceParser {
     /// Parse `source` and return semantic chunks.
     /// Falls back to sliding-window if parsing fails or yields nothing.
     pub fn parse(source: &str, file_path: &str, language: &str) -> Result<Vec<Chunk>> {
+        // Text formats bypass tree-sitter entirely.
+        if language == "markdown" {
+            return Ok(parse_markdown(source, file_path));
+        }
+        if language == "text" {
+            return Ok(sliding_window(source, file_path, language, 120, 15));
+        }
+
         let ts_lang = ts_language(language)?;
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&ts_lang)?;
@@ -190,7 +236,8 @@ impl SourceParser {
 
         if chunks.is_empty() {
             tracing::debug!("{file_path}: no semantic nodes found, using sliding window");
-            return Ok(sliding_window(source, file_path, language, 60, 10));
+            // 120-line window fits comfortably in EmbeddingGemma's 2048-token budget.
+            return Ok(sliding_window(source, file_path, language, 120, 15));
         }
 
         Ok(chunks)
@@ -422,6 +469,78 @@ fn sql_object_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Markdown chunker (heading-based)
+// ---------------------------------------------------------------------------
+
+/// Split a Markdown document into per-section chunks.
+/// Each ATX heading (`#`, `##`, …) starts a new chunk that includes the
+/// heading line and all content until the next same-or-higher-level heading.
+/// If the file has no headings the whole document is split by sliding window.
+fn parse_markdown(source: &str, file_path: &str) -> Vec<Chunk> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut chunks: Vec<Chunk> = Vec::new();
+    // (start_line_idx, heading_text)
+    let mut section: Option<(usize, String)> = None;
+    let mut preamble: Vec<usize> = Vec::new(); // line indices before first heading
+
+    let flush = |start: usize, title: Option<String>, end: usize, lines: &[&str], chunks: &mut Vec<Chunk>| {
+        let content = lines[start..end].join("\n");
+        if content.trim().is_empty() { return; }
+        chunks.push(Chunk {
+            file_path: file_path.to_owned(),
+            language: "markdown".to_owned(),
+            kind: ChunkKind::Section,
+            name: title,
+            start_line: start + 1,
+            end_line: end,
+            content,
+            docstring: None,
+            parent_scope: None,
+        });
+    };
+
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(heading_text) = atx_heading(line) {
+            if let Some((start, title)) = section.take() {
+                flush(start, Some(title), i, &lines, &mut chunks);
+            } else if !preamble.is_empty() {
+                // Flush preamble (content before the first heading)
+                let start = *preamble.first().unwrap();
+                flush(start, None, i, &lines, &mut chunks);
+                preamble.clear();
+            }
+            section = Some((i, heading_text));
+        } else if section.is_none() {
+            preamble.push(i);
+        }
+    }
+
+    // Flush the last section / remaining preamble
+    if let Some((start, title)) = section {
+        flush(start, Some(title), lines.len(), &lines, &mut chunks);
+    } else if !preamble.is_empty() {
+        let start = *preamble.first().unwrap();
+        flush(start, None, lines.len(), &lines, &mut chunks);
+    }
+
+    if chunks.is_empty() {
+        return sliding_window(source, file_path, "markdown", 120, 15);
+    }
+    chunks
+}
+
+/// Extract the text of an ATX heading line (`# Foo` → `"Foo"`).
+/// Returns None for non-heading lines or fenced-code-block lines.
+fn atx_heading(line: &str) -> Option<String> {
+    let stripped = line.trim_start_matches('#');
+    let hashes = line.len() - stripped.len();
+    if hashes == 0 || hashes > 6 { return None; }
+    // Must be followed by a space (or end of line for empty heading)
+    if !stripped.is_empty() && !stripped.starts_with(' ') { return None; }
+    Some(stripped.trim().to_owned())
 }
 
 /// Return the text of the comment node that immediately precedes `node`

@@ -73,7 +73,9 @@ pub struct CandleLlm {
 }
 
 impl CandleLlm {
-    pub async fn load(model_id: &str, _cache_dir: &std::path::Path) -> Result<Self> {
+    pub async fn load(cfg: &crate::config::Config) -> Result<Self> {
+        let model_id = &cfg.llm_model;
+        let _cache_dir = &cfg.models_dir;
         // ── Device ──────────────────────────────────────────────────────────
         let device = {
             #[cfg(feature = "backend-metal")]
@@ -177,10 +179,13 @@ impl CandleLlm {
 impl LlmBackend for CandleLlm {
     async fn generate(
         &self,
-        prompt: &str,
+        messages: &[crate::llm::Message],
         max_tokens: usize,
         tx: mpsc::Sender<Token>,
+        _json_schema: Option<serde_json::Value>,
     ) -> Result<()> {
+        let prompt = build_gemma_prompt(messages);
+
         // ── All GPU work runs synchronously inside the Mutex guard ────────────
         // The guard is released before any `.await`, so the async runtime is
         // never blocked and `MutexGuard` never crosses an await boundary.
@@ -193,7 +198,7 @@ impl LlmBackend for CandleLlm {
                 &self.tokenizer,
                 &self.device,
                 &self.stop_tokens,
-                prompt,
+                &prompt,
                 max_tokens,
             )?
         }; // ← MutexGuard dropped here
@@ -206,6 +211,39 @@ impl LlmBackend for CandleLlm {
         }
         Ok(())
     }
+}
+
+/// Build a Gemma chat-format prompt from a list of messages.
+/// System content is prepended to the first user turn (Gemma has no system role).
+fn build_gemma_prompt(messages: &[crate::llm::Message]) -> String {
+    let mut system_content = String::new();
+    let mut turns = String::new();
+
+    for msg in messages {
+        match msg.role.as_str() {
+            "system" => {
+                system_content = msg.content.clone();
+            }
+            "user" => {
+                let content = if system_content.is_empty() {
+                    msg.content.clone()
+                } else {
+                    format!("{}\n\n{}", system_content, msg.content)
+                };
+                turns.push_str(&format!("<start_of_turn>user\n{content}<end_of_turn>\n"));
+                system_content.clear();
+            }
+            "assistant" | "model" => {
+                turns.push_str(&format!(
+                    "<start_of_turn>model\n{}<end_of_turn>\n",
+                    msg.content
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    format!("<bos>{turns}<start_of_turn>model\n")
 }
 
 // ---------------------------------------------------------------------------

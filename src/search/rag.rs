@@ -15,9 +15,9 @@ pub struct RagPipeline<E, L> {
 impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
     /// Semantic vector search. Returns the top-k closest chunks.
     pub async fn search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        use crate::embeddings::candle::vec_to_blob;
+        use crate::embeddings::vec_to_blob;
 
-        let query_text = format!("Represent this query for searching code: {query}");
+        let query_text = format!("task: code retrieval | query: {query}");
         let vecs = self.embedder.embed(&[&query_text]).await?;
         let blob = vec_to_blob(vecs.first().ok_or_else(|| anyhow::anyhow!("no embedding"))?);
         self.db.search_similar(&blob, self.top_k)
@@ -33,10 +33,18 @@ impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
             .collect::<Vec<_>>()
             .join("\n\n---\n\n");
 
-        let prompt = build_prompt(question, &context);
+        let messages = vec![
+            crate::llm::Message::system(
+                "You are a code analysis assistant. \
+                 Use the following code excerpts to answer the question.",
+            ),
+            crate::llm::Message::user(format!(
+                "Code context:\n```\n{context}\n```\n\nQuestion: {question}"
+            )),
+        ];
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-        let generate = self.llm.generate(&prompt, 512, tx);
+        let generate = self.llm.generate(&messages, 512, tx, None);
 
         let print_tokens = async move {
             while let Some(token) = rx.recv().await {
@@ -50,12 +58,3 @@ impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
     }
 }
 
-fn build_prompt(question: &str, context: &str) -> String {
-    format!(
-        "<start_of_turn>user\n\
-         You are a code analysis assistant. Use the following code excerpts to answer the question.\n\n\
-         Code context:\n```\n{context}\n```\n\n\
-         Question: {question}<end_of_turn>\n\
-         <start_of_turn>model\n"
-    )
-}

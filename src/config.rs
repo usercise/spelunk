@@ -37,17 +37,40 @@ pub struct Config {
     /// Path to the SQLite database file
     pub db_path: PathBuf,
 
-    /// Directory where model weights are cached
+    /// Directory where model weights are cached (used by backend-metal)
     pub models_dir: PathBuf,
 
-    /// HuggingFace model ID for embeddings
+    /// Model ID for embeddings.
+    /// LM Studio: the model's API key shown in the LM Studio UI
+    ///   (e.g. `text-embedding-embeddinggemma-300m-qat`).
+    /// Metal: HuggingFace repo ID (e.g. `google/embeddinggemma-300m`).
+    #[serde(default = "Config::default_embedding_model")]
     pub embedding_model: String,
 
-    /// HuggingFace model ID for the LLM (ask command)
+    /// Model ID for the LLM used by `ask`.
+    /// LM Studio: the model's API key (e.g. `google/gemma-3n-e4b`).
+    /// Metal: HuggingFace repo ID (e.g. `google/gemma-3-1b-it`).
+    #[serde(default = "Config::default_llm_model")]
     pub llm_model: String,
 
     /// Default embedding batch size
     pub batch_size: usize,
+
+    /// Base URL for the LM Studio server (backend-lmstudio only).
+    #[serde(default = "Config::default_lmstudio_base_url")]
+    pub lmstudio_base_url: String,
+}
+
+impl Config {
+    fn default_embedding_model() -> String {
+        "text-embedding-embeddinggemma-300m-qat".to_string()
+    }
+    fn default_llm_model() -> String {
+        "google/gemma-3n-e4b".to_string()
+    }
+    fn default_lmstudio_base_url() -> String {
+        "http://127.0.0.1:1234".to_string()
+    }
 }
 
 impl Default for Config {
@@ -59,17 +82,10 @@ impl Default for Config {
         Self {
             db_path: base.join("index.db"),
             models_dir: base.join("models"),
-            // EmbeddingGemma 300M — bidirectional Gemma 3 encoder, 768-dim output.
-            // Requires huggingface-cli login (gated model).
-            // Falls back to BAAI/bge-base-en-v1.5 (BERT) if you prefer an ungated model.
-            embedding_model: "google/embeddinggemma-300m".to_string(),
-            // Gemma 3 1B instruction-tuned. Requires candle-transformers >=0.9
-            // which added sliding-window and per-layer RoPE support for Gemma 3.
-            // Gemma 3n (e2b/e4b) has a non-transformer architecture not yet
-            // implemented in candle — use a standard Gemma 3 model for now.
-            // All Gemma models require: huggingface-cli login (accept licence first).
-            llm_model: "google/gemma-3-1b-it".to_string(),
+            embedding_model: Self::default_embedding_model(),
+            llm_model: Self::default_llm_model(),
             batch_size: 32,
+            lmstudio_base_url: Self::default_lmstudio_base_url(),
         }
     }
 }

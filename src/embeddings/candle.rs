@@ -44,7 +44,9 @@ pub struct CandleEmbedder {
 
 impl CandleEmbedder {
     /// Download (or use cached) model weights and load onto the Metal device.
-    pub async fn load(model_id: &str, _cache_dir: &Path) -> Result<Self> {
+    pub async fn load(cfg: &crate::config::Config) -> Result<Self> {
+        let model_id = &cfg.embedding_model;
+        let _cache_dir: &Path = &cfg.models_dir;
         // ── Device ──────────────────────────────────────────────────────────
         let device = {
             #[cfg(feature = "backend-metal")]
@@ -324,19 +326,5 @@ async fn get_weights(repo: &hf_hub::api::tokio::ApiRepo) -> Result<Vec<std::path
     Ok(paths)
 }
 
-// ---------------------------------------------------------------------------
-// Byte-level serialisation helpers used by storage layer
-// ---------------------------------------------------------------------------
-
-/// Serialise a float vector to raw little-endian bytes for sqlite-vec storage.
-pub fn vec_to_blob(v: &[f32]) -> Vec<u8> {
-    v.iter().flat_map(|f| f.to_le_bytes()).collect()
-}
-
-/// Deserialise raw little-endian bytes back to a float vector.
-#[allow(dead_code)]
-pub fn blob_to_vec(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4)
-        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
-        .collect()
-}
+// vec_to_blob / blob_to_vec live in crate::embeddings (mod.rs) so they are
+// available regardless of which backend feature is active.

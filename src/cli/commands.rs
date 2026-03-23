@@ -1,16 +1,18 @@
 use std::io::IsTerminal as _;
 
 use anyhow::{Context, Result};
+use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use walkdir::WalkDir;
 
 use crate::{
     config::{resolve_db, Config},
-    embeddings::{candle::vec_to_blob, EmbeddingBackend as _},
-    indexer::{graph::EdgeExtractor, parser::{detect_language, SourceParser}},
+    embeddings::{vec_to_blob, EmbeddingBackend as _},
+    indexer::{graph::EdgeExtractor, parser::{detect_language, detect_text_language, is_binary_file, SourceParser}},
+    registry::Registry,
+    search::SearchResult,
     storage::Database,
 };
-use super::{AskArgs, ChunksArgs, GraphArgs, IndexArgs, SearchArgs};
+use super::{AskArgs, ChunksArgs, GraphArgs, IndexArgs, LinkArgs, SearchArgs, StatusArgs, UnlinkArgs};
 
 fn is_tty() -> bool {
     std::io::stderr().is_terminal()
@@ -34,13 +36,20 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     });
     let db = Database::open(&db_path)?;
 
+    // Canonicalise the root so symlinks don't create duplicate entries.
+    let root_canonical = args.path.canonicalize().unwrap_or_else(|_| args.path.clone());
+
     // ── Collect source files ─────────────────────────────────────────────────
-    let files: Vec<_> = WalkDir::new(&args.path)
-        .into_iter()
-        .filter_entry(|e| !is_ignored_dir(e))
+    // WalkBuilder respects .gitignore, .ignore, and global gitignore rules.
+    let files: Vec<_> = WalkBuilder::new(&args.path)
+        .standard_filters(true)
+        .build()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| detect_language(e.path()).is_some())
+        .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+        .filter(|e| {
+            let p = e.path();
+            detect_language(p).is_some() || detect_text_language(p).is_some()
+        })
         .collect();
 
     if files.is_empty() {
@@ -67,7 +76,15 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         let path_str = path.to_string_lossy();
         parse_bar.set_message(short_path(&path_str));
 
-        let language = detect_language(path).unwrap();
+        let language = detect_language(path)
+            .or_else(|| detect_text_language(path))
+            .unwrap(); // safe: files were filtered to only include detectable files
+
+        // Skip binary files (e.g. compiled output with wrong extension)
+        if matches!(language, "text" | "markdown") && is_binary_file(path) {
+            parse_bar.inc(1);
+            continue;
+        }
         let source = std::fs::read_to_string(path)
             .with_context(|| format!("reading {}", path.display()))?;
         let hash = format!("{}", blake3::hash(source.as_bytes()));
@@ -159,13 +176,11 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     }
 
     // ── Phase 2: embed chunks ────────────────────────────────────────────────
-    eprintln!("Loading embedding model: {}", cfg.embedding_model);
+    eprintln!("Embedding via: {}", cfg.embedding_model);
 
-    let models_dir = cfg.models_dir.clone();
-    let model_id = cfg.embedding_model.clone();
-    let embedder = crate::backends::ActiveEmbedder::load(&model_id, &models_dir)
+    let embedder = crate::backends::ActiveEmbedder::load(&cfg)
         .await
-        .with_context(|| format!("loading embedding model '{model_id}'"))?;
+        .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
 
     let batch_size = args.batch_size.max(1);
     let total_chunks = chunk_ids_and_texts.len() as u64;
@@ -200,36 +215,33 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         stats.file_count, stats.chunk_count, stats.embedding_count
     );
 
+    // Register / update this project in the global registry.
+    if let Ok(reg) = Registry::open() {
+        let db_canonical = db_path.canonicalize().unwrap_or(db_path.clone());
+        if let Err(e) = reg.register(&root_canonical, &db_canonical) {
+            tracing::warn!("registry update failed: {e}");
+        }
+    }
+
     Ok(())
 }
 
 pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
-    let db_path = resolve_db(args.db.as_ref(), &cfg.db_path);
-
-    if !db_path.exists() {
-        anyhow::bail!(
-            "No index found (checked current directory and parents).\n\
-             Run `ca index <path>` inside your project first."
-        );
-    }
+    let (db_path, dep_dbs) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
 
     let sp = spinner("Loading model…");
 
-    let embedder =
-        crate::backends::ActiveEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
-            .await
-            .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
+    let embedder = crate::backends::ActiveEmbedder::load(&cfg)
+        .await
+        .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
 
     sp.set_message("Embedding query…");
-    // Asymmetric search prefix: document side uses "Represent this code: …",
-    // query side uses a search-oriented prefix for better retrieval quality.
-    let query_text = format!("Represent this query for searching code: {}", args.query);
+    let query_text = format!("task: code retrieval | query: {}", args.query);
     let vecs = embedder.embed(&[&query_text]).await?;
     let query_blob = vec_to_blob(vecs.first().context("no embedding returned")?);
 
     sp.set_message("Searching…");
-    let db = Database::open(&db_path)?;
-    let mut results = db.search_similar(&query_blob, args.limit)?;
+    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.limit)?;
     sp.finish_and_clear();
 
     if results.is_empty() {
@@ -237,26 +249,28 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
         return Ok(());
     }
 
-    // ── Graph-aware enrichment ────────────────────────────────────────────────
+    // ── Graph-aware enrichment (primary DB only) ──────────────────────────────
     if args.graph {
-        let seen_ids: std::collections::HashSet<i64> =
-            results.iter().map(|r| r.chunk_id).collect();
-        let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
+        if let Ok(primary_db) = Database::open(&db_path) {
+            let seen_ids: std::collections::HashSet<i64> =
+                results.iter().map(|r| r.chunk_id).collect();
+            let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
 
-        if !names.is_empty() {
-            if let Ok(neighbor_ids) = db.graph_neighbor_chunks(&names) {
-                let new_ids: Vec<i64> = neighbor_ids
-                    .into_iter()
-                    .filter(|id| !seen_ids.contains(id))
-                    .take(args.graph_limit)
-                    .collect();
+            if !names.is_empty() {
+                if let Ok(neighbor_ids) = primary_db.graph_neighbor_chunks(&names) {
+                    let new_ids: Vec<i64> = neighbor_ids
+                        .into_iter()
+                        .filter(|id| !seen_ids.contains(id))
+                        .take(args.graph_limit)
+                        .collect();
 
-                if !new_ids.is_empty() {
-                    if let Ok(mut extra) = db.chunks_by_ids(&new_ids) {
-                        for r in &mut extra {
-                            r.from_graph = true;
+                    if !new_ids.is_empty() {
+                        if let Ok(mut extra) = primary_db.chunks_by_ids(&new_ids) {
+                            for r in &mut extra {
+                                r.from_graph = true;
+                            }
+                            results.extend(extra);
                         }
-                        results.extend(extra);
                     }
                 }
             }
@@ -275,29 +289,21 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     use crate::llm::LlmBackend;
     use std::io::Write;
 
-    let db_path = resolve_db(args.db.as_ref(), &cfg.db_path);
-    if !db_path.exists() {
-        anyhow::bail!(
-            "No index found (checked current directory and parents).\n\
-             Run `ca index <path>` inside your project first."
-        );
-    }
+    let (db_path, dep_dbs) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
 
     // ── Step 1: embed the question + search ──────────────────────────────────
     let sp = spinner("Loading embedding model…");
 
-    let embedder =
-        crate::backends::ActiveEmbedder::load(&cfg.embedding_model, &cfg.models_dir)
-            .await
-            .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
+    let embedder = crate::backends::ActiveEmbedder::load(&cfg)
+        .await
+        .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
 
     sp.set_message("Searching for relevant context…");
-    let query_text = format!("Represent this query for searching code: {}", args.question);
+    let query_text = format!("task: question answering | query: {}", args.question);
     let vecs = embedder.embed(&[&query_text]).await?;
     let query_blob = vec_to_blob(vecs.first().context("no embedding")?);
 
-    let db = Database::open(&db_path)?;
-    let mut results = db.search_similar(&query_blob, args.context_chunks)?;
+    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.context_chunks)?;
     sp.finish_and_clear();
     drop(embedder); // free GPU memory before loading the LLM
 
@@ -306,24 +312,23 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         return Ok(());
     }
 
-    // ── Step 1b: graph neighbour enrichment ───────────────────────────────────
-    // Fetch 1-hop call neighbours for each named result and append new chunks.
-    // Capped at 5 extra chunks to keep the LLM prompt within Metal's attention
-    // buffer limits (Gemma 3 1B has 4 heads; global attention needs ~32×L² bytes,
-    // which exceeds Metal's ~4 GB single-buffer limit around L = 11 500 tokens).
+    // ── Step 1b: graph neighbour enrichment (primary DB only) ────────────────
     const MAX_GRAPH_EXTRA: usize = 5;
-    let seen_ids: std::collections::HashSet<i64> = results.iter().map(|r| r.chunk_id).collect();
-    let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
-    if !names.is_empty() {
-        if let Ok(neighbor_ids) = db.graph_neighbor_chunks(&names) {
-            let new_ids: Vec<i64> = neighbor_ids
-                .into_iter()
-                .filter(|id| !seen_ids.contains(id))
-                .take(MAX_GRAPH_EXTRA)
-                .collect();
-            if !new_ids.is_empty() {
-                if let Ok(extra) = db.chunks_by_ids(&new_ids) {
-                    results.extend(extra);
+    if let Ok(primary_db) = Database::open(&db_path) {
+        let seen_ids: std::collections::HashSet<i64> =
+            results.iter().map(|r| r.chunk_id).collect();
+        let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
+        if !names.is_empty() {
+            if let Ok(neighbor_ids) = primary_db.graph_neighbor_chunks(&names) {
+                let new_ids: Vec<i64> = neighbor_ids
+                    .into_iter()
+                    .filter(|id| !seen_ids.contains(id))
+                    .take(MAX_GRAPH_EXTRA)
+                    .collect();
+                if !new_ids.is_empty() {
+                    if let Ok(extra) = primary_db.chunks_by_ids(&new_ids) {
+                        results.extend(extra);
+                    }
                 }
             }
         }
@@ -348,73 +353,182 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    // ── Step 3: build prompt ─────────────────────────────────────────────────
-    let prompt = format!(
-        "<bos><start_of_turn>user\n\
-         You are an expert code analyst. \
-         Answer the user's question concisely using the code context below.\n\n\
-         {context}\n\n\
-         Question: {question}<end_of_turn>\n\
-         <start_of_turn>model\n",
-        context = context,
-        question = args.question,
-    );
+    // ── Step 3: build chat messages ──────────────────────────────────────────
+    let (system_prompt, json_schema) = if args.json {
+        (
+            "You are an expert code analyst. \
+             Answer the user's question using the code context provided. \
+             Respond ONLY with a JSON object. Do not include any other text.",
+            Some(ask_json_schema()),
+        )
+    } else {
+        (
+            "You are an expert code analyst. \
+             Answer the user's question concisely using the code context provided.",
+            None,
+        )
+    };
+
+    let messages = vec![
+        crate::llm::Message::system(system_prompt),
+        crate::llm::Message::user(format!(
+            "{context}\n\nQuestion: {question}",
+            context = context,
+            question = args.question,
+        )),
+    ];
 
     // ── Step 4: load LLM + stream answer ─────────────────────────────────────
     let sp2 = spinner(format!("Loading LLM ({})…", cfg.llm_model));
 
-    let llm = crate::backends::ActiveLlm::load(&cfg.llm_model, &cfg.models_dir)
+    let llm = crate::backends::ActiveLlm::load(&cfg)
         .await
-        .with_context(|| format!("loading LLM '{}'. \
-            If gated, run: huggingface-cli login", cfg.llm_model))?;
+        .with_context(|| format!("loading LLM '{}'", cfg.llm_model))?;
 
     sp2.finish_and_clear();
     println!();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(128);
+    let generate = llm.generate(&messages, 1024, tx, json_schema);
 
-    // Stream tokens in a background task
-    let generate = llm.generate(&prompt, 512, tx);
-
-    let print_tokens = async move {
-        while let Some(token) = rx.recv().await {
-            print!("{token}");
-            std::io::stdout().flush().ok();
+    if args.json {
+        // Collect all tokens then parse + pretty-print the JSON object.
+        let collect = async move {
+            let mut buf = String::new();
+            while let Some(t) = rx.recv().await { buf.push_str(&t); }
+            buf
+        };
+        let (_, raw) = tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+        match serde_json::from_str::<serde_json::Value>(&raw) {
+            Ok(v)  => println!("{}", serde_json::to_string_pretty(&v)?),
+            Err(_) => print!("{raw}"),  // model didn't produce valid JSON — print as-is
         }
-        println!("\n");
-    };
-
-    tokio::try_join!(generate, async { Ok(print_tokens.await) })?;
+    } else {
+        let print_tokens = async move {
+            while let Some(token) = rx.recv().await {
+                print!("{token}");
+                std::io::stdout().flush().ok();
+            }
+            println!("\n");
+        };
+        tokio::try_join!(generate, async { Ok(print_tokens.await) })?;
+    }
 
     Ok(())
 }
 
-pub async fn status(cfg: Config) -> Result<()> {
-    let db_path = resolve_db(None, &cfg.db_path);
-    if !db_path.exists() {
-        println!("No index found (checked current directory and parents).");
-        println!("Run `ca index <path>` inside your project first.");
+pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
+    // --list implies --all
+    let show_all = args.all || args.list;
+
+    if show_all {
+        let reg = Registry::open().context("opening registry")?;
+        let projects = reg.all_projects()?;
+
+        if projects.is_empty() {
+            println!("No projects registered. Run `ca index <path>` to get started.");
+            return Ok(());
+        }
+
+        if args.list {
+            // Brief table: one line per project
+            println!("{:<6}  {:<8}  {:<10}  {}", "Files", "Chunks", "Embeddings", "Root");
+            println!("{}", "─".repeat(70));
+            for p in &projects {
+                let stats = Database::open(&p.db_path)
+                    .and_then(|db| db.stats())
+                    .ok();
+                let (files, chunks, embeddings) = stats
+                    .map(|s| (s.file_count, s.chunk_count, s.embedding_count))
+                    .unwrap_or((0, 0, 0));
+                let exists = if p.root_path.exists() { "" } else { " [missing]" };
+                println!(
+                    "{:<6}  {:<8}  {:<10}  {}{}",
+                    files, chunks, embeddings,
+                    p.root_path.display(), exists
+                );
+            }
+        } else {
+            // Detailed view per project
+            for p in &projects {
+                println!("\x1b[1m{}\x1b[0m", p.root_path.display());
+                if !p.root_path.exists() {
+                    println!("  \x1b[31m[root path missing from disk]\x1b[0m");
+                }
+                println!("  DB: {}", p.db_path.display());
+                match Database::open(&p.db_path).and_then(|db| db.stats()) {
+                    Ok(s) => {
+                        println!("  Files: {}  Chunks: {}  Embeddings: {}",
+                            s.file_count, s.chunk_count, s.embedding_count);
+                        if let Some(ts) = s.last_indexed {
+                            println!("  Last indexed: {}", format_age(ts));
+                        }
+                    }
+                    Err(_) => println!("  \x1b[2m(no index yet)\x1b[0m"),
+                }
+                let deps = reg.get_deps(p.id)?;
+                if !deps.is_empty() {
+                    println!("  Depends on:");
+                    for dep in &deps {
+                        println!("    → {}", dep.root_path.display());
+                    }
+                }
+                println!();
+            }
+        }
         return Ok(());
     }
+
+    // Current project only
+    let reg = Registry::open().ok();
+    let project = reg
+        .as_ref()
+        .and_then(|r| {
+            std::env::current_dir().ok()
+                .and_then(|cwd| r.find_project_for_path(&cwd).ok().flatten())
+        });
+
+    let db_path = match &project {
+        Some(p) => p.db_path.clone(),
+        None => resolve_db(None, &cfg.db_path),
+    };
+
+    if !db_path.exists() {
+        println!("No index found for the current directory (checked parents too).");
+        println!("Run `ca index <path>` to create one.");
+        return Ok(());
+    }
+
     let db = Database::open(&db_path)?;
     let s = db.stats()?;
+
+    if let Some(p) = &project {
+        println!("Project: \x1b[1m{}\x1b[0m", p.root_path.display());
+    }
     println!("Index:      {}", db_path.display());
     println!("Files:      {}", s.file_count);
     println!("Chunks:     {}", s.chunk_count);
     println!("Embeddings: {}", s.embedding_count);
     if let Some(ts) = s.last_indexed {
-        use std::time::{Duration, UNIX_EPOCH};
-        if let Ok(t) = UNIX_EPOCH.checked_add(Duration::from_secs(ts as u64)).ok_or(()) {
-            if let Ok(elapsed) = std::time::SystemTime::now().duration_since(t) {
-                let secs = elapsed.as_secs();
-                let age = if secs < 60 { format!("{secs}s ago") }
-                    else if secs < 3600 { format!("{}m ago", secs / 60) }
-                    else if secs < 86400 { format!("{}h ago", secs / 3600) }
-                    else { format!("{}d ago", secs / 86400) };
-                println!("Last index: {age}");
+        println!("Last index: {}", format_age(ts));
+    }
+
+    // Show dependencies
+    if let (Some(reg), Some(p)) = (&reg, &project) {
+        let deps = reg.get_deps(p.id)?;
+        if !deps.is_empty() {
+            println!("\nDependencies:");
+            for dep in &deps {
+                let dep_stats = Database::open(&dep.db_path)
+                    .and_then(|db| db.stats()).ok();
+                let summary = dep_stats
+                    .map(|s| format!("{} files, {} chunks", s.file_count, s.chunk_count))
+                    .unwrap_or_else(|| "not indexed".to_string());
+                println!("  → {}  ({})", dep.root_path.display(), summary);
             }
         }
     }
+
     Ok(())
 }
 
@@ -492,7 +606,190 @@ pub fn chunks(args: ChunksArgs, cfg: Config) -> Result<()> {
     Ok(())
 }
 
+pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
+    let cwd = std::env::current_dir().context("getting current directory")?;
+    let reg = Registry::open().context("opening registry")?;
+
+    // Resolve current project
+    let primary = reg.find_project_for_path(&cwd)?
+        .with_context(|| format!(
+            "No indexed project found for the current directory.\n\
+             Run `ca index .` first."
+        ))?;
+
+    // Resolve target
+    let target_path = if args.path.is_absolute() {
+        args.path.clone()
+    } else {
+        cwd.join(&args.path)
+    };
+    let target_canonical = target_path.canonicalize()
+        .unwrap_or_else(|_| target_path.clone());
+
+    if target_canonical == primary.root_path {
+        anyhow::bail!("A project cannot depend on itself.");
+    }
+
+    let dep = reg.find_project_for_path(&target_canonical)?
+        .with_context(|| format!(
+            "No index found for '{}'.\n\
+             Run `ca index {}` first.",
+            target_canonical.display(),
+            target_canonical.display()
+        ))?;
+
+    reg.add_dep(primary.id, dep.id)?;
+
+    println!(
+        "Linked: {} → {}",
+        primary.root_path.display(),
+        dep.root_path.display()
+    );
+    println!("Searches from '{}' will now include results from '{}'.",
+        primary.root_path.display(),
+        dep.root_path.display()
+    );
+    Ok(())
+}
+
+pub fn unlink(args: UnlinkArgs, _cfg: Config) -> Result<()> {
+    let cwd = std::env::current_dir().context("getting current directory")?;
+    let reg = Registry::open().context("opening registry")?;
+
+    let primary = reg.find_project_for_path(&cwd)?
+        .with_context(|| "No indexed project found for the current directory.")?;
+
+    let target_path = if args.path.is_absolute() {
+        args.path.clone()
+    } else {
+        cwd.join(&args.path)
+    };
+    let target_canonical = target_path.canonicalize()
+        .unwrap_or_else(|_| target_path.clone());
+
+    let dep = reg.find_by_root(&target_canonical)?
+        .with_context(|| format!(
+            "No registered project found at '{}'.",
+            target_canonical.display()
+        ))?;
+
+    reg.remove_dep(primary.id, dep.id)?;
+
+    println!(
+        "Unlinked: {} ↛ {}",
+        primary.root_path.display(),
+        dep.root_path.display()
+    );
+    Ok(())
+}
+
+pub fn autoclean(_cfg: Config) -> Result<()> {
+    let reg = Registry::open().context("opening registry")?;
+    let removed = reg.autoclean()?;
+    if removed.is_empty() {
+        println!("All {} registered project(s) have valid paths — nothing to clean.",
+            reg.all_projects()?.len());
+    } else {
+        println!("Removed {} stale project(s):", removed.len());
+        for path in &removed {
+            println!("  - {path}");
+        }
+    }
+    Ok(())
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+/// Resolve the primary DB path and any dep DB paths via the registry.
+/// Falls back to `resolve_db` if the registry can't find a project.
+fn resolve_project_and_deps(
+    explicit_db: Option<&std::path::PathBuf>,
+    cfg: &Config,
+) -> Result<(std::path::PathBuf, Vec<std::path::PathBuf>)> {
+    // Explicit --db skips registry entirely.
+    if let Some(p) = explicit_db {
+        if !p.exists() {
+            anyhow::bail!(
+                "Database not found at '{}'. Run `ca index <path>` first.",
+                p.display()
+            );
+        }
+        return Ok((p.clone(), vec![]));
+    }
+
+    // Try registry first.
+    if let Ok(reg) = Registry::open() {
+        if let Ok(cwd) = std::env::current_dir() {
+            if let Ok(Some(project)) = reg.find_project_for_path(&cwd) {
+                if project.db_path.exists() {
+                    let deps = reg.get_deps(project.id)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|d| d.db_path)
+                        .filter(|p| p.exists())
+                        .collect();
+                    return Ok((project.db_path, deps));
+                }
+            }
+        }
+    }
+
+    // Fallback: filesystem walk-up.
+    let db_path = resolve_db(None, &cfg.db_path);
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No index found (checked current directory and parents).\n\
+             Run `ca index <path>` inside your project first."
+        );
+    }
+    Ok((db_path, vec![]))
+}
+
+/// Search a primary DB and any dep DBs, merge results by distance, return top `limit`.
+fn search_all_dbs(
+    primary_db_path: &std::path::Path,
+    dep_db_paths: &[std::path::PathBuf],
+    query_blob: &[u8],
+    limit: usize,
+) -> Result<Vec<SearchResult>> {
+    let primary_db = Database::open(primary_db_path)?;
+    // Over-fetch from each DB so we have enough candidates after merging.
+    let fetch = (limit * 2).max(limit + 10);
+    let mut all = primary_db.search_similar(query_blob, fetch)?;
+
+    for dep_path in dep_db_paths {
+        match Database::open(dep_path) {
+            Ok(dep_db) => {
+                match dep_db.search_similar(query_blob, fetch) {
+                    Ok(mut dep_results) => all.append(&mut dep_results),
+                    Err(e) => tracing::warn!("search failed on dep {}: {e}", dep_path.display()),
+                }
+            }
+            Err(e) => tracing::warn!("could not open dep DB {}: {e}", dep_path.display()),
+        }
+    }
+
+    // Sort by distance (ascending), deduplicate by (file_path, start_line, end_line).
+    all.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+    let mut seen = std::collections::HashSet::new();
+    all.retain(|r| seen.insert((r.file_path.clone(), r.start_line, r.end_line)));
+    all.truncate(limit);
+    Ok(all)
+}
+
+fn format_age(unix_ts: i64) -> String {
+    use std::time::{Duration, UNIX_EPOCH};
+    if let Ok(t) = UNIX_EPOCH.checked_add(Duration::from_secs(unix_ts as u64)).ok_or(()) {
+        if let Ok(elapsed) = std::time::SystemTime::now().duration_since(t) {
+            let secs = elapsed.as_secs();
+            return if secs < 60 { format!("{secs}s ago") }
+                else if secs < 3600 { format!("{}m ago", secs / 60) }
+                else if secs < 86400 { format!("{}h ago", secs / 3600) }
+                else { format!("{}d ago", secs / 86400) };
+        }
+    }
+    "unknown".to_string()
+}
 
 fn progress_style(prefix: &str) -> ProgressStyle {
     ProgressStyle::with_template(&format!(
@@ -502,18 +799,6 @@ fn progress_style(prefix: &str) -> ProgressStyle {
     .progress_chars("=>-")
 }
 
-/// Returns true for directory entries that should be skipped entirely.
-fn is_ignored_dir(entry: &walkdir::DirEntry) -> bool {
-    if !entry.file_type().is_dir() {
-        return false;
-    }
-    matches!(
-        entry.file_name().to_string_lossy().as_ref(),
-        "target" | "node_modules" | ".git" | "__pycache__" | "venv" | ".venv"
-            | "dist" | "build" | ".gradle" | ".idea" | ".next" | "vendor"
-            | ".tox" | "out" | ".svn" | ".hg" | "coverage" | ".cache"
-    )
-}
 
 fn short_path(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
@@ -583,6 +868,34 @@ fn print_chunks_text(chunks: &[crate::search::SearchResult]) {
         }
         println!();
     }
+}
+
+fn ask_json_schema() -> serde_json::Value {
+    serde_json::json!({
+        "name": "code_answer",
+        "strict": true,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "description": "The answer to the question about the codebase"
+                },
+                "relevant_files": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "File paths most relevant to the answer"
+                },
+                "confidence": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                    "description": "Confidence level in the answer"
+                }
+            },
+            "required": ["answer", "relevant_files", "confidence"],
+            "additionalProperties": false
+        }
+    })
 }
 
 fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
