@@ -5,3 +5,5 @@
 .env
 .DS_Store
 /models
+.codeanalysis/
+.claude/settings.local.json

@@ -7,12 +7,12 @@ Developer guide for AI agents (and humans) working on this codebase.
 ## What This Project Is
 
 `codeanalysis` (`ca`) is a Rust CLI that indexes a source tree using
-tree-sitter AST chunking, embeds every chunk with EmbeddingGemma, stores
-vectors in SQLite, and answers natural language questions via a local RAG
-pipeline backed by Gemma 3n.
+tree-sitter AST chunking, embeds every chunk via the LM Studio API
+(EmbeddingGemma 300M), stores vectors in SQLite, and answers natural language
+questions via a RAG pipeline backed by any chat model loaded in LM Studio.
 
-Target platform: macOS / Apple Silicon (initially). The inference backend is
-modular so other platforms can be added without touching core logic.
+**Requirement**: LM Studio running at `http://127.0.0.1:1234` (configurable)
+with an embedding model and a chat model loaded.
 
 ---
 
@@ -21,77 +21,60 @@ modular so other platforms can be added without touching core logic.
 ```
 src/
   main.rs          — entry point: parse CLI, dispatch to commands
-  cli.rs           — clap structs (Cli, Command, *Args)
-  cli/commands.rs  — async handler for each subcommand
+  cli/
+    mod.rs         — clap structs (Cli, Command, *Args)
+    commands.rs    — async handler for each subcommand
   config.rs        — Config struct; load from ~/.config/codeanalysis/config.toml
-  error.rs         — domain error types (IndexError, EmbeddingError, SearchError)
-  backends.rs      — re-exports ActiveEmbedder / ActiveLlm based on feature flags
+  backends.rs      — re-exports ActiveEmbedder / ActiveLlm (LM Studio)
+  utils.rs         — strip_ansi(): sanitize LLM output before printing
 
   embeddings/
-    mod.rs         — EmbeddingBackend trait + EMBEDDING_DIM constant
-    candle.rs      — CandleEmbedder (EmbeddingGemma, Metal GPU) [backend-metal]
+    mod.rs         — EmbeddingBackend trait, vec_to_blob/blob_to_vec helpers
+    lmstudio.rs    — LmStudioEmbedder: calls /v1/embeddings
 
   llm/
-    mod.rs         — LlmBackend trait + Token type
-    candle.rs      — CandleLlm (Gemma 3n, Metal GPU) [backend-metal]
+    mod.rs         — LlmBackend trait, Message struct, Token type
+    lmstudio.rs    — LmStudioLlm: calls /v1/chat/completions (SSE streaming)
 
   indexer/
     mod.rs         — re-exports Chunk, ChunkKind, SourceParser
     chunker.rs     — Chunk / ChunkKind structs; sliding_window fallback
     parser.rs      — SourceParser (tree-sitter); detect_language; SUPPORTED_LANGUAGES
+    graph.rs       — EdgeExtractor: extract import/call/extends edges via tree-sitter
+    secrets.rs     — contains_secret(): regex-based scanner, drops chunks with credentials
 
   storage/
     mod.rs         — re-exports Database
-    db.rs          — Database struct; open/migrate; typed CRUD methods
+    db.rs          — Database struct; open/migrate; typed CRUD + KNN search
 
   search/
     mod.rs         — SearchResult struct
     rag.rs         — RagPipeline<E,L>: search + ask methods
 
+  registry.rs      — global project registry (~/.config/codeanalysis/registry.db)
+                     project auto-discovery, cross-project link/unlink
+
 migrations/
-  001_initial.sql  — files, chunks, embeddings (sqlite-vec virtual table)
+  001_initial.sql  — files, chunks tables
+  002_vectors.sql  — embeddings (sqlite-vec virtual table)
+  003_graph.sql    — graph_edges table
 ```
 
 ---
 
-## Inference Backend Design
+## Inference Backend
 
-**Rule: nothing outside `src/embeddings/`, `src/llm/`, and `src/backends.rs`
-should import a concrete backend type.**
-
-Every backend sits behind a trait:
-- `EmbeddingBackend` (`src/embeddings/mod.rs`)
-- `LlmBackend` (`src/llm/mod.rs`)
-
-Each implementation is in its own module gated by a feature flag:
-
-| Feature flag     | Module                   | Hardware      |
-|------------------|--------------------------|---------------|
-| `backend-metal`  | `embeddings/candle.rs`   | Apple GPU (Metal) |
-| `backend-metal`  | `llm/candle.rs`          | Apple GPU (Metal) |
-| _(future)_       | `embeddings/coreml.rs`   | Apple Neural Engine |
-| _(future)_       | `embeddings/cpu.rs`      | Any CPU       |
-
-`src/backends.rs` re-exports `ActiveEmbedder` and `ActiveLlm` for the enabled
-feature. Command handlers import from `backends`, never from concrete modules.
+The only backend is **LM Studio** (`backend-lmstudio`, the default feature).
+There are no other feature flags. Both `ActiveEmbedder` and `ActiveLlm` are
+unconditional re-exports in `src/backends.rs`.
 
 To add a new backend:
 1. Add a feature flag in `Cargo.toml`
-2. Implement both traits in new submodule files
-3. Add a `#[cfg(feature = "...")]` re-export in `backends.rs`
+2. Implement `EmbeddingBackend` and `LlmBackend` in new submodule files
+3. Gate the re-exports in `src/backends.rs` behind the feature flag
 
----
-
-## Development Phases
-
-| Phase | Status | Scope |
-|-------|--------|-------|
-| 1 | done | Scaffolding, CLI skeleton, SQLite schema, git |
-| 2 | next | Tree-sitter AST walk, per-language chunk extraction |
-| 3 | — | EmbeddingGemma via candle + Metal; `index` command end-to-end |
-| 4 | — | sqlite-vec KNN query; `search` command end-to-end |
-| 5 | — | Gemma 3n inference; `ask` command with streamed output |
-| 6 | — | Incremental indexing, config file polish, streaming UX |
+Nothing outside `src/embeddings/`, `src/llm/`, and `src/backends.rs` should
+import a concrete backend type.
 
 ---
 
@@ -99,73 +82,101 @@ To add a new backend:
 
 ### Chunking strategy
 Tree-sitter extracts **named semantic nodes** (functions, structs, impls, etc.)
-rather than naive line splits. This keeps each chunk semantically coherent
-and improves retrieval quality. Sliding-window chunking is the fallback for
-unsupported file types.
+rather than naive line splits. Sliding-window (120 lines, 15-line overlap) is
+the fallback for unsupported file types. Markdown uses ATX heading-based
+chunking (each `# Heading` + body = one `ChunkKind::Section`).
 
 ### Embedding input format
-Follows the EmbeddingGemma cookbook convention:
+EmbeddingGemma's recommended document retrieval format:
 ```
-Represent this code: <optional docstring>\n<source>
+title: {name | "none"} | text: {content}
 ```
+Query-side prefixes are task-specific:
+- `ca search` → `task: code retrieval | query: {q}`
+- `ca ask`    → `task: question answering | query: {q}`
+
 See `Chunk::embedding_text()` in `src/indexer/chunker.rs`.
 
 ### SQLite + sqlite-vec
-No separate vector DB process. The sqlite-vec extension adds a virtual table
-(`embeddings USING vec0`) that supports KNN queries directly in SQL.
-The extension must be loaded before the migrations run (see `db.rs`).
+No separate vector DB. The sqlite-vec extension adds a `vec0` virtual table
+for KNN queries. The extension is registered via `sqlite3_auto_extension`
+before any connection is opened (see `main.rs`).
 
 ### Incremental indexing
-Each file is hashed with blake3. On re-index, files whose hash hasn't
-changed are skipped. Changed files: delete old chunks + embeddings, reparse.
+Each file is hashed with blake3. On re-index, unchanged files are skipped.
+Changed files: delete old chunks + embeddings, reparse, re-embed.
 
-### RAG prompt format
-Uses the Gemma chat template (`<start_of_turn>user ... <end_of_turn>`).
-Update `search/rag.rs::build_prompt` if the model changes.
+### Multi-project registry
+`~/.config/codeanalysis/registry.db` tracks all indexed projects and their
+dependency links. `ca search` and `ca ask` automatically query all linked
+project DBs and merge results by distance.
+
+### Secret scanning
+`src/indexer/secrets.rs` runs before each chunk is stored. Chunks matching
+known credential patterns (AWS keys, PEM headers, GitHub PATs, etc.) are
+silently dropped and a warning is logged — content is never echoed.
+
+### Prompt structure
+The ask prompt uses XML-style delimiters to separate untrusted RAG context
+from the user's question, mitigating prompt injection:
+```xml
+<code_context>
+{retrieved chunks}
+</code_context>
+
+<question>
+{user question}
+</question>
+```
+
+---
+
+## Supported Languages
+
+Rust, Go, Python, TypeScript, JavaScript, JSX, TSX, Java, C, C++, Ruby,
+Swift, Kotlin, JSON, HTML, CSS, HCL, Proto, SQL, Markdown, plain text.
 
 ---
 
 ## Common Commands
 
 ```bash
-# Build (Metal backend, default)
+# Build
 cargo build
-
-# Build without Metal (e.g. on CI)
-cargo build --no-default-features
-
-# Check all features compile
-cargo check --all-features
+cargo build --release
 
 # Run the CLI
 cargo run -- index ./some/project
 cargo run -- search "how does authentication work"
 cargo run -- ask "explain the error handling strategy"
+cargo run -- ask "what files handle auth" --json
 cargo run -- status
+cargo run -- status --all
+cargo run -- graph <symbol>
+cargo run -- chunks src/some/file.rs
 cargo run -- languages
 
 # Verbose logging
 RUST_LOG=debug cargo run -- index .
+
+# Tests
+cargo test
+
+# Security audit (requires cargo-audit)
+cargo audit
 ```
 
 ---
 
 ## Dependency Notes
 
-- Tree-sitter language crate versions must be compatible with `tree-sitter`
+- Tree-sitter language crate versions must be compatible with the `tree-sitter`
   core. If you bump the core, check all `tree-sitter-*` crates too.
-- `candle-core/metal` requires Xcode Command Line Tools and a Metal-capable
-  Apple device.
-- `sqlite-vec` is loaded at runtime via `rusqlite`'s extension loading API
-  (see `storage/db.rs`). The extension binary is bundled by the crate.
-- `tokenizers` uses the `onig` feature to avoid requiring a system regex
-  library on non-Linux targets.
-- **LLM model compatibility**: Gemma 3 requires `candle-transformers >=0.9`.
-  Version 0.8.x was missing the sliding-window attention and per-layer RoPE
-  bases, producing multilingual garbage despite healthy logits. We run 0.9.2.
-  Gemma 3n (`google/gemma-3n-e2b-it`, `e4b-it`) uses a non-transformer
-  architecture not yet implemented in candle — it is not supported.
-- **Tokenizer BOS handling**: Gemma's tokenizer post-processor adds a BOS token
-  when `add_special_tokens=true`. The normalizer does NOT add BOS. Use
-  `add_special_tokens=false` and manually prepend BOS (token ID 2) to guarantee
-  exactly one BOS regardless of tokenizer configuration.
+- `sqlite-vec` is loaded at runtime via `sqlite3_auto_extension` (see
+  `main.rs`). The extension binary is bundled by the crate — no system install
+  needed.
+- `regex` is used only by `src/indexer/secrets.rs`. Patterns are compiled once
+  via `OnceLock` at the start of `ca index`.
+- `ignore` respects `.gitignore`, `.ignore`, and global gitignore rules during
+  file traversal. Sensitive file patterns (`.env*`, `*.pem`, etc.) are
+  excluded unconditionally via `OverrideBuilder`.
