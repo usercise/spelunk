@@ -54,6 +54,10 @@ ca ask "<question>" --json                  # structured output
 
 `--json` returns: `{"answer": "...", "relevant_files": [...], "confidence": "high|medium|low"}`
 
+`ca ask` automatically includes both code context (HOW the system is built) and
+memory context (WHAT was decided and WHY) when both are available. No extra flags
+needed — if `memory.db` exists and has relevant entries, they are included.
+
 ### Chunks — inspect what was indexed
 
 ```bash

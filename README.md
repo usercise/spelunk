@@ -7,7 +7,7 @@
 - **Semantic Code Search**: Find relevant code by meaning, not just keywords.
 - **Natural Language Q&A**: Ask "How does authentication work?" or "Explain the error handling strategy" and get a cited answer.
 - **AST-based Chunking**: Uses `tree-sitter` to intelligently split code into semantic units (functions, classes, structs) rather than naive line-based splitting.
-- **Local-First & Private**: Designed to work with local LLMs (via LM Studio or local inference backends).
+- **Local-First & Private**: Designed to work with local LLMs.
 - **Graph-Aware**: Understands relationships between symbols (calls, definitions) to enrich search context.
 - **Multi-Language Support**: Supports Rust, Python, JavaScript/TypeScript, Go, Java, C/C++, SQL, HTML/CSS, and more.
 - **Incremental Indexing**: Uses BLAKE3 hashing to only re-index files that have changed.
@@ -59,7 +59,7 @@ lmstudio_base_url = "http://127.0.0.1:1234"
 
 # Model IDs (must match the "API Identifier" in LM Studio)
 embedding_model = "text-embedding-embeddinggemma-300m-qat"
-llm_model = "google/gemma-3-4b-it"
+llm_model = "google/gemma-3n-e4b"
 
 # Default batch size for embeddings
 batch_size = 32

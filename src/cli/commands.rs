@@ -364,8 +364,8 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         }
     }
 
-    // ── Step 2: assemble context ─────────────────────────────────────────────
-    let context = results
+    // ── Step 2: assemble code context ───────────────────────────────────────
+    let code_context = results
         .iter()
         .map(|r| {
             let name = r.name.as_deref().unwrap_or("<anonymous>");
@@ -383,7 +383,35 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    // ── Step 2b: prompt injection pre-flight ────────────────────────────────
+    // ── Step 2b: memory context (decisions / requirements / background) ──────
+    let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
+    let memory_context: Option<String> = if mem_path.exists() {
+        match crate::storage::MemoryStore::open(&mem_path)
+            .and_then(|s| s.search(&query_blob, 5))
+        {
+            Ok(notes) if !notes.is_empty() => {
+                let text = notes
+                    .iter()
+                    .map(|n| {
+                        let tags = if n.tags.is_empty() {
+                            String::new()
+                        } else {
+                            format!("  [{}]", n.tags.join(", "))
+                        };
+                        format!("### [{kind}] {title}{tags}\n{body}",
+                            kind = n.kind, title = n.title, tags = tags, body = n.body)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                Some(text)
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    // ── Step 2c: prompt injection pre-flight ─────────────────────────────────
     const INJECTION_PATTERNS: &[&str] = &[
         "ignore previous instructions",
         "ignore all previous",
@@ -402,28 +430,54 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     }
 
     // ── Step 3: build chat messages ──────────────────────────────────────────
+    const SYSTEM_BASE: &str = "\
+You are an expert software analyst helping a developer understand a codebase.\n\
+\n\
+You have two sources of context:\n\
+- Code context: excerpts from the source code showing HOW the system is built.\n\
+  Reference specific file paths and line numbers when they are relevant.\n\
+- Memory context: recorded decisions, requirements, and background explaining\n\
+  WHAT was built and WHY those choices were made.\n\
+  Reference these when they explain the reasoning behind the code.\n\
+\n\
+Use both sources together to give accurate, grounded answers. \
+If the answer cannot be determined from the provided context, say so clearly rather than guessing.";
+
     let (system_prompt, json_schema) = if args.json {
         (
-            "You are an expert code analyst. \
-             Answer the user's question using the code context provided. \
-             Respond ONLY with a JSON object. Do not include any other text.",
+            concat!(
+                "You are an expert software analyst helping a developer understand a codebase.\n",
+                "\n",
+                "You have two sources of context:\n",
+                "- Code context: source code excerpts showing HOW the system is built.\n",
+                "- Memory context: recorded decisions and requirements explaining WHAT and WHY.\n",
+                "\n",
+                "Respond ONLY with a valid JSON object matching the provided schema. No other text.",
+            ),
             Some(ask_json_schema()),
         )
     } else {
-        (
-            "You are an expert code analyst. \
-             Answer the user's question concisely using the code context provided.",
-            None,
+        (SYSTEM_BASE, None)
+    };
+
+    let user_message = if let Some(mem) = &memory_context {
+        format!(
+            "<code_context>\n{code}\n</code_context>\n\n\
+             <memory_context>\n{mem}\n</memory_context>\n\n\
+             <question>\n{q}\n</question>",
+            code = code_context, mem = mem, q = args.question,
+        )
+    } else {
+        format!(
+            "<code_context>\n{code}\n</code_context>\n\n\
+             <question>\n{q}\n</question>",
+            code = code_context, q = args.question,
         )
     };
 
     let messages = vec![
         crate::llm::Message::system(system_prompt),
-        crate::llm::Message::user(format!(
-            "<code_context>\n{context}\n</code_context>\n\n<question>\n{question}\n</question>",
-            context = context,
-            question = args.question,
-        )),
+        crate::llm::Message::user(user_message),
     ];
 
     // ── Step 4: load LLM + stream answer ─────────────────────────────────────
