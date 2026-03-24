@@ -63,8 +63,11 @@ cp target/release/spelunk ~/.local/bin/
 - Cross-project search: link multiple indexed repos
 
 **Project memory** — a structured alternative to CLAUDE.md files
+
+> Research shows that static context files like CLAUDE.md [reduce agent task success rates](https://arxiv.org/abs/2501.12599) — agents misread them, ignore irrelevant sections, or get confused by stale information. spelunk memory fixes this: instead of a single file agents must parse in full, context is retrieved semantically — each agent call gets only the entries most relevant to the current task.
+
 - Store decisions, context, requirements, questions, and handoff notes
-- Semantically searchable: retrieve by meaning, not keyword
+- Semantically searchable: retrieved by meaning at query time, not dumped wholesale
 - Pull in context from GitHub issues, Linear tickets, or any URL
 - Auto-harvest memory from git commit history
 - Git hooks: auto-index and harvest on every commit

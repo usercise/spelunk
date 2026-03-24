@@ -439,6 +439,65 @@ impl Database {
         ).ok().flatten();
         Ok(IndexStats { file_count, chunk_count, embedding_count, last_indexed })
     }
+
+    // -----------------------------------------------------------------------
+    // Drift detection
+    // -----------------------------------------------------------------------
+
+    /// Files that haven't changed while the rest of the project has.
+    ///
+    /// `min_days_behind`: how many days behind the newest indexed file a file
+    /// must be to qualify.  `caller_count` is the number of distinct files in
+    /// the graph that reference any symbol defined in this file — a high count
+    /// means a change here has wide blast radius.
+    pub fn drift_candidates(
+        &self,
+        min_days_behind: i64,
+        limit: usize,
+    ) -> Result<Vec<DriftCandidate>> {
+        let newest: i64 = self.conn
+            .query_row("SELECT MAX(indexed_at) FROM files", [], |r| r.get::<_, Option<i64>>(0))
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+
+        if newest == 0 {
+            return Ok(vec![]);
+        }
+
+        // Files lagging behind, with a caller-count: number of distinct source
+        // files that reference any named symbol defined in this file.
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                 f.path,
+                 (:newest - f.indexed_at) / 86400 AS days_behind,
+                 (SELECT COUNT(DISTINCT e.source_file)
+                  FROM graph_edges e
+                  JOIN chunks c ON c.file_id = f.id AND c.name = e.target_name
+                  WHERE e.source_file != f.path) AS caller_count
+             FROM files f
+             WHERE days_behind >= :min_days
+             ORDER BY days_behind DESC
+             LIMIT :lim",
+        )?;
+
+        let candidates = stmt
+            .query_map(
+                rusqlite::named_params! {
+                    ":newest":   newest,
+                    ":min_days": min_days_behind,
+                    ":lim":      limit as i64,
+                },
+                |row| Ok(DriftCandidate {
+                    path:         row.get(0)?,
+                    days_behind:  row.get(1)?,
+                    caller_count: row.get(2)?,
+                }),
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        Ok(candidates)
+    }
 }
 
 /// A graph edge as returned by query methods.
@@ -467,4 +526,13 @@ pub struct IndexStats {
     pub chunk_count: i64,
     pub embedding_count: i64,
     pub last_indexed: Option<i64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct DriftCandidate {
+    pub path: String,
+    /// Days behind the most recently indexed file in the project.
+    pub days_behind: i64,
+    /// Number of distinct files that call/import symbols from this file.
+    pub caller_count: i64,
 }

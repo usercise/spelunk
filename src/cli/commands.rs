@@ -529,7 +529,9 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
     // JSON mode: current project stats only
     if fmt == "json" {
         let (db_path, _) = resolve_project_and_deps(None, &cfg)?;
-        let stats = Database::open(&db_path).and_then(|db| db.stats())?;
+        let db = Database::open(&db_path)?;
+        let stats = db.stats()?;
+        let drift = db.drift_candidates(30, 10).unwrap_or_default();
         let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
         let memory_count = crate::storage::MemoryStore::open(&mem_path)
             .and_then(|s| s.count())
@@ -540,6 +542,7 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
             "embedding_count": stats.embedding_count,
             "last_indexed_unix": stats.last_indexed,
             "memory_entry_count": memory_count,
+            "drift_candidates": drift,
         }))?);
         return Ok(());
     }
@@ -653,6 +656,23 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
                 println!("  → {}  ({})", dep.root_path.display(), summary);
             }
         }
+    }
+
+    // Drift signals: files that haven't changed while the project has evolved
+    let drift = db.drift_candidates(30, 5).unwrap_or_default();
+    if !drift.is_empty() {
+        println!("\n\x1b[33mDrift signals\x1b[0m  (unchanged while project evolved):");
+        println!("  {:<6}  {:<8}  {}", "Days", "Callers", "File");
+        println!("  {}", "─".repeat(60));
+        for d in &drift {
+            let callers = if d.caller_count > 0 {
+                format!("{}", d.caller_count)
+            } else {
+                "—".to_string()
+            };
+            println!("  {:<6}  {:<8}  {}", d.days_behind, callers, d.path);
+        }
+        println!("  \x1b[2mRun `spelunk search \"<topic>\"` to check if these are still relevant.\x1b[0m");
     }
 
     Ok(())
