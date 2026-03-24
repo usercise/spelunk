@@ -29,7 +29,7 @@ pub enum EmbeddingError {
 #[derive(Error, Debug)]
 #[allow(dead_code)]
 pub enum SearchError {
-    #[error("index is empty — run `ca index <path>` first")]
+    #[error("index is empty — run `spelunk index <path>` first")]
     EmptyIndex,
 
     #[error("database error: {0}")]

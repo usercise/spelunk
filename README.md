@@ -1,112 +1,86 @@
-# codeanalysis (ca)
+# spelunk — local code intelligence
 
-`codeanalysis` (`ca`) is a local-first code understanding and search tool. It uses Retrieval-Augmented Generation (RAG) to index your source code, enabling semantic search and natural language questions about your codebase—all without sending your code to a third-party cloud.
+`spelunk` is a local-first CLI that makes your codebase searchable and queryable in natural language, without sending code to the cloud.
 
-## Features
+It indexes your source tree with [tree-sitter](https://tree-sitter.github.io/) AST chunking, stores vector embeddings in SQLite, and answers questions via a RAG pipeline — all through a locally-running LLM in [LM Studio](https://lmstudio.ai/).
 
-- **Semantic Code Search**: Find relevant code by meaning, not just keywords.
-- **Natural Language Q&A**: Ask "How does authentication work?" or "Explain the error handling strategy" and get a cited answer.
-- **AST-based Chunking**: Uses `tree-sitter` to intelligently split code into semantic units (functions, classes, structs) rather than naive line-based splitting.
-- **Local-First & Private**: Designed to work with local LLMs.
-- **Graph-Aware**: Understands relationships between symbols (calls, definitions) to enrich search context.
-- **Multi-Language Support**: Supports Rust, Python, JavaScript/TypeScript, Go, Java, C/C++, SQL, HTML/CSS, and more.
-- **Incremental Indexing**: Uses BLAKE3 hashing to only re-index files that have changed.
+## Quick start
 
-## Prerequisites
+```bash
+# 1. Start LM Studio with an embedding model + a chat model loaded
 
-- **Rust**: Install via [rustup.rs](https://rustup.rs/).
-- **Inference Backend**:
-  - **LM Studio (Recommended)**: Download and run [LM Studio](https://lmstudio.ai/). Load a chat model (e.g., `google/gemma-3-4b-it`) and an embedding model (e.g., `google/embeddinggemma-300m`).
-  - **Metal (macOS)**: Optional built-in support for Apple Silicon GPU inference (via `candle`).
+# 2. Index a project
+spelunk index /path/to/your/project
+
+# 3. Search
+spelunk search "database connection handling"
+
+# 4. Ask
+spelunk ask "how are errors propagated in the indexer?"
+```
 
 ## Installation
 
-Clone the repository and build the binary:
-
 ```bash
-git clone https://github.com/your-repo/codeanalysis.git
-cd codeanalysis
-cargo build --release
+cargo install --path .
 ```
 
-The binary will be available at `./target/release/ca`. You can move it to your `PATH`.
+Or build and copy manually:
 
-## Quick Start
+```bash
+cargo build --release
+cp target/release/spelunk ~/.local/bin/
+```
 
-1. **Start LM Studio**: Ensure the Local Server is running (default: `http://localhost:1234`).
-2. **Index a Project**:
-   ```bash
-   ca index /path/to/your/project
-   ```
-3. **Search Your Code**:
-   ```bash
-   ca search "where is the database connection handled?"
-   ```
-4. **Ask a Question**:
-   ```bash
-   ca ask "How are errors propagated in the indexer module?"
-   ```
+**Requires**: Rust, and [LM Studio](https://lmstudio.ai/) running at `http://127.0.0.1:1234` with an embedding model and a chat model loaded.
+
+## Documentation
+
+- **[Getting Started](docs/getting-started.md)** — installation, configuration, first steps
+- **[Commands](docs/commands.md)** — full reference for every subcommand
+- **[Memory](docs/memory.md)** — persisting decisions, context, and requirements with `spelunk memory`
+- **[Agent Guide](docs/agent-guide.md)** — using `spelunk` as infrastructure for AI coding agents
+- **[Examples](docs/examples/)** — real-world usage patterns
+
+## Features
+
+- Semantic search over code by meaning, not keywords
+- Natural language Q&A with source citations
+- AST-based chunking (tree-sitter) — functions, classes, structs, not naive line-splits
+- Incremental re-indexing via BLAKE3 hashing
+- Call-graph awareness: enrich search results with callers/callees
+- Cross-project search: link multiple indexed repos
+- Project memory: store decisions, context, requirements, questions
+- Auto-harvest memory from git commit history
+- Git hooks: auto-index and harvest on every commit
+- `spelunk plan create` — LLM-generated implementation plans saved as markdown checklists
+- `spelunk verify` — semantic coherence check after code changes
+- `AGENT=true` env var for machine-readable JSON output from any command
+
+## Supported languages
+
+Rust, Go, Python, TypeScript, JavaScript, JSX, TSX, Java, C, C++, Ruby, Swift, Kotlin, JSON, HTML, CSS, HCL, Proto, SQL, Markdown, plain text.
 
 ## Configuration
 
-`codeanalysis` looks for a configuration file at `~/.config/codeanalysis/config.toml`. You can customize the models and API endpoints:
+`~/.config/spelunk/config.toml`:
 
 ```toml
-# ~/.config/codeanalysis/config.toml
-
-# Base URL for LM Studio
 lmstudio_base_url = "http://127.0.0.1:1234"
-
-# Model IDs (must match the "API Identifier" in LM Studio)
-embedding_model = "text-embedding-embeddinggemma-300m-qat"
-llm_model = "google/gemma-3n-e4b"
-
-# Default batch size for embeddings
-batch_size = 32
+embedding_model   = "text-embedding-embeddinggemma-300m-qat"
+llm_model         = "google/gemma-3n-e4b"
+batch_size        = 32
 ```
 
-## Commands
-
-- `index <path>`: Parse and embed a source tree.
-- `search <query>`: Find the top-K most relevant code chunks.
-- `ask <question>`: Get a natural language answer based on indexed code.
-- `status`: Show indexing statistics for the current project.
-- `graph <symbol>`: Explore symbol relationships (calls/definitions).
-- `link/unlink <path>`: Manage cross-project dependencies (search multiple projects at once).
-- `languages`: List all supported languages.
-
-## Architecture
-
-1. **Parser**: `tree-sitter` generates an AST; we extract semantic "chunks" (functions, structs).
-2. **Embedder**: Chunks are converted into high-dimensional vectors.
-3. **Storage**: `SQLite` stores file metadata and code chunks; `sqlite-vec` provides high-performance vector search.
-4. **RAG Pipeline**:
-   - Query is embedded.
-   - Vector search finds the most relevant code chunks.
-   - Graph enrichment adds neighboring symbols (callers/callees).
-   - Context is formatted and sent to the LLM to generate the final answer.
+See [Getting Started](docs/getting-started.md) for full configuration options.
 
 ## Development
 
-### Building with Features
-
 ```bash
-# Build with default features (LM Studio backend)
-cargo build
-
-# Build with Metal GPU support (macOS only)
-cargo build --features backend-metal
-```
-
-### Testing
-
-```bash
+cargo build          # debug
+cargo build --release
 cargo test
 ```
-
-## Security
-
-For detailed security guidelines and our current action plan, see [docs/security-review-action-plan.md](docs/security-review-action-plan.md).
 
 ## License
 

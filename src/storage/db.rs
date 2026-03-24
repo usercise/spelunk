@@ -324,7 +324,7 @@ impl Database {
     }
 
     /// Return chunk IDs of symbols that are called-by or call the given chunk names.
-    /// Used by `ca ask` to enrich context with graph neighbours.
+    /// Used by `spelunk ask` to enrich context with graph neighbours.
     pub fn graph_neighbor_chunks(&self, names: &[&str]) -> Result<Vec<i64>> {
         if names.is_empty() {
             return Ok(vec![]);
@@ -413,6 +413,16 @@ impl Database {
         Ok(())
     }
 
+    /// Return all indexed file paths and their stored hashes.
+    /// Used by `spelunk check` to detect stale files without re-embedding.
+    pub fn all_file_hashes(&self) -> Result<std::collections::HashMap<String, String>> {
+        let mut stmt = self.conn.prepare_cached("SELECT path, hash FROM files")?;
+        let map = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<std::collections::HashMap<_, _>>>()?;
+        Ok(map)
+    }
+
     // -----------------------------------------------------------------------
     // Stats
     // -----------------------------------------------------------------------
@@ -451,7 +461,7 @@ fn row_to_edge(row: &rusqlite::Row<'_>) -> rusqlite::Result<GraphEdge> {
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct IndexStats {
     pub file_count: i64,
     pub chunk_count: i64,

@@ -1,6 +1,6 @@
-# ca — AI Agent Skill Reference
+# spelunk — AI Agent Skill Reference
 
-How to use `ca` as an AI agent to understand, search, and answer questions
+How to use `spelunk` as an AI agent to understand, search, and answer questions
 about a codebase — and to build up a persistent memory of why it was built
 the way it was.
 
@@ -8,10 +8,10 @@ the way it was.
 
 ## Prerequisites
 
-- `ca` installed and in PATH (`cargo install --path .` or copy the binary)
+- `spelunk` installed and in PATH (`cargo install --path .` or copy the binary)
 - LM Studio running with an embedding model and a chat model loaded
 - Default endpoint: `http://127.0.0.1:1234` (override with `lmstudio_base_url`
-  in `~/.config/codeanalysis/config.toml`)
+  in `~/.config/spelunk/config.toml`)
 
 ---
 
@@ -19,13 +19,13 @@ the way it was.
 
 ```bash
 # Index a project (run once; subsequent runs are incremental)
-ca index <path>
+spelunk index <path>
 
 # Force full re-index (after changing embedding model or config)
-ca index <path> --force
+spelunk index <path> --force
 ```
 
-The index is stored at `<path>/.codeanalysis/index.db` and auto-discovered
+The index is stored at `<path>/.spelunk/index.db` and auto-discovered
 when running any other command from inside the project directory.
 
 ---
@@ -35,10 +35,10 @@ when running any other command from inside the project directory.
 ### Search — find relevant code
 
 ```bash
-ca search "<query>"                     # top 10 results
-ca search "<query>" --limit 20          # more results (max 100)
-ca search "<query>" --format json       # machine-readable output
-ca search "<query>" --graph             # enrich with call-graph neighbours
+spelunk search "<query>"                     # top 10 results
+spelunk search "<query>" --limit 20          # more results (max 100)
+spelunk search "<query>" --format json       # machine-readable output
+spelunk search "<query>" --graph             # enrich with call-graph neighbours
 ```
 
 Returns ranked chunks with file path, line range, language, symbol name, and
@@ -47,22 +47,22 @@ a content preview. Use `--format json` for programmatic access.
 ### Ask — answer a question
 
 ```bash
-ca ask "<question>"
-ca ask "<question>" --context-chunks 30     # retrieve more context (max 100)
-ca ask "<question>" --json                  # structured output
+spelunk ask "<question>"
+spelunk ask "<question>" --context-chunks 30     # retrieve more context (max 100)
+spelunk ask "<question>" --json                  # structured output
 ```
 
 `--json` returns: `{"answer": "...", "relevant_files": [...], "confidence": "high|medium|low"}`
 
-`ca ask` automatically includes both code context (HOW the system is built) and
+`spelunk ask` automatically includes both code context (HOW the system is built) and
 memory context (WHAT was decided and WHY) when both are available. No extra flags
 needed — if `memory.db` exists and has relevant entries, they are included.
 
 ### Chunks — inspect what was indexed
 
 ```bash
-ca chunks <file-path>                   # exact or suffix match
-ca chunks <file-path> --format json
+spelunk chunks <file-path>                   # exact or suffix match
+spelunk chunks <file-path> --format json
 ```
 
 Use this when search results seem wrong — shows exactly what the indexer
@@ -71,17 +71,17 @@ extracted and what text each chunk embeds as.
 ### Graph — call/import relationships
 
 ```bash
-ca graph <symbol-or-file>
-ca graph <symbol> --kind calls          # filter: calls, imports, extends, implements
-ca graph <file.rs> --format json
+spelunk graph <symbol-or-file>
+spelunk graph <symbol> --kind calls          # filter: calls, imports, extends, implements
+spelunk graph <file.rs> --format json
 ```
 
 ### Status — index health
 
 ```bash
-ca status                   # current project
-ca status --all             # all registered projects
-ca status --list            # brief one-line-per-project table
+spelunk status                   # current project
+spelunk status --all             # all registered projects
+spelunk status --list            # brief one-line-per-project table
 ```
 
 ---
@@ -92,14 +92,14 @@ The memory store is a semantic database of decisions, context, and
 requirements that persists alongside the code index. It answers the question
 "why was this built this way?" rather than "what does this code do?".
 
-Memory lives at `<project>/.codeanalysis/memory.db`, separate from the code
+Memory lives at `<project>/.spelunk/memory.db`, separate from the code
 index, and is never overwritten by re-indexing.
 
 ### Storing a memory entry
 
 ```bash
 # Record an architectural decision
-ca memory add \
+spelunk memory add \
   --kind decision \
   --title "Use sqlite-vec for KNN instead of a separate vector DB" \
   --body "Evaluated Qdrant and Chroma. Chose sqlite-vec to keep the tool
@@ -109,21 +109,21 @@ scale (<1M chunks). Revisit if we need filtering + ANN at the same time." \
   --files "src/storage/db.rs,migrations/002_vectors.sql"
 
 # Record context or requirements from a human
-ca memory add \
+spelunk memory add \
   --kind context \
   --title "Target users are solo developers and small teams" \
   --body "Primary use case is a single developer understanding a codebase
 they didn't write. Multi-user / concurrent write is out of scope for v1."
 
 # Record a requirement
-ca memory add \
+spelunk memory add \
   --kind requirement \
   --title "Must work offline — no cloud API calls during search" \
   --body "All inference must be local. LM Studio is acceptable as a local
 server. No Anthropic/OpenAI API keys should be required."
 
 # General note
-ca memory add \
+spelunk memory add \
   --kind note \
   --title "Tree-sitter grammar version pinning" \
   --body "Grammar versions must match the tree-sitter core version. Bumping
@@ -140,21 +140,21 @@ core without checking grammars produces silent parse failures."
 
 ```bash
 # Semantic search — finds entries by meaning, not keywords
-ca memory search "why did we choose this database"
-ca memory search "authentication approach"
-ca memory search "what constraints did the user specify"
+spelunk memory search "why did we choose this database"
+spelunk memory search "authentication approach"
+spelunk memory search "what constraints did the user specify"
 
 # List recent entries
-ca memory list
-ca memory list --kind decision
-ca memory list --kind context --limit 5
+spelunk memory list
+spelunk memory list --kind decision
+spelunk memory list --kind context --limit 5
 
 # Show full content of an entry
-ca memory show 3
+spelunk memory show 3
 
 # Machine-readable output
-ca memory search "storage decisions" --format json
-ca memory list --format json
+spelunk memory search "storage decisions" --format json
+spelunk memory list --format json
 ```
 
 ---
@@ -171,13 +171,13 @@ last run are re-parsed and re-embedded, so it is fast enough to run routinely.
 - Updating dependencies that change generated or vendored code
 
 ```bash
-ca index <project-root>
+spelunk index <project-root>
 ```
 
 If you changed the embedding model or prompt format, add `--force` to
 regenerate all embeddings from scratch.
 
-Not re-indexing means searches and `ca ask` will miss new code and may
+Not re-indexing means searches and `spelunk ask` will miss new code and may
 surface deleted code. Make it the last step of any commit workflow.
 
 ---
@@ -191,8 +191,8 @@ responsibility on every session.
 Before beginning any significant work, check what has already been recorded:
 
 ```bash
-ca memory list --kind decision --limit 10
-ca memory search "<topic you are about to work on>"
+spelunk memory list --kind decision --limit 10
+spelunk memory search "<topic you are about to work on>"
 ```
 
 This prevents re-litigating decisions that have already been made and gives
@@ -203,19 +203,19 @@ context for why the code looks the way it does.
 Store a memory entry whenever any of the following occurs:
 
 1. **A human states a constraint or requirement** — even informally.
-   > "we don't want external API calls" → `ca memory add --kind requirement …`
+   > "we don't want external API calls" → `spelunk memory add --kind requirement …`
 
 2. **A significant design decision is made** — especially when alternatives
    were considered and rejected.
-   > Chose X over Y because Z → `ca memory add --kind decision …`
+   > Chose X over Y because Z → `spelunk memory add --kind decision …`
 
 3. **A surprising or non-obvious fact is discovered** — about the codebase,
    its dependencies, or its environment.
-   > "tree-sitter grammar versions must match core" → `ca memory add --kind note …`
+   > "tree-sitter grammar versions must match core" → `spelunk memory add --kind note …`
 
 4. **A human provides background context** about the project, its users, or
    its goals.
-   > "this is used by solo developers" → `ca memory add --kind context …`
+   > "this is used by solo developers" → `spelunk memory add --kind context …`
 
 **What NOT to store:**
 - Things already visible in the code or git history
@@ -228,7 +228,7 @@ Store a memory entry whenever any of the following occurs:
   for context ("Target users are…")
 - **Body**: include *why*, not just *what*. What alternatives were considered?
   What constraint drove the choice? What will break if someone ignores this?
-- **Tags**: use consistent tags so `ca memory list --kind decision` stays useful
+- **Tags**: use consistent tags so `spelunk memory list --kind decision` stays useful
 - **Files**: link to the files most affected so future searches surface this
   entry when those files are relevant
 
@@ -237,26 +237,26 @@ Store a memory entry whenever any of the following occurs:
 ## Recommended agent workflow
 
 **At the start of any session:**
-1. `ca memory list --kind decision` — review prior decisions
-2. `ca memory search "<topic>"` — find relevant context before starting
+1. `spelunk memory list --kind decision` — review prior decisions
+2. `spelunk memory search "<topic>"` — find relevant context before starting
 
 **For code understanding questions:**
-1. `ca search "<topic>"` — find the most relevant code chunks
+1. `spelunk search "<topic>"` — find the most relevant code chunks
 2. Read the files at the reported line ranges
-3. `ca graph <symbol>` to trace call chains or imports
-4. `ca memory search "<topic>"` — check if there's recorded context explaining *why*
-5. `ca ask "<question>"` for a synthesised answer when needed
+3. `spelunk graph <symbol>` to trace call chains or imports
+4. `spelunk memory search "<topic>"` — check if there's recorded context explaining *why*
+5. `spelunk ask "<question>"` for a synthesised answer when needed
 
 **For code changes:**
 1. Search and read before changing
-2. After making a significant decision, store it: `ca memory add --kind decision …`
+2. After making a significant decision, store it: `spelunk memory add --kind decision …`
 3. If the human explains a constraint that shaped your approach, store it too
-4. After committing, re-index: `ca index <project-root>`
+4. After committing, re-index: `spelunk index <project-root>`
 
 **For structured answers (pipelines):**
 ```bash
-ca ask "<question>" --json | jq '.answer'
-ca memory search "<topic>" --format json | jq '.[].body'
+spelunk ask "<question>" --json | jq '.answer'
+spelunk memory search "<topic>" --format json | jq '.[].body'
 ```
 
 ---
@@ -265,31 +265,31 @@ ca memory search "<topic>" --format json | jq '.[].body'
 
 ```bash
 # Make searches in project A also return results from project B
-ca link <path-to-B>
-ca unlink <path-to-B>
-ca autoclean        # remove registry entries for deleted projects
+spelunk link <path-to-B>
+spelunk unlink <path-to-B>
+spelunk autoclean        # remove registry entries for deleted projects
 ```
 
-Once linked, `ca search` and `ca ask` query both indexes and merge results
+Once linked, `spelunk search` and `spelunk ask` query both indexes and merge results
 by semantic distance. Memory is always per-project.
 
 ---
 
 ## Agent mode (`AGENT=true`)
 
-Set `AGENT=true` in the environment before running any `ca` command to enable
+Set `AGENT=true` in the environment before running any `spelunk` command to enable
 machine-readable output without extra flags:
 
 ```bash
-AGENT=true ca search "authentication flow"        # → JSON, no spinner
-AGENT=true ca ask "how does the indexer work"     # → JSON schema output, no spinner
-AGENT=true ca graph src/storage/db.rs             # → JSON
-AGENT=true ca memory search "storage decisions"   # → JSON
+AGENT=true spelunk search "authentication flow"        # → JSON, no spinner
+AGENT=true spelunk ask "how does the indexer work"     # → JSON schema output, no spinner
+AGENT=true spelunk graph src/storage/db.rs             # → JSON
+AGENT=true spelunk memory search "storage decisions"   # → JSON
 ```
 
 What changes when `AGENT=true` is set:
 - All `--format text` defaults become `--format json` automatically.
-- `ca ask` behaves as if `--json` was passed: returns
+- `spelunk ask` behaves as if `--json` was passed: returns
   `{"answer":"...","relevant_files":[...],"confidence":"..."}`.
 - Progress spinners and animated progress bars are suppressed, keeping stdout
   clean for downstream parsing.
@@ -300,12 +300,12 @@ You can still pass `--format text` explicitly to override even in agent mode.
 
 ## Tips
 
-- `ca index` must be pointed at the project root; all other commands can be
+- `spelunk index` must be pointed at the project root; all other commands can be
   run from any subdirectory — the DB is auto-discovered by walking up.
-- After changing the embedding model, run `ca index <path> --force` to
-  regenerate all embeddings. Also re-run `ca memory add` for important entries
+- After changing the embedding model, run `spelunk index <path> --force` to
+  regenerate all embeddings. Also re-run `spelunk memory add` for important entries
   so their embeddings reflect the new model.
-- `ca search` and `ca memory search` only need the embedding model.
-  `ca ask` requires both the embedding model and a chat model.
+- `spelunk search` and `spelunk memory search` only need the embedding model.
+  `spelunk ask` requires both the embedding model and a chat model.
 - Secret-containing chunks (AWS keys, PEM headers, tokens, etc.) are
   automatically skipped during indexing and will not appear in results.

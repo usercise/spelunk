@@ -2,7 +2,7 @@
 //!
 //! Extracts `imports`, `calls`, `extends`, and `implements` edges for every
 //! supported language.  The resulting [`Edge`] values are stored in the
-//! `graph_edges` SQLite table and queried by `ca graph`.
+//! `graph_edges` SQLite table and queried by `spelunk graph`.
 //!
 //! # Design
 //! A single recursive tree walk visits every node.  Per-language helper

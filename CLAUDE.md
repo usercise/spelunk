@@ -1,4 +1,4 @@
-# CLAUDE.md — codeanalysis
+# CLAUDE.md — spelunk
 
 Developer guide for AI agents (and humans) working on this codebase.
 
@@ -6,7 +6,7 @@ Developer guide for AI agents (and humans) working on this codebase.
 
 ## What This Project Is
 
-`codeanalysis` (`ca`) is a Rust CLI that indexes a source tree using
+`spelunk` (`spelunk`) is a Rust CLI that indexes a source tree using
 tree-sitter AST chunking, embeds every chunk via the LM Studio API
 (EmbeddingGemma 300M), stores vectors in SQLite, and answers natural language
 questions via a RAG pipeline backed by any chat model loaded in LM Studio.
@@ -24,7 +24,7 @@ src/
   cli/
     mod.rs         — clap structs (Cli, Command, *Args)
     commands.rs    — async handler for each subcommand
-  config.rs        — Config struct; load from ~/.config/codeanalysis/config.toml
+  config.rs        — Config struct; load from ~/.config/spelunk/config.toml
   backends.rs      — re-exports ActiveEmbedder / ActiveLlm (LM Studio)
   utils.rs         — strip_ansi(): sanitize LLM output before printing
 
@@ -51,7 +51,7 @@ src/
     mod.rs         — SearchResult struct
     rag.rs         — RagPipeline<E,L>: search + ask methods
 
-  registry.rs      — global project registry (~/.config/codeanalysis/registry.db)
+  registry.rs      — global project registry (~/.config/spelunk/registry.db)
                      project auto-discovery, cross-project link/unlink
 
 migrations/
@@ -92,8 +92,8 @@ EmbeddingGemma's recommended document retrieval format:
 title: {name | "none"} | text: {content}
 ```
 Query-side prefixes are task-specific:
-- `ca search` → `task: code retrieval | query: {q}`
-- `ca ask`    → `task: question answering | query: {q}`
+- `spelunk search` → `task: code retrieval | query: {q}`
+- `spelunk ask`    → `task: question answering | query: {q}`
 
 See `Chunk::embedding_text()` in `src/indexer/chunker.rs`.
 
@@ -107,8 +107,8 @@ Each file is hashed with blake3. On re-index, unchanged files are skipped.
 Changed files: delete old chunks + embeddings, reparse, re-embed.
 
 ### Multi-project registry
-`~/.config/codeanalysis/registry.db` tracks all indexed projects and their
-dependency links. `ca search` and `ca ask` automatically query all linked
+`~/.config/spelunk/registry.db` tracks all indexed projects and their
+dependency links. `spelunk search` and `spelunk ask` automatically query all linked
 project DBs and merge results by distance.
 
 ### Secret scanning
@@ -176,7 +176,7 @@ cargo audit
   `main.rs`). The extension binary is bundled by the crate — no system install
   needed.
 - `regex` is used only by `src/indexer/secrets.rs`. Patterns are compiled once
-  via `OnceLock` at the start of `ca index`.
+  via `OnceLock` at the start of `spelunk index`.
 - `ignore` respects `.gitignore`, `.ignore`, and global gitignore rules during
   file traversal. Sensitive file patterns (`.env*`, `*.pem`, etc.) are
   excluded unconditionally via `OverrideBuilder`.

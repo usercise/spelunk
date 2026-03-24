@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Walk up from `start` looking for `.codeanalysis/index.db`.
+/// Walk up from `start` looking for `.spelunk/index.db`.
 /// Returns the first match found, or `None` if the filesystem root is reached.
 pub fn find_project_db(start: &Path) -> Option<PathBuf> {
     let mut dir = start.to_path_buf();
     loop {
-        let candidate = dir.join(".codeanalysis").join("index.db");
+        let candidate = dir.join(".spelunk").join("index.db");
         if candidate.exists() {
             return Some(candidate);
         }
@@ -77,7 +77,7 @@ impl Default for Config {
     fn default() -> Self {
         let base = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("codeanalysis");
+            .join("spelunk");
 
         Self {
             db_path: base.join("index.db"),
@@ -92,13 +92,13 @@ impl Default for Config {
 
 impl Config {
     /// Load config from file, falling back to defaults.
-    /// If `path` is None, looks for `~/.config/codeanalysis/config.toml`.
+    /// If `path` is None, looks for `~/.config/spelunk/config.toml`.
     pub fn load(path: Option<&Path>) -> Result<Self> {
         let config_path = match path {
             Some(p) => p.to_path_buf(),
             None => dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("codeanalysis")
+                .join("spelunk")
                 .join("config.toml"),
         };
 

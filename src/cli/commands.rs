@@ -13,8 +13,9 @@ use crate::{
     storage::{Database, MemoryStore},
 };
 use super::{
-    AskArgs, ChunksArgs, GraphArgs, IndexArgs, LinkArgs, MemoryArgs, MemoryCommand,
-    SearchArgs, StatusArgs, UnlinkArgs,
+    AskArgs, CheckArgs, ChunksArgs, GraphArgs, HooksArgs, HooksCommand, IndexArgs,
+    LinkArgs, MemoryArgs, MemoryCommand, PlanArgs, PlanCommand, SearchArgs, StatusArgs,
+    UnlinkArgs, VerifyArgs,
 };
 
 fn is_tty() -> bool {
@@ -38,7 +39,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
     // Default DB lives inside the indexed directory, scoping the index to the project.
     let db_path = args.db.clone().unwrap_or_else(|| {
-        args.path.join(".codeanalysis").join("index.db")
+        args.path.join(".spelunk").join("index.db")
     });
     let db = Database::open(&db_path)?;
 
@@ -275,7 +276,7 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     sp.finish_and_clear();
 
     if results.is_empty() {
-        println!("No results found. Make sure the index has embeddings (`ca index <path>`).");
+        println!("No results found. Make sure the index has embeddings (`spelunk index <path>`).");
         return Ok(());
     }
 
@@ -523,6 +524,26 @@ If the answer cannot be determined from the provided context, say so clearly rat
 }
 
 pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
+    let fmt = crate::utils::effective_format(&args.format);
+
+    // JSON mode: current project stats only
+    if fmt == "json" {
+        let (db_path, _) = resolve_project_and_deps(None, &cfg)?;
+        let stats = Database::open(&db_path).and_then(|db| db.stats())?;
+        let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
+        let memory_count = crate::storage::MemoryStore::open(&mem_path)
+            .and_then(|s| s.count())
+            .unwrap_or(0);
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+            "file_count": stats.file_count,
+            "chunk_count": stats.chunk_count,
+            "embedding_count": stats.embedding_count,
+            "last_indexed_unix": stats.last_indexed,
+            "memory_entry_count": memory_count,
+        }))?);
+        return Ok(());
+    }
+
     // --list implies --all
     let show_all = args.all || args.list;
 
@@ -531,7 +552,7 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
         let projects = reg.all_projects()?;
 
         if projects.is_empty() {
-            println!("No projects registered. Run `ca index <path>` to get started.");
+            println!("No projects registered. Run `spelunk index <path>` to get started.");
             return Ok(());
         }
 
@@ -600,7 +621,7 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
 
     if !db_path.exists() {
         println!("No index found for the current directory (checked parents too).");
-        println!("Run `ca index <path>` to create one.");
+        println!("Run `spelunk index <path>` to create one.");
         return Ok(());
     }
 
@@ -642,7 +663,7 @@ pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
     if !db_path.exists() {
         anyhow::bail!(
             "No index found (checked current directory and parents).\n\
-             Run `ca index <path>` inside your project first."
+             Run `spelunk index <path>` inside your project first."
         );
     }
 
@@ -691,7 +712,7 @@ pub fn chunks(args: ChunksArgs, cfg: Config) -> Result<()> {
     if !db_path.exists() {
         anyhow::bail!(
             "No index found (checked current directory and parents).\n\
-             Run `ca index <path>` inside your project first."
+             Run `spelunk index <path>` inside your project first."
         );
     }
 
@@ -719,7 +740,7 @@ pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
     let primary = reg.find_project_for_path(&cwd)?
         .with_context(|| format!(
             "No indexed project found for the current directory.\n\
-             Run `ca index .` first."
+             Run `spelunk index .` first."
         ))?;
 
     // Resolve target
@@ -738,7 +759,7 @@ pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
     let dep = reg.find_project_for_path(&target_canonical)?
         .with_context(|| format!(
             "No index found for '{}'.\n\
-             Run `ca index {}` first.",
+             Run `spelunk index {}` first.",
             target_canonical.display(),
             target_canonical.display()
         ))?;
@@ -803,6 +824,173 @@ pub fn autoclean(_cfg: Config) -> Result<()> {
     Ok(())
 }
 
+// ── check ────────────────────────────────────────────────────────────────────
+
+pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
+    let db_path = resolve_db(args.db.as_ref(), &cfg.db_path);
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No index found (checked current directory and parents).\n\
+             Run `spelunk index <path>` first."
+        );
+    }
+
+    let db = Database::open(&db_path)?;
+    let stored = db.all_file_hashes()?;
+
+    let mut stale: Vec<String> = Vec::new();
+
+    // Check every indexed file against its current on-disk hash.
+    for (path, stored_hash) in &stored {
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                let current = format!("{}", blake3::hash(&bytes));
+                if current != *stored_hash {
+                    stale.push(path.clone());
+                }
+            }
+            Err(_) => {
+                // File deleted since last index.
+                stale.push(path.clone());
+            }
+        }
+    }
+
+    let fmt = crate::utils::effective_format(&args.format);
+    let fresh = stale.is_empty();
+
+    if fmt == "json" {
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+            "fresh": fresh,
+            "indexed_files": stored.len(),
+            "stale_files": stale.len(),
+            "stale": stale,
+        }))?);
+    } else if fresh {
+        println!("Index is up to date. ({} files indexed)", stored.len());
+    } else {
+        println!("{} file(s) changed since last index:", stale.len());
+        for p in &stale {
+            println!("  {p}");
+        }
+        println!("\nRun `spelunk index .` to update.");
+    }
+
+    if !fresh {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+// ── hooks ────────────────────────────────────────────────────────────────────
+
+pub fn hooks(args: HooksArgs) -> Result<()> {
+    match args.command {
+        HooksCommand::Install(a) => hooks_install(a),
+        HooksCommand::Uninstall  => hooks_uninstall(),
+    }
+}
+
+const POST_COMMIT_HOOK: &str = r#"#!/bin/sh
+# spelunk post-commit hook — installed by `spelunk hooks install`
+# Keeps the spelunk index in sync and harvests memory from new commits.
+# Silently skips if `spelunk` is not in PATH, so teammates without spelunk are unaffected.
+
+if ! command -v spelunk >/dev/null 2>&1; then
+  exit 0
+fi
+
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+spelunk index "$PROJECT_ROOT"
+spelunk memory harvest --git-range HEAD~1..HEAD
+"#;
+
+const CI_STEP: &str = r#"# Add to your .github/workflows/ file:
+- name: Update spelunk index
+  run: |
+    if command -v spelunk >/dev/null 2>&1; then
+      spelunk index .
+      spelunk memory harvest --git-range HEAD~1..HEAD
+    fi
+"#;
+
+fn find_git_dir() -> Result<std::path::PathBuf> {
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "--absolute-git-dir"])
+        .output()
+        .context("running git rev-parse --absolute-git-dir (is git installed?)")?;
+    if !out.status.success() {
+        anyhow::bail!("Not inside a git repository.");
+    }
+    let path = String::from_utf8(out.stdout).context("git output not UTF-8")?;
+    Ok(std::path::PathBuf::from(path.trim()))
+}
+
+fn hooks_install(args: super::HooksInstallArgs) -> Result<()> {
+    if args.ci {
+        print!("{CI_STEP}");
+        return Ok(());
+    }
+
+    let git_dir = find_git_dir()?;
+    let hooks_dir = git_dir.join("hooks");
+    std::fs::create_dir_all(&hooks_dir)?;
+    let hook_path = hooks_dir.join("post-commit");
+
+    if hook_path.exists() {
+        let existing = std::fs::read_to_string(&hook_path)?;
+        if existing.contains("spelunk post-commit hook") {
+            println!("Hook already installed at {}", hook_path.display());
+            return Ok(());
+        }
+        anyhow::bail!(
+            "A post-commit hook already exists at {}.\n\
+             Inspect it and merge manually, or remove it first.",
+            hook_path.display()
+        );
+    }
+
+    std::fs::write(&hook_path, POST_COMMIT_HOOK)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&hook_path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&hook_path, perms)?;
+    }
+
+    println!("Installed post-commit hook at {}", hook_path.display());
+    println!("After each commit, ca will:");
+    println!("  - Re-index the project");
+    println!("  - Harvest memory from the new commit");
+    println!("Teammates without spelunk installed are unaffected.");
+    Ok(())
+}
+
+fn hooks_uninstall() -> Result<()> {
+    let git_dir = find_git_dir()?;
+    let hook_path = git_dir.join("hooks").join("post-commit");
+
+    if !hook_path.exists() {
+        println!("No post-commit hook found.");
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&hook_path)?;
+    if !content.contains("spelunk post-commit hook") {
+        anyhow::bail!(
+            "The hook at {} was not installed by spelunk. Remove it manually.",
+            hook_path.display()
+        );
+    }
+
+    std::fs::remove_file(&hook_path)?;
+    println!("Removed post-commit hook.");
+    Ok(())
+}
+
 // ── memory ───────────────────────────────────────────────────────────────────
 
 pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
@@ -810,10 +998,11 @@ pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
         resolve_db(None, &cfg.db_path).with_file_name("memory.db")
     });
     match args.command {
-        MemoryCommand::Add(a)    => memory_add(a, &mem_path, &cfg).await,
-        MemoryCommand::Search(a) => memory_search(a, &mem_path, &cfg).await,
-        MemoryCommand::List(a)   => memory_list(a, &mem_path),
-        MemoryCommand::Show(a)   => memory_show(a, &mem_path),
+        MemoryCommand::Add(a)     => memory_add(a, &mem_path, &cfg).await,
+        MemoryCommand::Search(a)  => memory_search(a, &mem_path, &cfg).await,
+        MemoryCommand::List(a)    => memory_list(a, &mem_path),
+        MemoryCommand::Show(a)    => memory_show(a, &mem_path),
+        MemoryCommand::Harvest(a) => memory_harvest(a, &mem_path, &cfg).await,
     }
 }
 
@@ -824,6 +1013,18 @@ async fn memory_add(
 ) -> Result<()> {
     let store = MemoryStore::open(mem_path)?;
 
+    // If body not provided on the command line, open $EDITOR.
+    let body = match args.body {
+        Some(b) => b,
+        None => {
+            let title = args.title.clone();
+            tokio::task::spawn_blocking(move || open_editor_for_body(&title))
+                .await
+                .context("editor task panicked")?
+                .context("opening editor for body")?
+        }
+    };
+
     let tags: Vec<&str> = args.tags.as_deref()
         .map(|s| s.split(',').map(str::trim).collect())
         .unwrap_or_default();
@@ -831,10 +1032,10 @@ async fn memory_add(
         .map(|s| s.split(',').map(str::trim).collect())
         .unwrap_or_default();
 
-    let note_id = store.add_note(&args.kind, &args.title, &args.body, &tags, &files)?;
+    let note_id = store.add_note(&args.kind, &args.title, &body, &tags, &files)?;
 
     // Embed and store so the note is immediately searchable.
-    let embed_text = format!("title: {} | text: {}", args.title, args.body);
+    let embed_text = format!("title: {} | text: {}", args.title, body);
     let sp = spinner("Embedding…");
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
         .await
@@ -940,15 +1141,557 @@ fn print_note_summary(n: &crate::storage::memory::Note) {
     if !n.linked_files.is_empty() {
         println!("     files: {}", n.linked_files.join(", "));
     }
-    // Show first 2 lines of body as preview
-    let preview: Vec<&str> = n.body.lines().take(2).collect();
-    for line in &preview {
-        println!("     \x1b[2m{line}\x1b[0m");
-    }
-    if n.body.lines().count() > 2 {
-        println!("     \x1b[2m…\x1b[0m");
+    // For question/answer kinds: titles-only list — use `spelunk memory show <id>` for body.
+    // For other kinds: show first 2 lines of body as preview.
+    if !matches!(n.kind.as_str(), "question" | "answer") {
+        let preview: Vec<&str> = n.body.lines().take(2).collect();
+        for line in &preview {
+            println!("     \x1b[2m{line}\x1b[0m");
+        }
+        if n.body.lines().count() > 2 {
+            println!("     \x1b[2m…\x1b[0m");
+        }
+    } else {
+        println!("     \x1b[2m(use `spelunk memory show {}` to read body)\x1b[0m", n.id);
     }
     println!();
+}
+
+/// Open $EDITOR (or $VISUAL, then vi) for the user to write a memory body.
+fn open_editor_for_body(title: &str) -> Result<String> {
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".to_string());
+
+    let tmp = std::env::temp_dir()
+        .join(format!("ca_memory_{}.md", std::process::id()));
+    std::fs::write(&tmp, format!(
+        "# {title}\n\n\
+         # Write your memory entry below. Lines starting with # are ignored.\n\
+         # Save and close the editor when done.\n\n"
+    ))?;
+
+    let status = std::process::Command::new(&editor)
+        .arg(&tmp)
+        .status()
+        .with_context(|| format!("could not open editor '{editor}'"))?;
+
+    let content = std::fs::read_to_string(&tmp)?;
+    std::fs::remove_file(&tmp).ok();
+
+    if !status.success() {
+        anyhow::bail!("Editor exited with a non-zero status; entry not saved.");
+    }
+
+    let body: String = content
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string();
+
+    if body.is_empty() {
+        anyhow::bail!("Body is empty; entry not saved.");
+    }
+    Ok(body)
+}
+
+async fn memory_harvest(
+    args: super::MemoryHarvestArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
+    use crate::llm::LlmBackend;
+
+    // ── Step 1: collect commits via git log ───────────────────────────────────
+    let git_out = std::process::Command::new("git")
+        .args(["log", &args.git_range, "--format=%H%x00%s%x00%b%x00---"])
+        .output()
+        .context("running git log (is git installed and are we in a git repo?)")?;
+
+    if !git_out.status.success() {
+        let msg = String::from_utf8_lossy(&git_out.stderr);
+        anyhow::bail!("git log failed: {msg}");
+    }
+
+    let raw = String::from_utf8(git_out.stdout).context("git log output not UTF-8")?;
+    let commits: Vec<(String, String, String)> = raw
+        .split("---\n")
+        .filter(|s| !s.trim().is_empty())
+        .filter_map(|entry| {
+            let parts: Vec<&str> = entry.splitn(4, '\x00').collect();
+            if parts.len() < 3 { return None; }
+            Some((
+                parts[0].trim().to_string(),
+                parts[1].trim().to_string(),
+                parts[2].trim().to_string(),
+            ))
+        })
+        .collect();
+
+    if commits.is_empty() {
+        println!("No commits found in range '{}'.", args.git_range);
+        return Ok(());
+    }
+
+    // ── Step 2: skip already-harvested SHAs ──────────────────────────────────
+    let store = MemoryStore::open(mem_path)?;
+    let known_shas = store.harvested_shas()?;
+    let new_commits: Vec<_> = commits
+        .iter()
+        .filter(|(sha, _, _)| !known_shas.contains(sha))
+        .collect();
+
+    if new_commits.is_empty() {
+        println!("All {} commits already harvested.", commits.len());
+        return Ok(());
+    }
+
+    println!("Analysing {} new commit(s) in '{}'…", new_commits.len(), args.git_range);
+
+    // ── Step 3: ask LLM to classify the commits ───────────────────────────────
+    let commit_list = new_commits
+        .iter()
+        .map(|(sha, subject, body)| {
+            if body.is_empty() {
+                format!("COMMIT {sha}\n{subject}")
+            } else {
+                format!("COMMIT {sha}\n{subject}\n\n{body}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n---\n\n");
+
+    let system = "You help build a project memory store from git history. \
+        Respond ONLY with valid JSON matching the provided schema. No other text.";
+
+    let user = format!(
+        "Review these git commit messages. Identify commits that represent:\n\
+         - \"decision\": A significant architectural or design choice and reasoning\n\
+         - \"context\": Background about requirements, constraints, or project goals\n\
+         - \"requirement\": A hard constraint the codebase must satisfy\n\
+         - \"note\": A surprising or non-obvious discovery\n\n\
+         Skip routine commits (version bumps, typo fixes, dependency updates \
+         unless they reveal a constraint, formatting).\n\n\
+         For each significant commit write: sha (first 8 chars), kind, title \
+         (one sentence, past tense for decisions), body (include why, \
+         what alternatives were considered), tags (2-4 keywords).\n\n\
+         Commits:\n{commit_list}"
+    );
+
+    let schema = serde_json::json!({
+        "name": "harvest_result",
+        "strict": true,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "sha": {"type": "string"},
+                            "kind": {"type": "string", "enum": ["decision","context","requirement","note"]},
+                            "title": {"type": "string"},
+                            "body": {"type": "string"},
+                            "tags": {"type": "array", "items": {"type": "string"}}
+                        },
+                        "required": ["sha","kind","title","body","tags"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "required": ["entries"],
+            "additionalProperties": false
+        }
+    });
+
+    let sp = spinner("Loading LLM for harvest…");
+    let llm = crate::backends::ActiveLlm::load(cfg)
+        .await
+        .context("loading LLM")?;
+    sp.finish_and_clear();
+
+    let messages = vec![
+        crate::llm::Message::system(system),
+        crate::llm::Message::user(user),
+    ];
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(256);
+    let generate = llm.generate(&messages, 2048, tx, Some(schema));
+    let collect = async move {
+        let mut buf = String::new();
+        while let Some(t) = rx.recv().await { buf.push_str(&t); }
+        buf
+    };
+    let (_, raw_json) = tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+    let raw_json = crate::utils::strip_ansi(&raw_json);
+
+    // ── Step 4: parse entries, embed, store ───────────────────────────────────
+    let parsed: serde_json::Value = serde_json::from_str(&raw_json)
+        .with_context(|| format!("parsing LLM harvest response:\n{raw_json}"))?;
+
+    let entries = parsed["entries"].as_array().map(|a| a.as_slice()).unwrap_or(&[]);
+
+    if entries.is_empty() {
+        println!("No significant commits found in this range.");
+        return Ok(());
+    }
+
+    println!("Embedding {} entries…", entries.len());
+    let embedder = crate::backends::ActiveEmbedder::load(cfg)
+        .await
+        .context("loading embedding model")?;
+
+    let mut stored = 0usize;
+    for entry in entries {
+        let sha   = entry["sha"].as_str().unwrap_or("").to_string();
+        let kind  = entry["kind"].as_str().unwrap_or("note");
+        let title = entry["title"].as_str().unwrap_or("").to_string();
+        let body  = entry["body"].as_str().unwrap_or("").to_string();
+        let tags_val = entry["tags"].as_array();
+
+        let mut tags: Vec<String> = tags_val
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        // Store the full SHA as a tag for dedup on future harvests.
+        // Find the full SHA from our commit list.
+        let full_sha = new_commits.iter()
+            .find(|(s, _, _)| s.starts_with(&sha))
+            .map(|(s, _, _)| s.clone())
+            .unwrap_or(sha.clone());
+        tags.push(format!("git:{full_sha}"));
+
+        let tag_refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+        let note_id = store.add_note(kind, &title, &body, &tag_refs, &[])?;
+
+        let embed_text = format!("title: {title} | text: {body}");
+        let vecs = embedder.embed(&[&embed_text]).await?;
+        if let Some(vec) = vecs.first() {
+            store.insert_embedding(note_id, &vec_to_blob(vec))?;
+        }
+
+        println!("  + [{kind}] #{note_id}: {title}");
+        stored += 1;
+    }
+
+    let skipped = new_commits.len().saturating_sub(stored);
+    println!("\nStored {stored} memory entries. Skipped {skipped} routine commits.");
+    Ok(())
+}
+
+// ── verify ───────────────────────────────────────────────────────────────────
+
+pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
+    use crate::utils::effective_format;
+    let fmt = effective_format(&args.format);
+
+    let (db_path, _dep_paths) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
+    let db = Database::open(&db_path)?;
+
+    // Find chunks matching the target (file suffix or symbol name).
+    let target = &args.target;
+    let all_chunks = db.chunks_for_file(target)?;
+    if all_chunks.is_empty() {
+        anyhow::bail!("No indexed chunks found for '{}'. Try `spelunk index` first.", target);
+    }
+
+    // Build embedder and re-embed each chunk's current content.
+    let sp = spinner(format!("Verifying {target}…"));
+    let embedder = crate::backends::ActiveEmbedder::load(&cfg).await
+        .context("loading embedder")?;
+
+    let mut results: Vec<serde_json::Value> = Vec::new();
+
+    for chunk in &all_chunks {
+        let title = chunk.name.as_deref().unwrap_or("none");
+        let embed_text = format!("title: {title} | text: {}", chunk.content);
+        let vecs = embedder.embed(&[&embed_text]).await
+            .context("embedding chunk")?;
+        let Some(vec) = vecs.first() else { continue };
+        let blob = vec_to_blob(vec);
+
+        // KNN search for this chunk's embedding.
+        let neighbours_raw = db.search_similar(&blob, args.neighbours + 1)?;
+        // Drop the chunk itself (distance ≈ 0).
+        let neighbours: Vec<_> = neighbours_raw.into_iter()
+            .filter(|r| r.chunk_id != chunk.chunk_id)
+            .take(args.neighbours)
+            .collect();
+
+        if fmt == "json" {
+            results.push(serde_json::json!({
+                "chunk_id": chunk.chunk_id,
+                "name": chunk.name,
+                "file": chunk.file_path,
+                "lines": format!("{}-{}", chunk.start_line, chunk.end_line),
+                "neighbours": neighbours.iter().map(|n| serde_json::json!({
+                    "chunk_id": n.chunk_id,
+                    "name": n.name,
+                    "file": n.file_path,
+                    "distance": n.distance,
+                })).collect::<Vec<_>>()
+            }));
+        } else {
+            let name = chunk.name.as_deref().unwrap_or("<anonymous>");
+            let loc = format!("{}:{}-{}", chunk.file_path, chunk.start_line, chunk.end_line);
+            println!("\x1b[1m{name}\x1b[0m  \x1b[2m{loc}\x1b[0m");
+            for (i, n) in neighbours.iter().enumerate() {
+                let nname = n.name.as_deref().unwrap_or("<anonymous>");
+                println!(
+                    "  {}. \x1b[33m{:.4}\x1b[0m  {} \x1b[2m({}:{}-{})\x1b[0m",
+                    i + 1,
+                    n.distance,
+                    nname,
+                    n.file_path,
+                    n.start_line,
+                    n.end_line,
+                );
+            }
+            println!();
+        }
+    }
+
+    sp.finish_and_clear();
+
+    if fmt == "json" {
+        println!("{}", serde_json::to_string_pretty(&results)?);
+    }
+
+    Ok(())
+}
+
+// ── plan ─────────────────────────────────────────────────────────────────────
+
+pub async fn plan(args: PlanArgs, cfg: Config) -> Result<()> {
+    match args.command {
+        PlanCommand::Create(a) => plan_create(a, args.db.as_ref(), &cfg).await,
+        PlanCommand::Status(a) => plan_status(a),
+    }
+}
+
+async fn plan_create(
+    args: super::PlanCreateArgs,
+    explicit_db: Option<&std::path::PathBuf>,
+    cfg: &Config,
+) -> Result<()> {
+    let (db_path, dep_paths) = resolve_project_and_deps(explicit_db, cfg)?;
+
+    // Gather context: search for relevant chunks using the description as query.
+    let sp = spinner("Gathering codebase context…");
+    let embedder = crate::backends::ActiveEmbedder::load(cfg).await
+        .context("loading embedder")?;
+    let query_text = format!("task: question answering | query: {}", args.description);
+    let vecs = embedder.embed(&[&query_text]).await?;
+    let blob = vec_to_blob(vecs.first().context("no embedding")?);
+
+    let chunks = search_all_dbs(&db_path, &dep_paths, &blob, 15)?;
+    sp.finish_and_clear();
+
+    // Gather memory context if available.
+    let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
+    let memory_context = if mem_path.exists() {
+        let store = crate::storage::MemoryStore::open(&mem_path)?;
+        let mblob = vec_to_blob(vecs.first().context("no embedding")?);
+        store.search(&mblob, 5).ok().map(|notes| {
+            notes.iter().map(|n| format!("[{}] {}: {}", n.kind, n.title, n.body)).collect::<Vec<_>>().join("\n")
+        })
+    } else {
+        None
+    };
+
+    // Build LLM prompt.
+    let code_ctx = chunks.iter().map(|c| {
+        let name = c.name.as_deref().unwrap_or("<anonymous>");
+        format!("// {name} ({})\n{}", c.file_path, c.content)
+    }).collect::<Vec<_>>().join("\n\n---\n\n");
+
+    let memory_section = memory_context.map(|m| format!(
+        "\n<memory_context>\n{m}\n</memory_context>"
+    )).unwrap_or_default();
+
+    let system = "You are a senior software engineer creating an implementation plan as a markdown checklist. \
+        Output ONLY the markdown document — no explanations before or after. \
+        Structure: a brief summary paragraph, then a checklist of concrete implementation steps using `- [ ]` syntax. \
+        Each step should be a single actionable task.";
+
+    let user_msg = format!(
+        "<code_context>\n{code_ctx}\n</code_context>{memory_section}\n\n\
+        <task>\nCreate an implementation plan for: {desc}\n</task>",
+        desc = args.description,
+    );
+
+    let sp2 = spinner("Generating plan…");
+    let llm = crate::backends::ActiveLlm::load(cfg).await
+        .context("loading LLM")?;
+    let messages = vec![
+        crate::llm::Message::system(system),
+        crate::llm::Message::user(user_msg),
+    ];
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(128);
+    use crate::llm::LlmBackend as _;
+    let generate = llm.generate(&messages, 2048, tx, None);
+    let collect = async move {
+        let mut buf = String::new();
+        while let Some(t) = rx.recv().await { buf.push_str(&t); }
+        buf
+    };
+    let (_, plan_content) = tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+    sp2.finish_and_clear();
+
+    // Determine output path under docs/plans/.
+    let project_root = {
+        let db_parent = db_path.parent().unwrap_or(std::path::Path::new("."));
+        // Walk up to find the project root (where .git lives, or fall back).
+        let mut p = db_parent;
+        loop {
+            if p.join(".git").exists() { break p.to_path_buf(); }
+            match p.parent() { Some(pp) => p = pp, None => break db_parent.to_path_buf() }
+        }
+    };
+
+    let slug = args.name.unwrap_or_else(|| {
+        args.description
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .split('-')
+            .filter(|s| !s.is_empty())
+            .take(6)
+            .collect::<Vec<_>>()
+            .join("-")
+    });
+    let plan_dir = project_root.join("docs").join("plans");
+    std::fs::create_dir_all(&plan_dir)?;
+    let plan_file = plan_dir.join(format!("{slug}.md"));
+
+    // Prepend a YAML-lite header if the LLM didn't.
+    let date = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let days = secs / 86400;
+        // Simplified ISO date from epoch (accurate for dates 1970+).
+        let mut y = 1970u32;
+        let mut remaining = days;
+        loop {
+            let leap = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
+            if remaining < leap { break; }
+            remaining -= leap;
+            y += 1;
+        }
+        let month_days = [31u32, if y%4==0&&(y%100!=0||y%400==0){29}else{28}, 31,30,31,30,31,31,30,31,30,31];
+        let mut m = 1u32;
+        for md in &month_days {
+            if remaining < *md as u64 { break; }
+            remaining -= *md as u64;
+            m += 1;
+        }
+        let d = remaining + 1;
+        format!("{y:04}-{m:02}-{d:02}")
+    };
+    let header = format!(
+        "# Plan: {desc}\n\n> Created: {date}\n\n",
+        desc = args.description,
+    );
+    let full_content = if plan_content.trim_start().starts_with('#') {
+        plan_content
+    } else {
+        format!("{header}{plan_content}")
+    };
+
+    std::fs::write(&plan_file, &full_content)?;
+    println!("Plan written to {}", plan_file.display());
+    println!("\nPreview:");
+    for line in full_content.lines().take(20) {
+        println!("  {line}");
+    }
+    if full_content.lines().count() > 20 {
+        println!("  \x1b[2m…\x1b[0m");
+    }
+
+    Ok(())
+}
+
+fn plan_status(args: super::PlanStatusArgs) -> Result<()> {
+    use crate::utils::effective_format;
+    let fmt = effective_format(&args.format);
+
+    // Find docs/plans/ relative to cwd or git root.
+    let plan_dir = {
+        let cwd = std::env::current_dir()?;
+        let candidate = cwd.join("docs").join("plans");
+        if candidate.exists() {
+            candidate
+        } else {
+            // Walk up for git root.
+            let mut p = cwd.as_path();
+            loop {
+                if p.join(".git").exists() {
+                    break p.join("docs").join("plans");
+                }
+                match p.parent() { Some(pp) => p = pp, None => break candidate }
+            }
+        }
+    };
+
+    if !plan_dir.exists() {
+        println!("No plans directory found (expected {}).", plan_dir.display());
+        println!("Create a plan with: ca plan create \"<description>\"");
+        return Ok(());
+    }
+
+    let mut plans: Vec<serde_json::Value> = Vec::new();
+    let entries = std::fs::read_dir(&plan_dir)?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") { continue; }
+        if let Some(name_filter) = &args.name {
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if stem != name_filter { continue; }
+        }
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+
+        // Count checklist items.
+        let total = content.lines().filter(|l| l.trim_start().starts_with("- [")).count();
+        let done = content.lines().filter(|l| l.trim_start().starts_with("- [x]") || l.trim_start().starts_with("- [X]")).count();
+
+        // Extract title from first `# ` line.
+        let title = content.lines()
+            .find(|l| l.starts_with("# "))
+            .map(|l| l.trim_start_matches("# ").trim().to_string())
+            .unwrap_or_else(|| stem.clone());
+
+        if fmt == "json" {
+            plans.push(serde_json::json!({
+                "name": stem,
+                "title": title,
+                "done": done,
+                "total": total,
+                "file": path.display().to_string(),
+            }));
+        } else {
+            let pct = if total > 0 { done * 100 / total } else { 0 };
+            let bar = {
+                let filled = (pct / 10) as usize;
+                format!("[{}{}]", "#".repeat(filled), ".".repeat(10 - filled))
+            };
+            println!("\x1b[1m{title}\x1b[0m  \x1b[2m{stem}\x1b[0m");
+            println!("  {bar} {done}/{total} ({pct}%)  {}", path.display());
+            println!();
+        }
+    }
+
+    if fmt == "json" {
+        println!("{}", serde_json::to_string_pretty(&plans)?);
+    } else if plans.is_empty() && args.name.is_none() {
+        println!("No plans found in {}.", plan_dir.display());
+    }
+
+    Ok(())
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -963,7 +1706,7 @@ fn resolve_project_and_deps(
     if let Some(p) = explicit_db {
         if !p.exists() {
             anyhow::bail!(
-                "Database not found at '{}'. Run `ca index <path>` first.",
+                "Database not found at '{}'. Run `spelunk index <path>` first.",
                 p.display()
             );
         }
@@ -992,7 +1735,7 @@ fn resolve_project_and_deps(
     if !db_path.exists() {
         anyhow::bail!(
             "No index found (checked current directory and parents).\n\
-             Run `ca index <path>` inside your project first."
+             Run `spelunk index <path>` inside your project first."
         );
     }
     Ok((db_path, vec![]))

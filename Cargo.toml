@@ -1,12 +1,12 @@
 [package]
-name = "codeanalysis"
+name = "spelunk"
 version = "0.1.0"
 edition = "2024"
-description = "Local code search and understanding via RAG — indexed with tree-sitter, stored in SQLite"
+description = "Local code intelligence via RAG — indexed with tree-sitter, stored in SQLite"
 license = "MIT"
 
 [[bin]]
-name = "ca"
+name = "spelunk"
 path = "src/main.rs"
 
 [features]

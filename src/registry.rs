@@ -1,12 +1,12 @@
 //! Global project registry.
 //!
 //! Stores all known project roots and their dependency relationships in a
-//! single SQLite database at `~/.config/codeanalysis/registry.db`.
+//! single SQLite database at `~/.config/spelunk/registry.db`.
 //!
 //! The registry is separate from per-project index DBs.  It is used to:
 //!   - Auto-detect which project the user is working in from their CWD
 //!   - Track cross-project dependencies for multi-repo search
-//!   - Power `ca status --all` and `ca autoclean`
+//!   - Power `spelunk status --all` and `spelunk autoclean`
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
@@ -93,7 +93,7 @@ impl Registry {
 
     /// Find the closest ancestor of `start` that is a registered project root.
     /// If none found in the registry, falls back to filesystem walk looking for
-    /// `.codeanalysis/index.db` and auto-registers what it finds.
+    /// `.spelunk/index.db` and auto-registers what it finds.
     pub fn find_project_for_path(&self, start: &Path) -> Result<Option<Project>> {
         // 1. Registry walk-up (most specific first)
         let mut dir = start.to_path_buf();
@@ -117,10 +117,10 @@ impl Registry {
             if !dir.pop() { break; }
         }
 
-        // 2. Filesystem fallback — look for .codeanalysis/index.db and auto-register.
+        // 2. Filesystem fallback — look for .spelunk/index.db and auto-register.
         let mut dir = start.to_path_buf();
         loop {
-            let candidate = dir.join(".codeanalysis").join("index.db");
+            let candidate = dir.join(".spelunk").join("index.db");
             if candidate.exists() {
                 let id = self.register(&dir, &candidate)?;
                 return Ok(Some(Project {
@@ -265,7 +265,7 @@ impl Registry {
 fn registry_path() -> Result<PathBuf> {
     let base = dirs::config_dir()
         .context("could not determine user config directory")?
-        .join("codeanalysis");
+        .join("spelunk");
     Ok(base.join("registry.db"))
 }
 

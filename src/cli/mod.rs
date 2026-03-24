@@ -3,11 +3,11 @@ use std::path::PathBuf;
 
 pub mod commands;
 
-/// ca — local code search and understanding
+/// spelunk — local code intelligence
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    /// Path to config file (default: ~/.config/codeanalysis/config.toml)
+    /// Path to config file (default: ~/.config/spelunk/config.toml)
     #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
 
@@ -25,12 +25,16 @@ pub enum Command {
     Ask(AskArgs),
     /// Show index statistics (for current project or all registered projects)
     Status(StatusArgs),
+    /// Check whether the index is in sync with the current source tree (exit 1 if stale)
+    Check(CheckArgs),
     /// List supported languages
     Languages,
     /// Query the code graph (imports, calls, extends/implements)
     Graph(GraphArgs),
     /// Show the raw indexed chunks for a file (useful for debugging/agent use)
     Chunks(ChunksArgs),
+    /// Verify semantic coherence of a file or symbol after changes
+    Verify(VerifyArgs),
     /// Add a dependency: current project also searches another project's index
     Link(LinkArgs),
     /// Remove a previously added dependency
@@ -39,6 +43,10 @@ pub enum Command {
     Autoclean,
     /// Project memory: store and query decisions, context, and requirements
     Memory(MemoryArgs),
+    /// Manage git hooks (post-commit auto-index and harvest)
+    Hooks(HooksArgs),
+    /// Create and track codebase plans as markdown checklists in docs/plans/
+    Plan(PlanArgs),
 }
 
 #[derive(Args, Debug)]
@@ -144,6 +152,39 @@ pub struct StatusArgs {
     /// Brief list format (one line per project) — implies --all
     #[arg(short, long)]
     pub list: bool,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct CheckArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct VerifyArgs {
+    /// File path or symbol name to verify
+    pub target: String,
+
+    /// Number of nearest neighbours to show per chunk
+    #[arg(long, default_value = "3")]
+    pub neighbours: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -178,7 +219,7 @@ pub struct MemoryArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum MemoryCommand {
-    /// Store a decision, context, requirement, or note
+    /// Store a decision, context, requirement, note, question, answer, or handoff
     Add(MemoryAddArgs),
     /// Semantic search over stored memory
     Search(MemorySearchArgs),
@@ -186,6 +227,8 @@ pub enum MemoryCommand {
     List(MemoryListArgs),
     /// Show the full content of a memory entry
     Show(MemoryShowArgs),
+    /// Auto-harvest memory entries from git commit messages using the LLM
+    Harvest(MemoryHarvestArgs),
 }
 
 #[derive(Args, Debug)]
@@ -194,11 +237,11 @@ pub struct MemoryAddArgs {
     #[arg(short, long)]
     pub title: String,
 
-    /// Full body text
+    /// Full body text (omit to open $EDITOR)
     #[arg(short, long)]
-    pub body: String,
+    pub body: Option<String>,
 
-    /// Kind: decision, context, requirement, note
+    /// Kind: decision, context, requirement, note, question, answer, handoff
     #[arg(short, long, default_value = "note")]
     pub kind: String,
 
@@ -244,6 +287,76 @@ pub struct MemoryListArgs {
 pub struct MemoryShowArgs {
     /// Entry ID (from list or search output)
     pub id: i64,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryHarvestArgs {
+    /// Git revision range to analyse (default: HEAD~10..HEAD)
+    #[arg(long, default_value = "HEAD~10..HEAD")]
+    pub git_range: String,
+}
+
+// ── Hooks ─────────────────────────────────────────────────────────────────────
+
+#[derive(Args, Debug)]
+pub struct HooksArgs {
+    #[command(subcommand)]
+    pub command: HooksCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum HooksCommand {
+    /// Install a post-commit hook that auto-indexes and harvests memory
+    Install(HooksInstallArgs),
+    /// Remove the spelunk post-commit hook
+    Uninstall,
+}
+
+#[derive(Args, Debug)]
+pub struct HooksInstallArgs {
+    /// Print a GitHub Actions workflow step instead of writing a git hook
+    #[arg(long)]
+    pub ci: bool,
+}
+
+// ── Plan ──────────────────────────────────────────────────────────────────────
+
+#[derive(Args, Debug)]
+pub struct PlanArgs {
+    #[command(subcommand)]
+    pub command: PlanCommand,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PlanCommand {
+    /// Create a new plan from a description (queries codebase + memory)
+    Create(PlanCreateArgs),
+    /// Show completion status of plans in docs/plans/
+    Status(PlanStatusArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct PlanCreateArgs {
+    /// Description of the task to plan
+    pub description: String,
+
+    /// Override the auto-generated filename slug
+    #[arg(long)]
+    pub name: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct PlanStatusArgs {
+    /// Show only this plan (by filename stem, e.g. add-rate-limiting)
+    pub name: Option<String>,
 
     /// Output format: text or json
     #[arg(long, default_value = "text")]

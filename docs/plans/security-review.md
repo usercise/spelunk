@@ -58,8 +58,8 @@ This action plan is designed for a developer agent to execute sequentially, prio
 ---
 
 ### **Success Criteria for the Agent**
-- [ ] `ca ask` output is stripped of all ANSI control characters.
+- [ ] `spelunk ask` output is stripped of all ANSI control characters.
 - [ ] Attempting to index a file containing a mock AWS key results in that chunk being skipped.
 - [ ] `cargo audit` passes with zero vulnerabilities.
-- [ ] `ca search --limit 999999` is gracefully capped to a safe maximum.
+- [ ] `spelunk search --limit 999999` is gracefully capped to a safe maximum.
 - [ ] Fuzzer runs for 10 minutes without discovering a crash in the `tree-sitter` integration.

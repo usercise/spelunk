@@ -1,0 +1,122 @@
+# Project Memory
+
+`spelunk memory` is a per-project knowledge store. Use it to capture decisions, context, requirements, questions, and handoff notes that would otherwise live only in chat history or someone's head.
+
+Memory entries are stored in a local SQLite database alongside your index and are searchable by meaning (semantic similarity), not just keywords.
+
+## Why memory?
+
+Code tells you *what* the system does. Memory tells you *why* it was built that way.
+
+Examples of things worth storing:
+
+- "We chose sqlite-vec over pgvector because the project must run without a Postgres server."
+- "The embedding format is `title: {name} | text: {content}` — changing this invalidates all stored embeddings."
+- "Current question: should `spelunk verify` re-embed from disk or from the stored chunk content?"
+- "Handoff to next session: the graph migration is done, secrets scanner is next."
+
+## Memory kinds
+
+| Kind | Use for |
+|------|---------|
+| `decision` | Architecture or design choices with rationale |
+| `context` | Background information that helps understand the codebase |
+| `requirement` | Product or technical requirements |
+| `note` | General observations (default) |
+| `question` | Open questions that need an answer |
+| `answer` | Answers to previously stored questions |
+| `handoff` | State transfer between work sessions or agents |
+
+## Storing a note
+
+```bash
+# Quick note with body inline
+spelunk memory add --title "Chunker uses 120-line sliding window as fallback" \
+              --body "This applies to unsupported file types and binary-adjacent files." \
+              --kind context \
+              --tags chunker,indexer
+
+# Open your $EDITOR for the body (omit --body)
+spelunk memory add --title "Decision: use blake3 for file hashing" --kind decision
+
+# Link to specific files
+spelunk memory add --title "Auth middleware refactored" \
+              --body "Moved session validation to src/auth/middleware.rs" \
+              --files "src/auth/middleware.rs,src/auth/session.rs"
+```
+
+When `--body` is omitted, `spelunk` opens `$VISUAL` or `$EDITOR` (falling back to `vi`). Lines starting with `#` are stripped (comment convention).
+
+## Searching memory
+
+```bash
+# Semantic search — finds entries by meaning
+spelunk memory search "why did we choose sqlite"
+spelunk memory search "authentication decisions" --limit 5
+```
+
+## Listing entries
+
+```bash
+# List recent entries (newest first)
+spelunk memory list
+
+# Filter by kind
+spelunk memory list --kind decision
+spelunk memory list --kind question
+
+# More entries
+spelunk memory list --limit 50
+```
+
+`question` and `answer` entries show titles only in list view to avoid context saturation. Use `spelunk memory show <id>` to read the full body.
+
+## Showing a single entry
+
+```bash
+spelunk memory show 42
+spelunk memory show 42 --format json
+```
+
+## Harvesting from git history
+
+`spelunk memory harvest` reads your git log, sends commit messages to the LLM, and automatically extracts significant entries:
+
+```bash
+# Default: last 10 commits
+spelunk memory harvest
+
+# Custom range
+spelunk memory harvest --git-range HEAD~30..HEAD
+spelunk memory harvest --git-range v1.0..HEAD
+```
+
+Already-harvested commits are skipped (tracked via a `git:<sha>` tag). Routine commits ("fix typo", "wip", etc.) are ignored by the LLM.
+
+### Automatic harvesting
+
+Install the git hook and harvesting happens on every commit:
+
+```bash
+spelunk hooks install
+```
+
+## Using memory in `spelunk ask`
+
+Memory context is automatically included when you run `spelunk ask`. The LLM receives both the retrieved code chunks and relevant memory entries, so it can factor in design decisions and requirements when answering.
+
+## Machine-readable output
+
+All memory commands support `--format json`, and setting `AGENT=true` forces JSON mode globally:
+
+```bash
+AGENT=true spelunk memory list --kind question
+AGENT=true spelunk memory search "database decisions"
+```
+
+## Tips
+
+- **Store the "why", not just the "what"** — the code already captures what was built.
+- **Use `question` kind actively** — when you hit a decision point you're unsure about, store it. Come back with `spelunk memory list --kind question` at the start of the next session.
+- **Use `handoff` kind** at the end of a long session to summarise the current state for your next session (or for another agent).
+- **Tag entries** — tags like `auth`, `database`, `performance` make `spelunk memory list` more scannable and improve search relevance.

@@ -1,5 +1,5 @@
 [package]
-name = "codeanalysis-fuzz"
+name = "spelunk-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
@@ -10,7 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 
-[dependencies.codeanalysis]
+[dependencies.spelunk]
 path = ".."
 
 # Disable LTO for faster fuzzer builds.

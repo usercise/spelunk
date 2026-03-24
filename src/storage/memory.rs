@@ -126,6 +126,28 @@ impl MemoryStore {
         Ok(notes)
     }
 
+    pub fn count(&self) -> Result<i64> {
+        Ok(self.conn.query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))?)
+    }
+
+    /// Return all SHA tags stored (used by harvest to avoid duplicates).
+    /// Harvest stores the git SHA as a tag in the format "git:<sha>".
+    pub fn harvested_shas(&self) -> Result<std::collections::HashSet<String>> {
+        let mut stmt = self.conn.prepare_cached("SELECT tags FROM notes WHERE tags LIKE '%git:%'")?;
+        let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+        let mut shas = std::collections::HashSet::new();
+        for row in rows {
+            if let Some(tags) = row? {
+                for tag in tags.split(',').map(str::trim) {
+                    if let Some(sha) = tag.strip_prefix("git:") {
+                        shas.insert(sha.to_string());
+                    }
+                }
+            }
+        }
+        Ok(shas)
+    }
+
     pub fn get(&self, id: i64) -> Result<Option<Note>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, kind, title, body, tags, linked_files, created_at
