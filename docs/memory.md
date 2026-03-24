@@ -47,6 +47,30 @@ spelunk memory add --title "Auth middleware refactored" \
 
 When `--body` is omitted, `spelunk` opens `$VISUAL` or `$EDITOR` (falling back to `vi`). Lines starting with `#` are stripped (comment convention).
 
+## Pulling in context from a URL
+
+`--from-url` fetches content from a GitHub issue, Linear ticket, or any web page and stores it as a memory entry. The title is inferred from the page automatically.
+
+```bash
+# GitHub issue — uses `gh api` for clean structured content
+spelunk memory add --from-url https://github.com/owner/repo/issues/42
+
+# Override the inferred title
+spelunk memory add --from-url https://github.com/owner/repo/issues/42 \
+              --title "Auth: session token storage compliance issue" \
+              --kind requirement
+
+# Any URL — fetches page title and strips HTML
+spelunk memory add --from-url https://linear.app/myteam/issue/ENG-1234/... \
+              --kind context
+
+# Combine with tags
+spelunk memory add --from-url https://github.com/owner/repo/issues/99 \
+              --tags auth,security --kind requirement
+```
+
+For GitHub issues, `spelunk` calls `gh api` to get structured issue data (requires the [GitHub CLI](https://cli.github.com/) and `gh auth login`). For all other URLs it does an HTTP GET and extracts readable text.
+
 ## Searching memory
 
 ```bash

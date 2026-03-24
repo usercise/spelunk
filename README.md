@@ -1,8 +1,18 @@
 # spelunk — local code intelligence
 
-`spelunk` is a local-first CLI that makes your codebase searchable and queryable in natural language, without sending code to the cloud.
+spelunk gives individual developers and AI agents context-aware code understanding without sending your code anywhere. Your codebase, your models, your machine.
 
-It indexes your source tree with [tree-sitter](https://tree-sitter.github.io/) AST chunking, stores vector embeddings in SQLite, and answers questions via a RAG pipeline — all through a locally-running LLM in [LM Studio](https://lmstudio.ai/).
+It indexes your source tree with [tree-sitter](https://tree-sitter.github.io/) AST chunking, stores vector embeddings in a SQLite file you own, and answers questions via a RAG pipeline backed by a locally-running LLM in [LM Studio](https://lmstudio.ai/).
+
+## Why local-first?
+
+Cloud-based code intelligence tools require your source code to leave your machine and be indexed on someone else's servers. That's a non-starter for proprietary codebases, regulated industries, or anyone who simply doesn't want their code analysed by a third party.
+
+spelunk keeps everything local:
+- **Your index is a SQLite file** — lives in your project, backed up with your repo, belongs to you
+- **Your models run locally** — via LM Studio; no API keys, no usage billing, no rate limits
+- **No vendor lock-in** — switch models, move machines, or stop using spelunk without losing anything
+- **Works offline** — no internet required after installation
 
 ## Quick start
 
@@ -39,23 +49,31 @@ cp target/release/spelunk ~/.local/bin/
 - **[Getting Started](docs/getting-started.md)** — installation, configuration, first steps
 - **[Commands](docs/commands.md)** — full reference for every subcommand
 - **[Memory](docs/memory.md)** — persisting decisions, context, and requirements with `spelunk memory`
-- **[Agent Guide](docs/agent-guide.md)** — using `spelunk` as infrastructure for AI coding agents
+- **[Agent Guide](docs/agent-guide.md)** — using spelunk as infrastructure for AI coding agents
 - **[Examples](docs/examples/)** — real-world usage patterns
 
 ## Features
 
+**Code intelligence**
 - Semantic search over code by meaning, not keywords
 - Natural language Q&A with source citations
 - AST-based chunking (tree-sitter) — functions, classes, structs, not naive line-splits
 - Incremental re-indexing via BLAKE3 hashing
 - Call-graph awareness: enrich search results with callers/callees
 - Cross-project search: link multiple indexed repos
-- Project memory: store decisions, context, requirements, questions
+
+**Project memory** — a structured alternative to CLAUDE.md files
+- Store decisions, context, requirements, questions, and handoff notes
+- Semantically searchable: retrieve by meaning, not keyword
+- Pull in context from GitHub issues, Linear tickets, or any URL
 - Auto-harvest memory from git commit history
 - Git hooks: auto-index and harvest on every commit
-- `spelunk plan create` — LLM-generated implementation plans saved as markdown checklists
+
+**Agent-ready**
+- `AGENT=true` env var forces JSON output on every command — no extra flags
+- `spelunk plan create` — LLM-generated implementation plans as markdown checklists
 - `spelunk verify` — semantic coherence check after code changes
-- `AGENT=true` env var for machine-readable JSON output from any command
+- `spelunk check` — exits 1 if the index is stale; use in CI or pre-flight scripts
 
 ## Supported languages
 

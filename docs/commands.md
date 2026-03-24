@@ -241,6 +241,7 @@ Store and query project context, decisions, and requirements. See [Memory](memor
 
 ```
 spelunk memory add --title "..." [--body "..."] [--kind decision] [--tags auth,db] [--files src/auth.rs]
+spelunk memory add --from-url <url> [--title "override"] [--kind requirement] [--tags ...]
 spelunk memory search <query> [--limit 10] [--format text|json]
 spelunk memory list [--kind decision] [--limit 20] [--format text|json]
 spelunk memory show <id> [--format text|json]

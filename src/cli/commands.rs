@@ -1013,16 +1013,27 @@ async fn memory_add(
 ) -> Result<()> {
     let store = MemoryStore::open(mem_path)?;
 
-    // If body not provided on the command line, open $EDITOR.
-    let body = match args.body {
-        Some(b) => b,
-        None => {
-            let title = args.title.clone();
-            tokio::task::spawn_blocking(move || open_editor_for_body(&title))
-                .await
-                .context("editor task panicked")?
-                .context("opening editor for body")?
-        }
+    // Resolve title and body: from URL, explicit args, or editor.
+    let (title, body) = if let Some(url) = &args.from_url {
+        let (fetched_title, fetched_body) = fetch_url_content(url).await
+            .with_context(|| format!("fetching {url}"))?;
+        let title = args.title.clone().unwrap_or(fetched_title);
+        let body = args.body.clone().unwrap_or(fetched_body);
+        (title, body)
+    } else {
+        let title = args.title.clone()
+            .context("--title is required when --from-url is not provided")?;
+        let body = match args.body.clone() {
+            Some(b) => b,
+            None => {
+                let t = title.clone();
+                tokio::task::spawn_blocking(move || open_editor_for_body(&t))
+                    .await
+                    .context("editor task panicked")?
+                    .context("opening editor for body")?
+            }
+        };
+        (title, body)
     };
 
     let tags: Vec<&str> = args.tags.as_deref()
@@ -1032,10 +1043,10 @@ async fn memory_add(
         .map(|s| s.split(',').map(str::trim).collect())
         .unwrap_or_default();
 
-    let note_id = store.add_note(&args.kind, &args.title, &body, &tags, &files)?;
+    let note_id = store.add_note(&args.kind, &title, &body, &tags, &files)?;
 
     // Embed and store so the note is immediately searchable.
-    let embed_text = format!("title: {} | text: {}", args.title, body);
+    let embed_text = format!("title: {title} | text: {body}");
     let sp = spinner("Embedding…");
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
         .await
@@ -1047,9 +1058,71 @@ async fn memory_add(
         store.insert_embedding(note_id, &vec_to_blob(vec))?;
     }
 
-    println!("Stored [{kind}] #{id}: {title}",
-        kind = args.kind, id = note_id, title = args.title);
+    println!("Stored [{kind}] #{id}: {title}", kind = args.kind, id = note_id);
     Ok(())
+}
+
+/// Fetch content from a URL. For GitHub issue URLs uses `gh api`; for everything
+/// else does an HTTP GET and extracts the page title + strips HTML tags.
+async fn fetch_url_content(url: &str) -> Result<(String, String)> {
+    // Detect GitHub issue: https://github.com/{owner}/{repo}/issues/{n}
+    let gh_issue_re = regex::Regex::new(
+        r"https?://github\.com/([^/]+)/([^/]+)/issues/(\d+)"
+    ).unwrap();
+
+    if let Some(caps) = gh_issue_re.captures(url) {
+        let owner = &caps[1];
+        let repo  = &caps[2];
+        let num   = &caps[3];
+        let api_path = format!("repos/{owner}/{repo}/issues/{num}");
+        let output = tokio::process::Command::new("gh")
+            .args(["api", &api_path])
+            .output()
+            .await
+            .context("`gh` CLI not found — install GitHub CLI or provide --title and --body manually")?;
+        if output.status.success() {
+            let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+                .context("parsing gh api response")?;
+            let title = json["title"].as_str().unwrap_or("GitHub Issue").to_string();
+            let body  = json["body"].as_str().unwrap_or("").to_string();
+            return Ok((title, body));
+        }
+        // gh failed (e.g. not authenticated) — fall through to HTTP fetch
+    }
+
+    // Generic HTTP fetch
+    let client = reqwest::Client::builder()
+        .user_agent("spelunk/0.1")
+        .build()?;
+    let html = client.get(url).send().await?.text().await?;
+
+    // Extract <title>
+    let title_re = regex::Regex::new(r"(?i)<title[^>]*>([\s\S]*?)</title>").unwrap();
+    let title = title_re.captures(&html)
+        .and_then(|c| c.get(1))
+        .map(|m| html_unescape(m.as_str().trim()))
+        .unwrap_or_else(|| url.to_string());
+
+    // Strip script/style blocks then all tags, collapse whitespace
+    let no_script = regex::Regex::new(r"(?is)<(script|style)[^>]*>[\s\S]*?</\1>").unwrap();
+    let no_tags   = regex::Regex::new(r"<[^>]+>").unwrap();
+    let ws        = regex::Regex::new(r"\s{3,}").unwrap();
+    let stripped = no_script.replace_all(&html, " ");
+    let stripped = no_tags.replace_all(&stripped, " ");
+    let body = ws.replace_all(stripped.trim(), "\n\n").to_string();
+    // Truncate to a reasonable size (8 KB) to avoid embedding oversized pages
+    let body = if body.len() > 8192 { body[..8192].to_string() } else { body };
+
+    Ok((title, body))
+}
+
+fn html_unescape(s: &str) -> String {
+    s.replace("&amp;", "&")
+     .replace("&lt;", "<")
+     .replace("&gt;", ">")
+     .replace("&quot;", "\"")
+     .replace("&#39;", "'")
+     .replace("&nbsp;", " ")
 }
 
 async fn memory_search(

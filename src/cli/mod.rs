@@ -233,13 +233,17 @@ pub enum MemoryCommand {
 
 #[derive(Args, Debug)]
 pub struct MemoryAddArgs {
-    /// Short title summarising the entry
+    /// Short title summarising the entry (inferred from URL if --from-url is used)
     #[arg(short, long)]
-    pub title: String,
+    pub title: Option<String>,
 
     /// Full body text (omit to open $EDITOR)
     #[arg(short, long)]
     pub body: Option<String>,
+
+    /// Fetch content from a URL (GitHub issue, Linear ticket, or any web page)
+    #[arg(long)]
+    pub from_url: Option<String>,
 
     /// Kind: decision, context, requirement, note, question, answer, handoff
     #[arg(short, long, default_value = "note")]
