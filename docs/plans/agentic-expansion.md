@@ -34,7 +34,7 @@ possible shared state layer for teams operating at levels 5–7?"
 
 - `CLAUDE.md` is compact and navigable (module map, design decisions, commands).
   No dead weight.
-- `SKILLS.md` gives agents a precise instruction set, including when to search,
+- `SKILL.md` gives agents a precise instruction set, including when to search,
   what to store, and how to interpret results.
 - `spelunk ask` separates untrusted RAG context from the question with XML
   delimiters — preventing prompt injection and improving information density.
@@ -52,7 +52,7 @@ the right time.
 
 The levels framework describes a **plan → delegate → assess → codify** loop
 where the codify step is what makes the loop compound. `spelunk memory` is the
-codify mechanism. SKILLS.md instructs agents to always store key decisions and
+codify mechanism. SKILL.md instructs agents to always store key decisions and
 context. The architecture is right.
 
 But the loop isn't fully closed yet. Codification is manual and high-friction.
@@ -68,7 +68,7 @@ makes the trade-off explicit: MCP servers inject full tool schemas into context
 on every turn whether the agent uses them or not. CLI tools only push the
 output of the command the agent actually ran. `spelunk` keeps context lean by design.
 
-SKILLS.md is the skill reference. AGENT=true makes it pipeable. This level
+SKILL.md is the skill reference. AGENT=true makes it pipeable. This level
 is covered.
 
 ### Level 6 — Harness Engineering: significant gaps
@@ -83,7 +83,7 @@ human intervention.
 There is no exit-code check agents can wire into CI or pre-commit hooks.
 There is no self-verification path — an agent can't use `spelunk` to check whether
 its own change is coherent with the existing codebase before committing.
-Documentation freshness is mentioned in SKILLS.md as an obligation but is not
+Documentation freshness is mentioned in SKILL.md as an obligation but is not
 enforced by any mechanism.
 
 ### Level 7 — Background Agents: gaps in the handoff layer

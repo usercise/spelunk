@@ -4,6 +4,42 @@ Developer guide for AI agents (and humans) working on this codebase.
 
 ---
 
+## Agent workflow — use spelunk on this codebase
+
+This project is indexed with spelunk. Use it — don't just use Read/Grep/Glob.
+
+**At the start of every session:**
+```bash
+spelunk check                                    # verify index is fresh
+spelunk memory list --kind decision --limit 10   # review prior decisions
+spelunk memory list --kind handoff --limit 3     # pick up where last session left off
+spelunk memory list --kind question              # check open questions
+```
+
+**Before reading any file, search first:**
+```bash
+spelunk search "<topic>"          # find relevant chunks by meaning
+spelunk ask "<question>"          # get a synthesised answer with citations
+spelunk graph <symbol>            # trace callers/callees when needed
+```
+
+**Store decisions as you make them** — don't wait until the end:
+```bash
+spelunk memory add --kind decision --title "..." --body "why, what alternatives, what breaks"
+spelunk memory add --kind requirement --title "..." --body "..."   # when user states a constraint
+spelunk memory add --kind note --title "..."                       # surprising/non-obvious facts
+```
+
+**At the end of every session:**
+```bash
+spelunk memory add --kind handoff --title "Handoff: <summary>" --body "what's done, what's next, open questions"
+spelunk index .                   # re-index after any commits (hook does this, but run manually if no commit)
+```
+
+Full reference: `SKILL.md` and `docs/agent-guide.md`.
+
+---
+
 ## What This Project Is
 
 `spelunk` (`spelunk`) is a Rust CLI that indexes a source tree using
