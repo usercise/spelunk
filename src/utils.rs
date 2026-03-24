@@ -1,3 +1,20 @@
+/// Returns true when the process is running in agent mode (`AGENT=true`).
+///
+/// In agent mode all output defaults to structured JSON and progress spinners
+/// are suppressed so that stdout is machine-readable.
+pub fn is_agent_mode() -> bool {
+    std::env::var("AGENT").as_deref() == Ok("true")
+}
+
+/// Return the effective output format string.
+///
+/// When agent mode is active, overrides `"text"` with `"json"` so that every
+/// command with a `--format` flag produces machine-readable output without the
+/// caller needing to pass `--format json` explicitly.
+pub fn effective_format<'a>(format: &'a str) -> &'a str {
+    if is_agent_mode() && format == "text" { "json" } else { format }
+}
+
 /// Strip ANSI escape sequences and unsafe control characters from a string.
 ///
 /// Allows newline, carriage return, and tab. Strips all other C0 control

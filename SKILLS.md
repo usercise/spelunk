@@ -275,6 +275,29 @@ by semantic distance. Memory is always per-project.
 
 ---
 
+## Agent mode (`AGENT=true`)
+
+Set `AGENT=true` in the environment before running any `ca` command to enable
+machine-readable output without extra flags:
+
+```bash
+AGENT=true ca search "authentication flow"        # → JSON, no spinner
+AGENT=true ca ask "how does the indexer work"     # → JSON schema output, no spinner
+AGENT=true ca graph src/storage/db.rs             # → JSON
+AGENT=true ca memory search "storage decisions"   # → JSON
+```
+
+What changes when `AGENT=true` is set:
+- All `--format text` defaults become `--format json` automatically.
+- `ca ask` behaves as if `--json` was passed: returns
+  `{"answer":"...","relevant_files":[...],"confidence":"..."}`.
+- Progress spinners and animated progress bars are suppressed, keeping stdout
+  clean for downstream parsing.
+
+You can still pass `--format text` explicitly to override even in agent mode.
+
+---
+
 ## Tips
 
 - `ca index` must be pointed at the project root; all other commands can be

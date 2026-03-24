@@ -22,7 +22,7 @@ fn is_tty() -> bool {
 }
 
 fn spinner(message: impl Into<std::borrow::Cow<'static, str>>) -> ProgressBar {
-    if is_tty() {
+    if is_tty() && !crate::utils::is_agent_mode() {
         let sp = ProgressBar::new_spinner();
         sp.set_message(message);
         sp.enable_steady_tick(std::time::Duration::from_millis(80));
@@ -80,7 +80,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
     // ── Phase 1: parse + store chunks ────────────────────────────────────────
     let mp = MultiProgress::new();
-    let parse_bar = if is_tty() {
+    let parse_bar = if is_tty() && !crate::utils::is_agent_mode() {
         let bar = mp.add(ProgressBar::new(files.len() as u64));
         bar.set_style(progress_style("Parsing  "));
         bar
@@ -215,7 +215,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     let batch_size = args.batch_size.max(1);
     let total_chunks = chunk_ids_and_texts.len() as u64;
 
-    let embed_bar = if is_tty() {
+    let embed_bar = if is_tty() && !crate::utils::is_agent_mode() {
         let bar = mp.add(ProgressBar::new(total_chunks));
         bar.set_style(progress_style("Embedding"));
         bar
@@ -307,7 +307,7 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
         }
     }
 
-    match args.format.as_str() {
+    match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&results)?),
         _ => print_results_text(&results),
     }
@@ -443,7 +443,8 @@ You have two sources of context:\n\
 Use both sources together to give accurate, grounded answers. \
 If the answer cannot be determined from the provided context, say so clearly rather than guessing.";
 
-    let (system_prompt, json_schema) = if args.json {
+    let use_json = args.json || crate::utils::is_agent_mode();
+    let (system_prompt, json_schema) = if use_json {
         (
             concat!(
                 "You are an expert software analyst helping a developer understand a codebase.\n",
@@ -493,7 +494,7 @@ If the answer cannot be determined from the provided context, say so clearly rat
     let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(128);
     let generate = llm.generate(&messages, 1024, tx, json_schema);
 
-    if args.json {
+    if use_json {
         // Collect all tokens then parse + pretty-print the JSON object.
         let collect = async move {
             let mut buf = String::new();
@@ -668,7 +669,7 @@ pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
         return Ok(());
     }
 
-    match args.format.as_str() {
+    match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&edges)?),
         _ => print_edges(&edges, symbol),
     }
@@ -702,7 +703,7 @@ pub fn chunks(args: ChunksArgs, cfg: Config) -> Result<()> {
         return Ok(());
     }
 
-    match args.format.as_str() {
+    match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&results)?),
         _ => print_chunks_text(&results),
     }
@@ -873,7 +874,7 @@ async fn memory_search(
         return Ok(());
     }
 
-    match args.format.as_str() {
+    match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&notes)?),
         _ => {
             for n in &notes {
@@ -893,7 +894,7 @@ fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path) -> Resul
         return Ok(());
     }
 
-    match args.format.as_str() {
+    match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&notes)?),
         _ => {
             for n in &notes {
@@ -908,7 +909,7 @@ fn memory_show(args: super::MemoryShowArgs, mem_path: &std::path::Path) -> Resul
     let store = MemoryStore::open(mem_path)?;
     match store.get(args.id)? {
         None => anyhow::bail!("No memory entry with id {}.", args.id),
-        Some(n) => match args.format.as_str() {
+        Some(n) => match crate::utils::effective_format(&args.format) {
             "json" => println!("{}", serde_json::to_string_pretty(&n)?),
             _ => {
                 println!("\x1b[1m#{} [{}] {}\x1b[0m", n.id, n.kind, n.title);
