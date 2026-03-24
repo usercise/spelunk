@@ -1062,10 +1062,14 @@ async fn memory_add(
     Ok(())
 }
 
-/// Fetch content from a URL. For GitHub issue URLs uses `gh api`; for everything
-/// else does an HTTP GET and extracts the page title + strips HTML tags.
+/// Fetch content from a URL.
+///
+/// Priority:
+///   1. GitHub issue URLs → `gh api` for structured title + body (Markdown)
+///   2. `~/scripts/web-to-md.ts` via bun → Readability + Turndown (clean Markdown)
+///   3. Fallback: raw HTTP GET + naive HTML stripping
 async fn fetch_url_content(url: &str) -> Result<(String, String)> {
-    // Detect GitHub issue: https://github.com/{owner}/{repo}/issues/{n}
+    // ── 1. GitHub issue ───────────────────────────────────────────────────────
     let gh_issue_re = regex::Regex::new(
         r"https?://github\.com/([^/]+)/([^/]+)/issues/(\d+)"
     ).unwrap();
@@ -1075,45 +1079,77 @@ async fn fetch_url_content(url: &str) -> Result<(String, String)> {
         let repo  = &caps[2];
         let num   = &caps[3];
         let api_path = format!("repos/{owner}/{repo}/issues/{num}");
-        let output = tokio::process::Command::new("gh")
+        let out = tokio::process::Command::new("gh")
             .args(["api", &api_path])
             .output()
-            .await
-            .context("`gh` CLI not found — install GitHub CLI or provide --title and --body manually")?;
-        if output.status.success() {
-            let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-                .context("parsing gh api response")?;
-            let title = json["title"].as_str().unwrap_or("GitHub Issue").to_string();
-            let body  = json["body"].as_str().unwrap_or("").to_string();
-            return Ok((title, body));
+            .await;
+        if let Ok(out) = out {
+            if out.status.success() {
+                let json: serde_json::Value = serde_json::from_slice(&out.stdout)
+                    .context("parsing gh api response")?;
+                let title = json["title"].as_str().unwrap_or("GitHub Issue").to_string();
+                let body  = json["body"].as_str().unwrap_or("").to_string();
+                return Ok((title, body));
+            }
         }
-        // gh failed (e.g. not authenticated) — fall through to HTTP fetch
+        // gh missing or not authenticated — fall through
     }
 
-    // Generic HTTP fetch
+    // ── 2. web-to-md.ts via bun ───────────────────────────────────────────────
+    // The script outputs:  # <title>\n\n<markdown body>
+    // Expand ~ manually so we don't rely on shell expansion.
+    let script = dirs::home_dir()
+        .map(|h| h.join("scripts/web-to-md.ts"))
+        .filter(|p| p.exists());
+
+    if let Some(script_path) = script {
+        let out = tokio::process::Command::new("bun")
+            .arg(&script_path)
+            .arg(url)
+            .output()
+            .await;
+        if let Ok(out) = out {
+            if out.status.success() {
+                let md = String::from_utf8_lossy(&out.stdout);
+                return parse_web_to_md_output(&md, url);
+            }
+        }
+        // bun missing or script errored — fall through
+    }
+
+    // ── 3. Fallback: raw HTTP + naive stripping ───────────────────────────────
     let client = reqwest::Client::builder()
         .user_agent("spelunk/0.1")
         .build()?;
     let html = client.get(url).send().await?.text().await?;
 
-    // Extract <title>
     let title_re = regex::Regex::new(r"(?i)<title[^>]*>([\s\S]*?)</title>").unwrap();
     let title = title_re.captures(&html)
         .and_then(|c| c.get(1))
         .map(|m| html_unescape(m.as_str().trim()))
         .unwrap_or_else(|| url.to_string());
 
-    // Strip script/style blocks then all tags, collapse whitespace
     let no_script = regex::Regex::new(r"(?is)<(script|style)[^>]*>[\s\S]*?</\1>").unwrap();
     let no_tags   = regex::Regex::new(r"<[^>]+>").unwrap();
     let ws        = regex::Regex::new(r"\s{3,}").unwrap();
-    let stripped = no_script.replace_all(&html, " ");
-    let stripped = no_tags.replace_all(&stripped, " ");
+    let stripped  = no_script.replace_all(&html, " ");
+    let stripped  = no_tags.replace_all(&stripped, " ");
     let body = ws.replace_all(stripped.trim(), "\n\n").to_string();
-    // Truncate to a reasonable size (8 KB) to avoid embedding oversized pages
     let body = if body.len() > 8192 { body[..8192].to_string() } else { body };
 
     Ok((title, body))
+}
+
+/// Parse the `# Title\n\n<body>` output produced by web-to-md.ts.
+fn parse_web_to_md_output(md: &str, url: &str) -> Result<(String, String)> {
+    let md = md.trim();
+    if let Some(rest) = md.strip_prefix("# ") {
+        let (title_line, body) = rest.split_once('\n').unwrap_or((rest, ""));
+        Ok((title_line.trim().to_string(), body.trim_start().to_string()))
+    } else {
+        // Unexpected format — use the whole thing as body, URL as title
+        Ok((url.to_string(), md.to_string()))
+    }
 }
 
 fn html_unescape(s: &str) -> String {
