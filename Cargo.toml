@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Local code intelligence via RAG — indexed with tree-sitter, stored in SQLite"
 license = "MIT"
+repository = "https://github.com/usercise/spelunk"
 
 [[bin]]
 name = "spelunk"

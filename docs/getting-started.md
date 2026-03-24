@@ -24,7 +24,7 @@ Start the local server (default port: `1234`). The server icon in the toolbar sh
 Clone and build:
 
 ```bash
-git clone https://github.com/your-repo/spelunk
+git clone https://github.com/usercise/spelunk
 cd spelunk
 cargo build --release
 ```
