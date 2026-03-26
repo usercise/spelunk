@@ -36,6 +36,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Register sqlite-vec extension for every connection in this process.
+    #[allow(clippy::missing_transmute_annotations)]
     unsafe {
         rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
             sqlite_vec::sqlite3_vec_init as *const (),

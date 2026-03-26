@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+    # number_prefix is pulled in by indicatif; no fix is available upstream yet.
+    # https://rustsec.org/advisories/RUSTSEC-2025-0119
+    "RUSTSEC-2025-0119",
+]

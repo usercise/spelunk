@@ -140,6 +140,7 @@ impl ServerDb {
 
     // ── Notes ─────────────────────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_note(
         &self,
         project_id: i64,

@@ -11,7 +11,7 @@ pub fn is_agent_mode() -> bool {
 /// When agent mode is active, overrides `"text"` with `"json"` so that every
 /// command with a `--format` flag produces machine-readable output without the
 /// caller needing to pass `--format json` explicitly.
-pub fn effective_format<'a>(format: &'a str) -> &'a str {
+pub fn effective_format(format: &str) -> &str {
     if is_agent_mode() && format == "text" {
         "json"
     } else {

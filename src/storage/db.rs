@@ -96,6 +96,7 @@ impl Database {
     // Chunks
     // -----------------------------------------------------------------------
 
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_chunk(
         &self,
         file_id: i64,
@@ -347,12 +348,11 @@ impl Database {
              FROM chunks c
              WHERE c.name IN (
                  SELECT target_name FROM graph_edges
-                 WHERE source_name IN ({ph}) AND kind = 'calls'
+                 WHERE source_name IN ({placeholders}) AND kind = 'calls'
                  UNION
                  SELECT source_name FROM graph_edges
-                 WHERE target_name IN ({ph}) AND kind = 'calls'
-             )",
-            ph = placeholders
+                 WHERE target_name IN ({placeholders}) AND kind = 'calls'
+             )"
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let params: Vec<&dyn rusqlite::ToSql> =

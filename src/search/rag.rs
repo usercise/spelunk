@@ -64,7 +64,8 @@ impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
             println!();
         };
 
-        tokio::try_join!(generate, async { Ok(print_tokens.await) })?;
+        tokio::try_join!(generate, async { print_tokens.await;
+        Ok(()) })?;
         Ok(())
     }
 }

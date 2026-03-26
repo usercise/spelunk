@@ -46,16 +46,15 @@ struct ProjectConfig {
 /// Resolve the database path.
 ///
 /// Priority: explicit `--db` arg > project DB (walk up from CWD) > `cfg_default`.
-pub fn resolve_db(explicit: Option<&PathBuf>, cfg_default: &PathBuf) -> PathBuf {
+pub fn resolve_db(explicit: Option<&Path>, cfg_default: &Path) -> PathBuf {
     if let Some(p) = explicit {
-        return p.clone();
+        return p.to_path_buf();
     }
-    if let Ok(cwd) = std::env::current_dir() {
-        if let Some(p) = find_project_db(&cwd) {
+    if let Ok(cwd) = std::env::current_dir()
+        && let Some(p) = find_project_db(&cwd) {
             return p;
         }
-    }
-    cfg_default.clone()
+    cfg_default.to_path_buf()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,8 +163,8 @@ impl Config {
         };
 
         // ── 2. Merge project-level config (.spelunk/config.toml) ─────────────
-        if let Ok(cwd) = std::env::current_dir() {
-            if let Some(proj_path) = find_project_config(&cwd) {
+        if let Ok(cwd) = std::env::current_dir()
+            && let Some(proj_path) = find_project_config(&cwd) {
                 let raw = std::fs::read_to_string(&proj_path).with_context(|| {
                     format!("reading project config at {}", proj_path.display())
                 })?;
@@ -181,7 +180,6 @@ impl Config {
                     cfg.project_id = Some(v);
                 }
             }
-        }
 
         // ── 3. Environment variable overrides ────────────────────────────────
         if let Ok(v) = std::env::var("SPELUNK_SERVER_URL") {

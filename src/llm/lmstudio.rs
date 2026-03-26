@@ -151,12 +151,11 @@ impl LlmBackend for LmStudioLlm {
                     match serde_json::from_str::<StreamChunk>(data) {
                         Ok(chunk) => {
                             for choice in chunk.choices {
-                                if let Some(content) = choice.delta.content {
-                                    if !content.is_empty() && tx.send(content).await.is_err() {
+                                if let Some(content) = choice.delta.content
+                                    && !content.is_empty() && tx.send(content).await.is_err() {
                                         // Receiver dropped — caller cancelled.
                                         return Ok(());
                                     }
-                                }
                             }
                         }
                         Err(e) => {
