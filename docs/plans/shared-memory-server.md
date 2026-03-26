@@ -29,37 +29,65 @@ The feedback from early users: "this is great but the information is siloed per 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│  Developer A                            │
-│  spelunk CLI → LM Studio (embed)        │──POST /memory → ┐
-│  spelunk CLI → local index.db (search)  │                  │
-└─────────────────────────────────────────┘                  ▼
-                                                  ┌──────────────────────┐
-                                                  │  spelunk-server       │
-                                                  │  shared memory.db    │
-                                                  │  REST API            │
-                                                  └──────────────────────┘
-┌─────────────────────────────────────────┐                  ▲
-│  Developer B                            │                  │
-│  spelunk CLI → LM Studio (embed)        │──POST /memory → ┘
-│  spelunk CLI → local index.db (search)  │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  Developer A  (project: frontend-app)        │
+│  .spelunk/config.toml → project_id, url      │
+│  spelunk CLI → LM Studio (embed locally)     │──┐
+│  spelunk CLI → local index.db (code search)  │  │
+└─────────────────────────────────────────────┘  │  POST /v1/projects/frontend-app/memory
+                                                   ▼
+                                        ┌─────────────────────────┐
+                                        │      spelunk-server      │
+                                        │                          │
+                                        │  projects/               │
+                                        │    frontend-app/  ───────│── memory entries
+                                        │    payments-api/  ───────│── memory entries
+                                        │    data-pipeline/ ───────│── memory entries
+                                        │                          │
+                                        │  spelunk.db (WAL)        │
+                                        │  REST API :7777          │
+                                        └─────────────────────────┘
+                                                   ▲
+┌─────────────────────────────────────────────┐  │  POST /v1/projects/frontend-app/memory
+│  Developer B  (project: frontend-app)        │──┘
+│  .spelunk/config.toml → same project_id      │
+│  spelunk CLI → LM Studio (embed locally)     │
+│  spelunk CLI → local index.db (code search)  │
+└─────────────────────────────────────────────┘
 ```
 
 ## Configuration
 
-```toml
-# ~/.config/spelunk/config.toml  (personal, gitignored)
-memory_server_url = "http://spelunk.internal:7777"
-memory_server_key = "your-shared-api-key"
+Config loads in layers, later layers override earlier ones:
 
-# .spelunk/config.toml  (checked in, team-wide default)
-memory_server_url = "http://spelunk.internal:7777"
+```
+1. ~/.config/spelunk/config.toml   global personal defaults
+2. .spelunk/config.toml            project-level, checked in, team-wide
+3. env vars                        CI, scripts, temporary overrides
 ```
 
-Environment variable override: `SPELUNK_MEMORY_SERVER_URL`, `SPELUNK_MEMORY_SERVER_KEY`.
+```toml
+# .spelunk/config.toml  — committed to the repo, shared by the whole team
+# Safe to check in: contains no secrets
+memory_server_url = "http://spelunk.internal:7777"
+project_id        = "my-awesome-app"
+```
 
-No `memory_server_url` set → local mode (current behaviour, unchanged).
+```toml
+# ~/.config/spelunk/config.toml  — personal, never committed
+# Secrets and personal preferences live here
+memory_server_key  = "your-shared-api-key"
+embedding_model    = "text-embedding-embeddinggemma-300m-qat"
+llm_model          = "google/gemma-3n-e4b"
+```
+
+Environment variable overrides: `SPELUNK_SERVER_URL`, `SPELUNK_SERVER_KEY`, `SPELUNK_PROJECT_ID`.
+
+No `memory_server_url` configured → local mode, unchanged behaviour.
+
+spelunk discovers `.spelunk/config.toml` by walking up from the current directory to
+the git root (same strategy as `.gitignore` discovery). This means the file can live at
+the repo root and be found from any subdirectory.
 
 ## Auth
 
@@ -70,21 +98,40 @@ behind-firewall deployment.
 **v2 consideration**: per-user tokens for audit trails and granular revocation. Not in scope
 for v1 — don't let it block shipping.
 
-## Server
+## Multi-project server
 
-A new `spelunk-server` binary (or `spelunk serve` subcommand) that exposes a REST API:
+The server supports multiple projects. Each project has its own memory namespace —
+a team running spelunk across five repos gets five independent memory stores, all
+served by the same spelunk-server instance.
+
+### Project identity
+
+`project_id` is a short slug set in `.spelunk/config.toml` (e.g. `my-awesome-app`).
+It is scoped to a server instance — two different companies can use `api-server` as
+their project_id on their own separate servers without conflict.
+
+On first write for an unknown `project_id`, the server auto-creates the project.
+No explicit registration step required.
+
+### REST API
+
+All routes are scoped under `/v1/projects/{project_id}`:
 
 ```
-POST   /memory              — add entry (receives pre-embedded vector from client)
-GET    /memory              — list entries (kind, limit, offset)
-GET    /memory/:id          — get single entry
-POST   /memory/search       — KNN search (client sends query vector)
-DELETE /memory/:id          — delete entry
-GET    /health              — liveness check
+GET    /v1/health                                   — liveness (no auth required)
+GET    /v1/projects                                 — list projects on this server
+POST   /v1/projects/{project_id}/memory             — add entry (pre-embedded vector)
+GET    /v1/projects/{project_id}/memory             — list (kind, limit, offset)
+GET    /v1/projects/{project_id}/memory/{id}        — get single entry
+POST   /v1/projects/{project_id}/memory/search      — KNN (client sends query vector)
+DELETE /v1/projects/{project_id}/memory/{id}        — delete entry
+GET    /v1/projects/{project_id}/stats              — entry counts, embedding dimension
 ```
 
-The server holds `memory.db` (SQLite, WAL mode). No LLM, no embedding model — it only
-stores and retrieves vectors that clients computed.
+All routes except `/v1/health` require `Authorization: Bearer <key>`.
+
+The server holds a single `spelunk.db` (SQLite, WAL mode) with a `projects` table
+and a `notes` table with a `project_id` foreign key. No LLM, no embedding model.
 
 ## Open questions
 
@@ -153,19 +200,28 @@ When `memory_server_url` is configured:
 - [ ] Exclude archived entries from search and `spelunk ask` context
 - [ ] `spelunk memory list --archived` to view historical entries
 
-### Phase 2: Server
-- [ ] Add `memory_server_url` + `memory_server_key` to `Config`
+### Phase 2: Per-project config + client changes
+- [ ] Add `.spelunk/config.toml` project-level config (walk up to git root to discover)
+- [ ] Config loading order: global personal → project → env vars
+- [ ] Add `memory_server_url`, `memory_server_key`, `project_id` fields to `Config`
+- [ ] `project_id` required when `memory_server_url` is set; error clearly if missing
 - [ ] Abstract memory store behind a `MemoryBackend` trait (local SQLite vs remote HTTP)
-- [ ] Implement `RemoteMemoryBackend` (HTTP client wrapping the REST API)
-- [ ] Implement `spelunk serve` subcommand (or separate binary)
-- [ ] REST API: add, list, get, search, delete, health
-- [ ] Server auth middleware (Bearer token)
-- [ ] Store + enforce embedding dimension on server
-- [ ] `spelunk memory push` — migrate local entries to server
+- [ ] Implement `RemoteMemoryBackend` (HTTP client, all routes scoped to project_id)
 
-### Phase 3: Packaging
+### Phase 3: Server
+- [ ] Implement `spelunk serve` subcommand (or separate binary — decision pending)
+- [ ] `projects` table in server DB: `(id, slug, embedding_dim, created_at)`
+- [ ] Auto-create project on first write for unknown project_id
+- [ ] REST API: all routes under `/v1/projects/{project_id}/`
+- [ ] Server auth middleware (Bearer token, all routes except `/v1/health`)
+- [ ] Store + enforce embedding dimension per project (error on mismatch)
+- [ ] `spelunk memory push` — migrate local entries to server under correct project_id
+- [ ] `GET /v1/projects` — list projects (useful for server admin)
+
+### Phase 4: Packaging
 - [ ] `Dockerfile` for `spelunk-server`
 - [ ] `docker-compose.yml` (minimal: server + volume)
 - [ ] `docker-compose.full.yml` (server + Ollama with GPU compose profile)
 - [ ] Document server setup in `docs/server.md`
 - [ ] Update `docs/getting-started.md` with team setup section
+- [ ] Document `.spelunk/config.toml` format and what to commit vs gitignore
