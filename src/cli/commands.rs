@@ -10,7 +10,7 @@ use crate::{
     indexer::{graph::EdgeExtractor, parser::{detect_language, detect_text_language, is_binary_file, SourceParser}},
     registry::Registry,
     search::SearchResult,
-    storage::{Database, MemoryStore},
+    storage::{open_memory_backend, Database, NoteInput},
 };
 use super::{
     AskArgs, CheckArgs, ChunksArgs, GraphArgs, HooksArgs, HooksCommand, IndexArgs,
@@ -386,10 +386,8 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
 
     // ── Step 2b: memory context (decisions / requirements / background) ──────
     let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
-    let memory_context: Option<String> = if mem_path.exists() {
-        match crate::storage::MemoryStore::open(&mem_path)
-            .and_then(|s| s.search(&query_blob, 5))
-        {
+    let memory_context: Option<String> = if let Ok(backend) = open_memory_backend(&cfg, &mem_path) {
+        match backend.search(&query_blob, 5).await {
             Ok(notes) if !notes.is_empty() => {
                 let text = notes
                     .iter()
@@ -533,9 +531,10 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
         let stats = db.stats()?;
         let drift = db.drift_candidates(30, 10).unwrap_or_default();
         let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
-        let memory_count = crate::storage::MemoryStore::open(&mem_path)
-            .and_then(|s| s.count())
-            .unwrap_or(0);
+        let memory_count = match open_memory_backend(&cfg, &mem_path).ok() {
+            Some(b) => b.count().await.unwrap_or(0),
+            None => 0,
+        };
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({
             "file_count": stats.file_count,
             "chunk_count": stats.chunk_count,
@@ -1014,17 +1013,18 @@ fn hooks_uninstall() -> Result<()> {
 // ── memory ───────────────────────────────────────────────────────────────────
 
 pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
+    cfg.validate()?;
     let mem_path = args.db.clone().unwrap_or_else(|| {
         resolve_db(None, &cfg.db_path).with_file_name("memory.db")
     });
     match args.command {
         MemoryCommand::Add(a)       => memory_add(a, &mem_path, &cfg).await,
         MemoryCommand::Search(a)    => memory_search(a, &mem_path, &cfg).await,
-        MemoryCommand::List(a)      => memory_list(a, &mem_path),
-        MemoryCommand::Show(a)      => memory_show(a, &mem_path),
+        MemoryCommand::List(a)      => memory_list(a, &mem_path, &cfg).await,
+        MemoryCommand::Show(a)      => memory_show(a, &mem_path, &cfg).await,
         MemoryCommand::Harvest(a)   => memory_harvest(a, &mem_path, &cfg).await,
-        MemoryCommand::Archive(a)   => memory_archive(a, &mem_path),
-        MemoryCommand::Supersede(a) => memory_supersede(a, &mem_path),
+        MemoryCommand::Archive(a)   => memory_archive(a, &mem_path, &cfg).await,
+        MemoryCommand::Supersede(a) => memory_supersede(a, &mem_path, &cfg).await,
     }
 }
 
@@ -1033,8 +1033,6 @@ async fn memory_add(
     mem_path: &std::path::Path,
     cfg: &Config,
 ) -> Result<()> {
-    let store = MemoryStore::open(mem_path)?;
-
     // Resolve title and body: from URL, explicit args, or editor.
     let (title, body) = if let Some(url) = &args.from_url {
         let (fetched_title, fetched_body) = fetch_url_content(url).await
@@ -1058,16 +1056,14 @@ async fn memory_add(
         (title, body)
     };
 
-    let tags: Vec<&str> = args.tags.as_deref()
-        .map(|s| s.split(',').map(str::trim).collect())
+    let tags: Vec<String> = args.tags.as_deref()
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
         .unwrap_or_default();
-    let files: Vec<&str> = args.files.as_deref()
-        .map(|s| s.split(',').map(str::trim).collect())
+    let files: Vec<String> = args.files.as_deref()
+        .map(|s| s.split(',').map(|f| f.trim().to_string()).collect())
         .unwrap_or_default();
 
-    let note_id = store.add_note(&args.kind, &title, &body, &tags, &files)?;
-
-    // Embed and store so the note is immediately searchable.
+    // Embed first so the vector is ready when we call the backend.
     let embed_text = format!("title: {title} | text: {body}");
     let sp = spinner("Embedding…");
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
@@ -1075,10 +1071,17 @@ async fn memory_add(
         .context("loading embedding model")?;
     let vecs = embedder.embed(&[&embed_text]).await?;
     sp.finish_and_clear();
+    let embedding = vecs.first().map(|v| vec_to_blob(v));
 
-    if let Some(vec) = vecs.first() {
-        store.insert_embedding(note_id, &vec_to_blob(vec))?;
-    }
+    let backend = open_memory_backend(cfg, mem_path)?;
+    let note_id = backend.add(NoteInput {
+        kind: args.kind.clone(),
+        title: title.clone(),
+        body: body.clone(),
+        tags,
+        linked_files: files,
+        embedding,
+    }).await?;
 
     println!("Stored [{kind}] #{id}: {title}", kind = args.kind, id = note_id);
     Ok(())
@@ -1188,8 +1191,6 @@ async fn memory_search(
     mem_path: &std::path::Path,
     cfg: &Config,
 ) -> Result<()> {
-    let store = MemoryStore::open(mem_path)?;
-
     let query_text = format!("task: question answering | query: {}", args.query);
     let sp = spinner("Embedding query…");
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
@@ -1199,7 +1200,8 @@ async fn memory_search(
     sp.finish_and_clear();
 
     let blob = vec_to_blob(vecs.first().context("no embedding returned")?);
-    let notes = store.search(&blob, args.limit)?;
+    let backend = open_memory_backend(cfg, mem_path)?;
+    let notes = backend.search(&blob, args.limit).await?;
 
     if notes.is_empty() {
         println!("No memory entries found.");
@@ -1217,9 +1219,9 @@ async fn memory_search(
     Ok(())
 }
 
-fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path) -> Result<()> {
-    let store = MemoryStore::open(mem_path)?;
-    let notes = store.list(args.kind.as_deref(), args.limit, args.archived)?;
+async fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+    let backend = open_memory_backend(cfg, mem_path)?;
+    let notes = backend.list(args.kind.as_deref(), args.limit, args.archived).await?;
 
     if notes.is_empty() {
         println!("No memory entries found.");
@@ -1237,9 +1239,9 @@ fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path) -> Resul
     Ok(())
 }
 
-fn memory_show(args: super::MemoryShowArgs, mem_path: &std::path::Path) -> Result<()> {
-    let store = MemoryStore::open(mem_path)?;
-    match store.get(args.id)? {
+async fn memory_show(args: super::MemoryShowArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+    let backend = open_memory_backend(cfg, mem_path)?;
+    match backend.get(args.id).await? {
         None => anyhow::bail!("No memory entry with id {}.", args.id),
         Some(n) => match crate::utils::effective_format(&args.format) {
             "json" => println!("{}", serde_json::to_string_pretty(&n)?),
@@ -1335,9 +1337,9 @@ fn open_editor_for_body(title: &str) -> Result<String> {
     Ok(body)
 }
 
-fn memory_archive(args: super::MemoryArchiveArgs, mem_path: &std::path::Path) -> Result<()> {
-    let store = MemoryStore::open(mem_path)?;
-    if store.archive(args.id)? {
+async fn memory_archive(args: super::MemoryArchiveArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+    let backend = open_memory_backend(cfg, mem_path)?;
+    if backend.archive(args.id).await? {
         println!("Archived memory entry #{}.", args.id);
     } else {
         anyhow::bail!("No active memory entry with id {}.", args.id);
@@ -1345,13 +1347,13 @@ fn memory_archive(args: super::MemoryArchiveArgs, mem_path: &std::path::Path) ->
     Ok(())
 }
 
-fn memory_supersede(args: super::MemorySupersededArgs, mem_path: &std::path::Path) -> Result<()> {
-    let store = MemoryStore::open(mem_path)?;
+async fn memory_supersede(args: super::MemorySupersededArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+    let backend = open_memory_backend(cfg, mem_path)?;
     // Verify the new entry exists.
-    if store.get(args.new_id)?.is_none() {
+    if backend.get(args.new_id).await?.is_none() {
         anyhow::bail!("No memory entry with id {} (new).", args.new_id);
     }
-    if store.supersede(args.old_id, args.new_id)? {
+    if backend.supersede(args.old_id, args.new_id).await? {
         println!("Archived #{old} → superseded by #{new}.", old = args.old_id, new = args.new_id);
     } else {
         anyhow::bail!("No active memory entry with id {} (old).", args.old_id);
@@ -1398,8 +1400,8 @@ async fn memory_harvest(
     }
 
     // ── Step 2: skip already-harvested SHAs ──────────────────────────────────
-    let store = MemoryStore::open(mem_path)?;
-    let known_shas = store.harvested_shas()?;
+    let backend = open_memory_backend(cfg, mem_path)?;
+    let known_shas = backend.harvested_shas().await?;
     let new_commits: Vec<_> = commits
         .iter()
         .filter(|(sha, _, _)| !known_shas.contains(sha))
@@ -1525,14 +1527,18 @@ async fn memory_harvest(
             .unwrap_or(sha.clone());
         tags.push(format!("git:{full_sha}"));
 
-        let tag_refs: Vec<&str> = tags.iter().map(String::as_str).collect();
-        let note_id = store.add_note(kind, &title, &body, &tag_refs, &[])?;
-
         let embed_text = format!("title: {title} | text: {body}");
         let vecs = embedder.embed(&[&embed_text]).await?;
-        if let Some(vec) = vecs.first() {
-            store.insert_embedding(note_id, &vec_to_blob(vec))?;
-        }
+        let embedding = vecs.first().map(|v| vec_to_blob(v));
+
+        let note_id = backend.add(NoteInput {
+            kind: kind.to_string(),
+            title: title.clone(),
+            body: body.clone(),
+            tags: tags.clone(),
+            linked_files: vec![],
+            embedding,
+        }).await?;
 
         println!("  + [{kind}] #{note_id}: {title}");
         stored += 1;
@@ -1653,14 +1659,16 @@ async fn plan_create(
 
     // Gather memory context if available.
     let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
-    let memory_context = if mem_path.exists() {
-        let store = crate::storage::MemoryStore::open(&mem_path)?;
+    let memory_context = {
         let mblob = vec_to_blob(vecs.first().context("no embedding")?);
-        store.search(&mblob, 5).ok().map(|notes| {
-            notes.iter().map(|n| format!("[{}] {}: {}", n.kind, n.title, n.body)).collect::<Vec<_>>().join("\n")
-        })
-    } else {
-        None
+        match open_memory_backend(cfg, &mem_path).ok() {
+            Some(b) => b.search(&mblob, 5).await.ok().and_then(|notes| {
+                if notes.is_empty() { None } else {
+                    Some(notes.iter().map(|n| format!("[{}] {}: {}", n.kind, n.title, n.body)).collect::<Vec<_>>().join("\n"))
+                }
+            }),
+            None => None,
+        }
     };
 
     // Build LLM prompt.

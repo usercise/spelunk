@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [features]
 default = ["backend-lmstudio"]
-backend-lmstudio = ["dep:reqwest", "dep:futures-util"]
+backend-lmstudio = ["dep:futures-util"]
 
 [dependencies]
 
@@ -60,8 +60,8 @@ tree-sitter-hcl        = "1.1"
 tree-sitter-proto      = "0.4"
 tree-sitter-sequel     = "0.3"
 
-# HTTP client for LM Studio backend
-reqwest      = { version = "0.12", features = ["json", "stream"], optional = true }
+# HTTP client — used by LM Studio backend and remote memory backend
+reqwest      = { version = "0.12", features = ["json", "stream"] }
 futures-util = { version = "0.3", optional = true }
 
 # Secret scanning in indexer

@@ -17,6 +17,32 @@ pub fn find_project_db(start: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Walk up from `start` looking for `.spelunk/config.toml` (project-level config).
+/// Stops at the filesystem root. Returns the path if found.
+fn find_project_config(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        let candidate = dir.join(".spelunk").join("config.toml");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// Fields that can be set in `.spelunk/config.toml` (project-level, checked-in).
+/// Only contains fields safe to share with the team (no secrets).
+#[derive(Debug, Default, Deserialize)]
+struct ProjectConfig {
+    memory_server_url: Option<String>,
+    /// Shared API key — acceptable if the server is behind a VPN/firewall.
+    /// For secrets, prefer `SPELUNK_SERVER_KEY` env var instead.
+    memory_server_key: Option<String>,
+    project_id: Option<String>,
+}
+
 /// Resolve the database path.
 ///
 /// Priority: explicit `--db` arg > project DB (walk up from CWD) > `cfg_default`.
@@ -59,6 +85,26 @@ pub struct Config {
     /// Base URL for the LM Studio server (backend-lmstudio only).
     #[serde(default = "Config::default_lmstudio_base_url")]
     pub lmstudio_base_url: String,
+
+    // ── Shared memory server (optional) ──────────────────────────────────────
+
+    /// URL of the spelunk-server instance, e.g. `http://spelunk.internal:7777`.
+    /// Set in `.spelunk/config.toml` (project-level) or via `SPELUNK_SERVER_URL`.
+    /// If unset, memory is stored locally in memory.db.
+    #[serde(default)]
+    pub memory_server_url: Option<String>,
+
+    /// Bearer token for spelunk-server auth.
+    /// Set in `~/.config/spelunk/config.toml` (personal) or via `SPELUNK_SERVER_KEY`.
+    /// Do NOT commit this to `.spelunk/config.toml`.
+    #[serde(default)]
+    pub memory_server_key: Option<String>,
+
+    /// Project slug for the shared memory server (e.g. `my-awesome-app`).
+    /// Required when `memory_server_url` is set.
+    /// Set in `.spelunk/config.toml` (project-level) or via `SPELUNK_PROJECT_ID`.
+    #[serde(default)]
+    pub project_id: Option<String>,
 }
 
 impl Config {
@@ -86,29 +132,68 @@ impl Default for Config {
             llm_model: Self::default_llm_model(),
             batch_size: 32,
             lmstudio_base_url: Self::default_lmstudio_base_url(),
+            memory_server_url: None,
+            memory_server_key: None,
+            project_id: None,
         }
     }
 }
 
 impl Config {
-    /// Load config from file, falling back to defaults.
-    /// If `path` is None, looks for `~/.config/spelunk/config.toml`.
+    /// Load config with layered overrides:
+    ///   1. Defaults
+    ///   2. `~/.config/spelunk/config.toml` (global personal)
+    ///   3. `.spelunk/config.toml` discovered by walking up from CWD (project-level, team-wide)
+    ///   4. Environment variables: `SPELUNK_SERVER_URL`, `SPELUNK_SERVER_KEY`, `SPELUNK_PROJECT_ID`
+    ///
+    /// Pass `path` to override the global config location (used by `--config` flag).
     pub fn load(path: Option<&Path>) -> Result<Self> {
-        let config_path = match path {
+        // ── 1. Load global personal config ───────────────────────────────────
+        let global_path = match path {
             Some(p) => p.to_path_buf(),
             None => dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join("spelunk")
                 .join("config.toml"),
         };
+        let mut cfg: Config = if global_path.exists() {
+            let raw = std::fs::read_to_string(&global_path)
+                .with_context(|| format!("reading config at {}", global_path.display()))?;
+            toml::from_str(&raw).context("parsing config.toml")?
+        } else {
+            Config::default()
+        };
 
-        if !config_path.exists() {
-            return Ok(Self::default());
+        // ── 2. Merge project-level config (.spelunk/config.toml) ─────────────
+        if let Ok(cwd) = std::env::current_dir() {
+            if let Some(proj_path) = find_project_config(&cwd) {
+                let raw = std::fs::read_to_string(&proj_path)
+                    .with_context(|| format!("reading project config at {}", proj_path.display()))?;
+                let proj: ProjectConfig = toml::from_str(&raw)
+                    .context("parsing .spelunk/config.toml")?;
+                if let Some(v) = proj.memory_server_url { cfg.memory_server_url = Some(v); }
+                if let Some(v) = proj.memory_server_key { cfg.memory_server_key = Some(v); }
+                if let Some(v) = proj.project_id        { cfg.project_id = Some(v); }
+            }
         }
 
-        let raw = std::fs::read_to_string(&config_path)
-            .with_context(|| format!("reading config at {}", config_path.display()))?;
+        // ── 3. Environment variable overrides ────────────────────────────────
+        if let Ok(v) = std::env::var("SPELUNK_SERVER_URL")  { cfg.memory_server_url = Some(v); }
+        if let Ok(v) = std::env::var("SPELUNK_SERVER_KEY")  { cfg.memory_server_key = Some(v); }
+        if let Ok(v) = std::env::var("SPELUNK_PROJECT_ID")  { cfg.project_id = Some(v); }
 
-        toml::from_str(&raw).context("parsing config.toml")
+        Ok(cfg)
+    }
+
+    /// Validate cross-field constraints. Call after `load()`.
+    pub fn validate(&self) -> Result<()> {
+        if self.memory_server_url.is_some() && self.project_id.is_none() {
+            anyhow::bail!(
+                "memory_server_url is set but project_id is missing.\n\
+                 Add `project_id = \"my-project\"` to .spelunk/config.toml \
+                 or set SPELUNK_PROJECT_ID."
+            );
+        }
+        Ok(())
     }
 }
