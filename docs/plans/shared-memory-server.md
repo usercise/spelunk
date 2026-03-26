@@ -135,10 +135,11 @@ and a `notes` table with a `project_id` foreign key. No LLM, no embedding model.
 
 ## Open questions
 
-- [ ] **Single binary or separate binary?**
-  - `spelunk serve` subcommand in the same binary: simpler distribution, one download.
-  - Separate `spelunk-server` binary: cleaner separation, smaller server image.
-  - Lean towards `spelunk serve` unless binary size becomes a concern.
+- [x] **Single binary or separate binary?**
+  Two separate binaries: `spelunk` (CLI, unchanged) and `spelunk-server` (server only).
+  Ops teams can deploy just `spelunk-server` without shipping the full CLI. Docker image
+  is smaller and purpose-built. Both built from the same Cargo workspace via a second
+  `[[bin]]` entry pointing to `src/bin/spelunk_server.rs`.
 
 - [ ] **SQLite WAL vs Postgres**
   - SQLite WAL mode handles small teams (2–20 concurrent writers) comfortably.
@@ -208,8 +209,9 @@ When `memory_server_url` is configured:
 - [ ] Abstract memory store behind a `MemoryBackend` trait (local SQLite vs remote HTTP)
 - [ ] Implement `RemoteMemoryBackend` (HTTP client, all routes scoped to project_id)
 
-### Phase 3: Server
-- [ ] Implement `spelunk serve` subcommand (or separate binary — decision pending)
+### Phase 3: Server (`spelunk-server` binary)
+- [ ] Add `[[bin]] name = "spelunk-server" path = "src/bin/spelunk_server.rs"` to Cargo.toml
+- [ ] Implement `spelunk-server` entry point
 - [ ] `projects` table in server DB: `(id, slug, embedding_dim, created_at)`
 - [ ] Auto-create project on first write for unknown project_id
 - [ ] REST API: all routes under `/v1/projects/{project_id}/`
