@@ -136,11 +136,12 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
         if !args.force
             && let Some(existing) = db.file_hash(&path_str)?
-                && existing == hash {
-                    skipped += 1;
-                    parse_bar.inc(1);
-                    continue;
-                }
+            && existing == hash
+        {
+            skipped += 1;
+            parse_bar.inc(1);
+            continue;
+        }
 
         let chunks = match SourceParser::parse(&source, &path_str, language) {
             Ok(c) => c,
@@ -303,28 +304,30 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
 
     // ── Graph-aware enrichment (primary DB only) ──────────────────────────────
     if args.graph
-        && let Ok(primary_db) = Database::open(&db_path) {
-            let seen_ids: std::collections::HashSet<i64> =
-                results.iter().map(|r| r.chunk_id).collect();
-            let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
+        && let Ok(primary_db) = Database::open(&db_path)
+    {
+        let seen_ids: std::collections::HashSet<i64> = results.iter().map(|r| r.chunk_id).collect();
+        let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
 
-            if !names.is_empty()
-                && let Ok(neighbor_ids) = primary_db.graph_neighbor_chunks(&names) {
-                    let new_ids: Vec<i64> = neighbor_ids
-                        .into_iter()
-                        .filter(|id| !seen_ids.contains(id))
-                        .take(args.graph_limit)
-                        .collect();
+        if !names.is_empty()
+            && let Ok(neighbor_ids) = primary_db.graph_neighbor_chunks(&names)
+        {
+            let new_ids: Vec<i64> = neighbor_ids
+                .into_iter()
+                .filter(|id| !seen_ids.contains(id))
+                .take(args.graph_limit)
+                .collect();
 
-                    if !new_ids.is_empty()
-                        && let Ok(mut extra) = primary_db.chunks_by_ids(&new_ids) {
-                            for r in &mut extra {
-                                r.from_graph = true;
-                            }
-                            results.extend(extra);
-                        }
+            if !new_ids.is_empty()
+                && let Ok(mut extra) = primary_db.chunks_by_ids(&new_ids)
+            {
+                for r in &mut extra {
+                    r.from_graph = true;
                 }
+                results.extend(extra);
+            }
         }
+    }
 
     match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&results)?),
@@ -372,17 +375,19 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         let seen_ids: std::collections::HashSet<i64> = results.iter().map(|r| r.chunk_id).collect();
         let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
         if !names.is_empty()
-            && let Ok(neighbor_ids) = primary_db.graph_neighbor_chunks(&names) {
-                let new_ids: Vec<i64> = neighbor_ids
-                    .into_iter()
-                    .filter(|id| !seen_ids.contains(id))
-                    .take(MAX_GRAPH_EXTRA)
-                    .collect();
-                if !new_ids.is_empty()
-                    && let Ok(extra) = primary_db.chunks_by_ids(&new_ids) {
-                        results.extend(extra);
-                    }
+            && let Ok(neighbor_ids) = primary_db.graph_neighbor_chunks(&names)
+        {
+            let new_ids: Vec<i64> = neighbor_ids
+                .into_iter()
+                .filter(|id| !seen_ids.contains(id))
+                .take(MAX_GRAPH_EXTRA)
+                .collect();
+            if !new_ids.is_empty()
+                && let Ok(extra) = primary_db.chunks_by_ids(&new_ids)
+            {
+                results.extend(extra);
             }
+        }
     }
 
     // ── Step 2: assemble code context ───────────────────────────────────────
@@ -548,8 +553,10 @@ If the answer cannot be determined from the provided context, say so clearly rat
             }
             println!("\n");
         };
-        tokio::try_join!(generate, async { print_tokens.await;
-        Ok(()) })?;
+        tokio::try_join!(generate, async {
+            print_tokens.await;
+            Ok(())
+        })?;
     }
 
     Ok(())
@@ -810,7 +817,8 @@ pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
     // Resolve current project
     let primary = reg.find_project_for_path(&cwd)?.with_context(|| {
         "No indexed project found for the current directory.\n\
-             Run `spelunk index .` first.".to_string()
+             Run `spelunk index .` first."
+            .to_string()
     })?;
 
     // Resolve target
@@ -1187,13 +1195,14 @@ async fn fetch_url_content(url: &str) -> Result<(String, String)> {
             .output()
             .await;
         if let Ok(out) = out
-            && out.status.success() {
-                let json: serde_json::Value =
-                    serde_json::from_slice(&out.stdout).context("parsing gh api response")?;
-                let title = json["title"].as_str().unwrap_or("GitHub Issue").to_string();
-                let body = json["body"].as_str().unwrap_or("").to_string();
-                return Ok((title, body));
-            }
+            && out.status.success()
+        {
+            let json: serde_json::Value =
+                serde_json::from_slice(&out.stdout).context("parsing gh api response")?;
+            let title = json["title"].as_str().unwrap_or("GitHub Issue").to_string();
+            let body = json["body"].as_str().unwrap_or("").to_string();
+            return Ok((title, body));
+        }
         // gh missing or not authenticated — fall through
     }
 
@@ -1211,10 +1220,11 @@ async fn fetch_url_content(url: &str) -> Result<(String, String)> {
             .output()
             .await;
         if let Ok(out) = out
-            && out.status.success() {
-                let md = String::from_utf8_lossy(&out.stdout);
-                return parse_web_to_md_output(&md, url);
-            }
+            && out.status.success()
+        {
+            let md = String::from_utf8_lossy(&out.stdout);
+            return parse_web_to_md_output(&md, url);
+        }
         // bun missing or script errored — fall through
     }
 
@@ -1231,7 +1241,8 @@ async fn fetch_url_content(url: &str) -> Result<(String, String)> {
         .map(|m| html_unescape(m.as_str().trim()))
         .unwrap_or_else(|| url.to_string());
 
-    let no_script = regex::Regex::new(r"(?is)<(?:script|style)[^>]*>[\s\S]*?</(?:script|style)>").unwrap();
+    let no_script =
+        regex::Regex::new(r"(?is)<(?:script|style)[^>]*>[\s\S]*?</(?:script|style)>").unwrap();
     let no_tags = regex::Regex::new(r"<[^>]+>").unwrap();
     let ws = regex::Regex::new(r"\s{3,}").unwrap();
     let stripped = no_script.replace_all(&html, " ");
@@ -1762,9 +1773,7 @@ pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
     let target = &args.target;
     let all_chunks = db.chunks_for_file(target)?;
     if all_chunks.is_empty() {
-        anyhow::bail!(
-            "No indexed chunks found for '{target}'. Try `spelunk index` first."
-        );
+        anyhow::bail!("No indexed chunks found for '{target}'. Try `spelunk index` first.");
     }
 
     // Build embedder and re-embed each chunk's current content.
@@ -2166,17 +2175,18 @@ fn resolve_project_and_deps(
     // Try registry first.
     if let Ok(reg) = Registry::open()
         && let Ok(cwd) = std::env::current_dir()
-            && let Ok(Some(project)) = reg.find_project_for_path(&cwd)
-                && project.db_path.exists() {
-                    let deps = reg
-                        .get_deps(project.id)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|d| d.db_path)
-                        .filter(|p| p.exists())
-                        .collect();
-                    return Ok((project.db_path, deps));
-                }
+        && let Ok(Some(project)) = reg.find_project_for_path(&cwd)
+        && project.db_path.exists()
+    {
+        let deps = reg
+            .get_deps(project.id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| d.db_path)
+            .filter(|p| p.exists())
+            .collect();
+        return Ok((project.db_path, deps));
+    }
 
     // Fallback: filesystem walk-up.
     let db_path = resolve_db(None, &cfg.db_path);
@@ -2228,18 +2238,19 @@ fn format_age(unix_ts: i64) -> String {
     if let Ok(t) = UNIX_EPOCH
         .checked_add(Duration::from_secs(unix_ts as u64))
         .ok_or(())
-        && let Ok(elapsed) = std::time::SystemTime::now().duration_since(t) {
-            let secs = elapsed.as_secs();
-            return if secs < 60 {
-                format!("{secs}s ago")
-            } else if secs < 3600 {
-                format!("{}m ago", secs / 60)
-            } else if secs < 86400 {
-                format!("{}h ago", secs / 3600)
-            } else {
-                format!("{}d ago", secs / 86400)
-            };
-        }
+        && let Ok(elapsed) = std::time::SystemTime::now().duration_since(t)
+    {
+        let secs = elapsed.as_secs();
+        return if secs < 60 {
+            format!("{secs}s ago")
+        } else if secs < 3600 {
+            format!("{}m ago", secs / 60)
+        } else if secs < 86400 {
+            format!("{}h ago", secs / 3600)
+        } else {
+            format!("{}d ago", secs / 86400)
+        };
+    }
     "unknown".to_string()
 }
 

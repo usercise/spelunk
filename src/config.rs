@@ -51,9 +51,10 @@ pub fn resolve_db(explicit: Option<&Path>, cfg_default: &Path) -> PathBuf {
         return p.to_path_buf();
     }
     if let Ok(cwd) = std::env::current_dir()
-        && let Some(p) = find_project_db(&cwd) {
-            return p;
-        }
+        && let Some(p) = find_project_db(&cwd)
+    {
+        return p;
+    }
     cfg_default.to_path_buf()
 }
 
@@ -164,22 +165,22 @@ impl Config {
 
         // ── 2. Merge project-level config (.spelunk/config.toml) ─────────────
         if let Ok(cwd) = std::env::current_dir()
-            && let Some(proj_path) = find_project_config(&cwd) {
-                let raw = std::fs::read_to_string(&proj_path).with_context(|| {
-                    format!("reading project config at {}", proj_path.display())
-                })?;
-                let proj: ProjectConfig =
-                    toml::from_str(&raw).context("parsing .spelunk/config.toml")?;
-                if let Some(v) = proj.memory_server_url {
-                    cfg.memory_server_url = Some(v);
-                }
-                if let Some(v) = proj.memory_server_key {
-                    cfg.memory_server_key = Some(v);
-                }
-                if let Some(v) = proj.project_id {
-                    cfg.project_id = Some(v);
-                }
+            && let Some(proj_path) = find_project_config(&cwd)
+        {
+            let raw = std::fs::read_to_string(&proj_path)
+                .with_context(|| format!("reading project config at {}", proj_path.display()))?;
+            let proj: ProjectConfig =
+                toml::from_str(&raw).context("parsing .spelunk/config.toml")?;
+            if let Some(v) = proj.memory_server_url {
+                cfg.memory_server_url = Some(v);
             }
+            if let Some(v) = proj.memory_server_key {
+                cfg.memory_server_key = Some(v);
+            }
+            if let Some(v) = proj.project_id {
+                cfg.project_id = Some(v);
+            }
+        }
 
         // ── 3. Environment variable overrides ────────────────────────────────
         if let Ok(v) = std::env::var("SPELUNK_SERVER_URL") {

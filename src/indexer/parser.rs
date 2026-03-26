@@ -456,9 +456,10 @@ fn find_identifier(node: tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i)
-            && let Some(name) = find_identifier(child, src) {
-                return Some(name);
-            }
+            && let Some(name) = find_identifier(child, src)
+        {
+            return Some(name);
+        }
     }
     None
 }
@@ -495,9 +496,10 @@ fn hcl_block_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
 fn proto_named_child(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i)
-            && child.kind().ends_with("_name") {
-                return child.utf8_text(src).ok().map(str::to_owned);
-            }
+            && child.kind().ends_with("_name")
+        {
+            return child.utf8_text(src).ok().map(str::to_owned);
+        }
     }
     None
 }
@@ -506,9 +508,10 @@ fn proto_named_child(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String>
 fn sql_object_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i)
-            && child.kind() == "object_reference" {
-                return child.utf8_text(src).ok().map(str::to_owned);
-            }
+            && child.kind() == "object_reference"
+        {
+            return child.utf8_text(src).ok().map(str::to_owned);
+        }
     }
     None
 }
