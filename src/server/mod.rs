@@ -4,12 +4,12 @@ pub mod handlers;
 use std::sync::Arc;
 
 use axum::{
+    Router,
     extract::{Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
-    Router,
 };
 
 use db::ServerDb;
@@ -23,16 +23,40 @@ pub struct AppState {
 /// Build the axum router with all routes.
 pub fn router(state: AppState) -> Router {
     let protected = Router::new()
-        .route("/v1/projects",                                           get(handlers::list_projects))
-        .route("/v1/projects/{project_id}/memory",                      post(handlers::add_note))
-        .route("/v1/projects/{project_id}/memory",                      get(handlers::list_notes))
-        .route("/v1/projects/{project_id}/memory/search",               post(handlers::search_notes))
-        .route("/v1/projects/{project_id}/memory/{note_id}",            get(handlers::get_note))
-        .route("/v1/projects/{project_id}/memory/{note_id}",            delete(handlers::delete_note))
-        .route("/v1/projects/{project_id}/memory/{note_id}/archive",    post(handlers::archive_note))
-        .route("/v1/projects/{project_id}/memory/{note_id}/supersede",  post(handlers::supersede_note))
-        .route("/v1/projects/{project_id}/stats",                       get(handlers::project_stats))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+        .route("/v1/projects", get(handlers::list_projects))
+        .route("/v1/projects/{project_id}/memory", post(handlers::add_note))
+        .route(
+            "/v1/projects/{project_id}/memory",
+            get(handlers::list_notes),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/search",
+            post(handlers::search_notes),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/{note_id}",
+            get(handlers::get_note),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/{note_id}",
+            delete(handlers::delete_note),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/{note_id}/archive",
+            post(handlers::archive_note),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/{note_id}/supersede",
+            post(handlers::supersede_note),
+        )
+        .route(
+            "/v1/projects/{project_id}/stats",
+            get(handlers::project_stats),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
 
     Router::new()
         .route("/v1/health", get(handlers::health))
@@ -41,11 +65,7 @@ pub fn router(state: AppState) -> Router {
 }
 
 /// Bearer token auth middleware. Pass-through if no API key is configured.
-async fn auth_middleware(
-    State(state): State<AppState>,
-    request: Request,
-    next: Next,
-) -> Response {
+async fn auth_middleware(State(state): State<AppState>, request: Request, next: Next) -> Response {
     if let Some(expected_key) = &state.api_key {
         let auth = request
             .headers()

@@ -40,7 +40,10 @@ impl ServerDb {
             .with_context(|| format!("opening server db at {}", path.display()))?;
         // WAL mode for concurrent readers.
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        let db = Self { conn, embedding_dim };
+        let db = Self {
+            conn,
+            embedding_dim,
+        };
         db.migrate()?;
         Ok(db)
     }
@@ -84,7 +87,9 @@ impl ServerDb {
                 anyhow::bail!(
                     "embedding dimension mismatch for project '{}': server expects {}, got {}. \
                      All clients on the same project must use the same embedding model.",
-                    slug, p.embedding_dim, incoming_dim
+                    slug,
+                    p.embedding_dim,
+                    incoming_dim
                 );
             }
             // Set dimension on first note.
@@ -103,7 +108,12 @@ impl ServerDb {
                 rusqlite::params![slug, incoming_dim],
             )?;
             let id = self.conn.last_insert_rowid();
-            Ok(Project { id, slug: slug.to_string(), embedding_dim: incoming_dim, created_at: now_unix() })
+            Ok(Project {
+                id,
+                slug: slug.to_string(),
+                embedding_dim: incoming_dim,
+                created_at: now_unix(),
+            })
         }
     }
 
@@ -119,9 +129,9 @@ impl ServerDb {
     }
 
     pub fn list_projects(&self) -> Result<Vec<Project>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, slug, embedding_dim, created_at FROM projects ORDER BY slug",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, slug, embedding_dim, created_at FROM projects ORDER BY slug")?;
         let projects = stmt
             .query_map([], row_to_project)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -140,8 +150,16 @@ impl ServerDb {
         linked_files: &[String],
         embedding: Option<&[f32]>,
     ) -> Result<i64> {
-        let tags_csv = if tags.is_empty() { None } else { Some(tags.join(",")) };
-        let files_csv = if linked_files.is_empty() { None } else { Some(linked_files.join(",")) };
+        let tags_csv = if tags.is_empty() {
+            None
+        } else {
+            Some(tags.join(","))
+        };
+        let files_csv = if linked_files.is_empty() {
+            None
+        } else {
+            Some(linked_files.join(","))
+        };
         self.conn.execute(
             "INSERT INTO notes (project_id, kind, title, body, tags, linked_files)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -179,10 +197,15 @@ impl ServerDb {
         include_archived: bool,
     ) -> Result<Vec<ServerNote>> {
         let limit = limit.min(500);
-        let status_clause = if include_archived { "" } else { "AND status = 'active'" };
-        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
-            if let Some(kind) = kind_filter {
-                (
+        let status_clause = if include_archived {
+            ""
+        } else {
+            "AND status = 'active'"
+        };
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(kind) =
+            kind_filter
+        {
+            (
                     format!(
                         "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
                          FROM notes WHERE project_id = ?1 AND kind = ?2 {status_clause}
@@ -190,8 +213,8 @@ impl ServerDb {
                     ),
                     vec![Box::new(project_id), Box::new(kind.to_string())],
                 )
-            } else {
-                (
+        } else {
+            (
                     format!(
                         "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
                          FROM notes WHERE project_id = ?1 {status_clause}
@@ -199,7 +222,7 @@ impl ServerDb {
                     ),
                     vec![Box::new(project_id)],
                 )
-            };
+        };
         let mut stmt = self.conn.prepare(&sql)?;
         let refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let notes = stmt
@@ -231,7 +254,10 @@ impl ServerDb {
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let notes = stmt
-            .query_map(rusqlite::params![blob, project_id], row_to_note_with_distance)?
+            .query_map(
+                rusqlite::params![blob, project_id],
+                row_to_note_with_distance,
+            )?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(notes)
     }
@@ -276,7 +302,11 @@ impl ServerDb {
             rusqlite::params![project_id],
             |r| r.get(0),
         )?;
-        Ok(ProjectStats { count, total, embedding_dim: self.embedding_dim })
+        Ok(ProjectStats {
+            count,
+            total,
+            embedding_dim: self.embedding_dim,
+        })
     }
 }
 
@@ -339,7 +369,10 @@ fn row_to_note_with_distance(row: &rusqlite::Row<'_>) -> rusqlite::Result<Server
 
 fn now_unix() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 // Need blob_to_vec for search — it's in embeddings module so the import works.

@@ -35,6 +35,8 @@ pub fn open_memory_backend(
             api_key: cfg.memory_server_key.clone(),
         }))
     } else {
-        Ok(Box::new(LocalMemoryBackend::new(MemoryStore::open(mem_path)?)))
+        Ok(Box::new(LocalMemoryBackend::new(MemoryStore::open(
+            mem_path,
+        )?)))
     }
 }

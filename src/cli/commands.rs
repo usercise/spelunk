@@ -4,18 +4,21 @@ use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
+use super::{
+    AskArgs, CheckArgs, ChunksArgs, GraphArgs, HooksArgs, HooksCommand, IndexArgs, LinkArgs,
+    MemoryArgs, MemoryCommand, PlanArgs, PlanCommand, SearchArgs, StatusArgs, UnlinkArgs,
+    VerifyArgs,
+};
 use crate::{
-    config::{resolve_db, Config},
-    embeddings::{vec_to_blob, EmbeddingBackend as _},
-    indexer::{graph::EdgeExtractor, parser::{detect_language, detect_text_language, is_binary_file, SourceParser}},
+    config::{Config, resolve_db},
+    embeddings::{EmbeddingBackend as _, vec_to_blob},
+    indexer::{
+        graph::EdgeExtractor,
+        parser::{SourceParser, detect_language, detect_text_language, is_binary_file},
+    },
     registry::Registry,
     search::SearchResult,
-    storage::{open_memory_backend, Database, NoteInput},
-};
-use super::{
-    AskArgs, CheckArgs, ChunksArgs, GraphArgs, HooksArgs, HooksCommand, IndexArgs,
-    LinkArgs, MemoryArgs, MemoryCommand, PlanArgs, PlanCommand, SearchArgs, StatusArgs,
-    UnlinkArgs, VerifyArgs,
+    storage::{Database, NoteInput, open_memory_backend},
 };
 
 fn is_tty() -> bool {
@@ -38,31 +41,51 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     crate::indexer::secrets::init();
 
     // Default DB lives inside the indexed directory, scoping the index to the project.
-    let db_path = args.db.clone().unwrap_or_else(|| {
-        args.path.join(".spelunk").join("index.db")
-    });
+    let db_path = args
+        .db
+        .clone()
+        .unwrap_or_else(|| args.path.join(".spelunk").join("index.db"));
     let db = Database::open(&db_path)?;
 
     // Canonicalise the root so symlinks don't create duplicate entries.
-    let root_canonical = args.path.canonicalize().unwrap_or_else(|_| args.path.clone());
+    let root_canonical = args
+        .path
+        .canonicalize()
+        .unwrap_or_else(|_| args.path.clone());
 
     // ── Collect source files ─────────────────────────────────────────────────
     // WalkBuilder respects .gitignore, .ignore, and global gitignore rules.
     // The override below excludes sensitive files unconditionally — even when
     // no .gitignore is present or when they are explicitly un-ignored.
     let sensitive_patterns = [
-        "!.env", "!.env.*",
-        "!*.pem", "!*.key", "!*.p12", "!*.pfx", "!*.p8",
-        "!*.cer", "!*.crt", "!*.der",
-        "!id_rsa", "!id_ecdsa", "!id_ed25519", "!id_dsa",
-        "!*.keystore", "!*.jks",
-        "!.netrc", "!.npmrc",
+        "!.env",
+        "!.env.*",
+        "!*.pem",
+        "!*.key",
+        "!*.p12",
+        "!*.pfx",
+        "!*.p8",
+        "!*.cer",
+        "!*.crt",
+        "!*.der",
+        "!id_rsa",
+        "!id_ecdsa",
+        "!id_ed25519",
+        "!id_dsa",
+        "!*.keystore",
+        "!*.jks",
+        "!.netrc",
+        "!.npmrc",
     ];
     let mut walk = WalkBuilder::new(&args.path);
     walk.standard_filters(true);
     let mut ob = ignore::overrides::OverrideBuilder::new(&args.path);
-    for pat in &sensitive_patterns { ob.add(pat).ok(); }
-    if let Ok(ov) = ob.build() { walk.overrides(ov); }
+    for pat in &sensitive_patterns {
+        ob.add(pat).ok();
+    }
+    if let Ok(ov) = ob.build() {
+        walk.overrides(ov);
+    }
 
     let files: Vec<_> = walk
         .build()
@@ -107,8 +130,8 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
             parse_bar.inc(1);
             continue;
         }
-        let source = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let source =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let hash = format!("{}", blake3::hash(source.as_bytes()));
 
         if !args.force {
@@ -334,7 +357,12 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     let vecs = embedder.embed(&[&query_text]).await?;
     let query_blob = vec_to_blob(vecs.first().context("no embedding")?);
 
-    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.context_chunks.min(100))?;
+    let mut results = search_all_dbs(
+        &db_path,
+        &dep_dbs,
+        &query_blob,
+        args.context_chunks.min(100),
+    )?;
     sp.finish_and_clear();
     drop(embedder); // free GPU memory before loading the LLM
 
@@ -346,8 +374,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     // ── Step 1b: graph neighbour enrichment (primary DB only) ────────────────
     const MAX_GRAPH_EXTRA: usize = 5;
     if let Ok(primary_db) = Database::open(&db_path) {
-        let seen_ids: std::collections::HashSet<i64> =
-            results.iter().map(|r| r.chunk_id).collect();
+        let seen_ids: std::collections::HashSet<i64> = results.iter().map(|r| r.chunk_id).collect();
         let names: Vec<&str> = results.iter().filter_map(|r| r.name.as_deref()).collect();
         if !names.is_empty() {
             if let Ok(neighbor_ids) = primary_db.graph_neighbor_chunks(&names) {
@@ -397,8 +424,13 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
                         } else {
                             format!("  [{}]", n.tags.join(", "))
                         };
-                        format!("### [{kind}] {title}{tags}\n{body}",
-                            kind = n.kind, title = n.title, tags = tags, body = n.body)
+                        format!(
+                            "### [{kind}] {title}{tags}\n{body}",
+                            kind = n.kind,
+                            title = n.title,
+                            tags = tags,
+                            body = n.body
+                        )
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n");
@@ -424,7 +456,10 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         "jailbreak",
     ];
     let question_lower = args.question.to_lowercase();
-    if INJECTION_PATTERNS.iter().any(|p| question_lower.contains(p)) {
+    if INJECTION_PATTERNS
+        .iter()
+        .any(|p| question_lower.contains(p))
+    {
         anyhow::bail!("Question contains a disallowed pattern and cannot be processed.");
     }
 
@@ -465,13 +500,16 @@ If the answer cannot be determined from the provided context, say so clearly rat
             "<code_context>\n{code}\n</code_context>\n\n\
              <memory_context>\n{mem}\n</memory_context>\n\n\
              <question>\n{q}\n</question>",
-            code = code_context, mem = mem, q = args.question,
+            code = code_context,
+            mem = mem,
+            q = args.question,
         )
     } else {
         format!(
             "<code_context>\n{code}\n</code_context>\n\n\
              <question>\n{q}\n</question>",
-            code = code_context, q = args.question,
+            code = code_context,
+            q = args.question,
         )
     };
 
@@ -497,14 +535,16 @@ If the answer cannot be determined from the provided context, say so clearly rat
         // Collect all tokens then parse + pretty-print the JSON object.
         let collect = async move {
             let mut buf = String::new();
-            while let Some(t) = rx.recv().await { buf.push_str(&t); }
+            while let Some(t) = rx.recv().await {
+                buf.push_str(&t);
+            }
             buf
         };
         let (_, raw) = tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
         // Sanitize before parsing: remove any ANSI escape sequences the model may emit.
         let raw = crate::utils::strip_ansi(&raw);
         match serde_json::from_str::<serde_json::Value>(&raw) {
-            Ok(v)  => println!("{}", serde_json::to_string_pretty(&v)?),
+            Ok(v) => println!("{}", serde_json::to_string_pretty(&v)?),
             Err(_) => print!("{raw}"),
         }
     } else {
@@ -535,14 +575,17 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
             Some(b) => b.count().await.unwrap_or(0),
             None => 0,
         };
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "file_count": stats.file_count,
-            "chunk_count": stats.chunk_count,
-            "embedding_count": stats.embedding_count,
-            "last_indexed_unix": stats.last_indexed,
-            "memory_entry_count": memory_count,
-            "drift_candidates": drift,
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "file_count": stats.file_count,
+                "chunk_count": stats.chunk_count,
+                "embedding_count": stats.embedding_count,
+                "last_indexed_unix": stats.last_indexed,
+                "memory_entry_count": memory_count,
+                "drift_candidates": drift,
+            }))?
+        );
         return Ok(());
     }
 
@@ -560,20 +603,28 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
 
         if args.list {
             // Brief table: one line per project
-            println!("{:<6}  {:<8}  {:<10}  {}", "Files", "Chunks", "Embeddings", "Root");
+            println!(
+                "{:<6}  {:<8}  {:<10}  {}",
+                "Files", "Chunks", "Embeddings", "Root"
+            );
             println!("{}", "─".repeat(70));
             for p in &projects {
-                let stats = Database::open(&p.db_path)
-                    .and_then(|db| db.stats())
-                    .ok();
+                let stats = Database::open(&p.db_path).and_then(|db| db.stats()).ok();
                 let (files, chunks, embeddings) = stats
                     .map(|s| (s.file_count, s.chunk_count, s.embedding_count))
                     .unwrap_or((0, 0, 0));
-                let exists = if p.root_path.exists() { "" } else { " [missing]" };
+                let exists = if p.root_path.exists() {
+                    ""
+                } else {
+                    " [missing]"
+                };
                 println!(
                     "{:<6}  {:<8}  {:<10}  {}{}",
-                    files, chunks, embeddings,
-                    p.root_path.display(), exists
+                    files,
+                    chunks,
+                    embeddings,
+                    p.root_path.display(),
+                    exists
                 );
             }
         } else {
@@ -586,8 +637,10 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
                 println!("  DB: {}", p.db_path.display());
                 match Database::open(&p.db_path).and_then(|db| db.stats()) {
                     Ok(s) => {
-                        println!("  Files: {}  Chunks: {}  Embeddings: {}",
-                            s.file_count, s.chunk_count, s.embedding_count);
+                        println!(
+                            "  Files: {}  Chunks: {}  Embeddings: {}",
+                            s.file_count, s.chunk_count, s.embedding_count
+                        );
                         if let Some(ts) = s.last_indexed {
                             println!("  Last indexed: {}", format_age(ts));
                         }
@@ -609,12 +662,11 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
 
     // Current project only
     let reg = Registry::open().ok();
-    let project = reg
-        .as_ref()
-        .and_then(|r| {
-            std::env::current_dir().ok()
-                .and_then(|cwd| r.find_project_for_path(&cwd).ok().flatten())
-        });
+    let project = reg.as_ref().and_then(|r| {
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| r.find_project_for_path(&cwd).ok().flatten())
+    });
 
     let db_path = match &project {
         Some(p) => p.db_path.clone(),
@@ -647,8 +699,7 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
         if !deps.is_empty() {
             println!("\nDependencies:");
             for dep in &deps {
-                let dep_stats = Database::open(&dep.db_path)
-                    .and_then(|db| db.stats()).ok();
+                let dep_stats = Database::open(&dep.db_path).and_then(|db| db.stats()).ok();
                 let summary = dep_stats
                     .map(|s| format!("{} files, {} chunks", s.file_count, s.chunk_count))
                     .unwrap_or_else(|| "not indexed".to_string());
@@ -671,7 +722,9 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
             };
             println!("  {:<6}  {:<8}  {}", d.days_behind, callers, d.path);
         }
-        println!("  \x1b[2mRun `spelunk search \"<topic>\"` to check if these are still relevant.\x1b[0m");
+        println!(
+            "  \x1b[2mRun `spelunk search \"<topic>\"` to check if these are still relevant.\x1b[0m"
+        );
     }
 
     Ok(())
@@ -690,9 +743,14 @@ pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
     let symbol = &args.symbol;
 
     // Decide whether the query looks like a file path or a symbol name.
-    let mut edges = if symbol.contains('/') || symbol.contains('\\') || symbol.ends_with(".rs")
-        || symbol.ends_with(".py") || symbol.ends_with(".go") || symbol.ends_with(".java")
-        || symbol.ends_with(".ts") || symbol.ends_with(".js")
+    let mut edges = if symbol.contains('/')
+        || symbol.contains('\\')
+        || symbol.ends_with(".rs")
+        || symbol.ends_with(".py")
+        || symbol.ends_with(".go")
+        || symbol.ends_with(".java")
+        || symbol.ends_with(".ts")
+        || symbol.ends_with(".js")
     {
         db.edges_for_file(symbol)?
     } else {
@@ -756,11 +814,12 @@ pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
     let reg = Registry::open().context("opening registry")?;
 
     // Resolve current project
-    let primary = reg.find_project_for_path(&cwd)?
-        .with_context(|| format!(
+    let primary = reg.find_project_for_path(&cwd)?.with_context(|| {
+        format!(
             "No indexed project found for the current directory.\n\
              Run `spelunk index .` first."
-        ))?;
+        )
+    })?;
 
     // Resolve target
     let target_path = if args.path.is_absolute() {
@@ -768,20 +827,24 @@ pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
     } else {
         cwd.join(&args.path)
     };
-    let target_canonical = target_path.canonicalize()
+    let target_canonical = target_path
+        .canonicalize()
         .unwrap_or_else(|_| target_path.clone());
 
     if target_canonical == primary.root_path {
         anyhow::bail!("A project cannot depend on itself.");
     }
 
-    let dep = reg.find_project_for_path(&target_canonical)?
-        .with_context(|| format!(
-            "No index found for '{}'.\n\
+    let dep = reg
+        .find_project_for_path(&target_canonical)?
+        .with_context(|| {
+            format!(
+                "No index found for '{}'.\n\
              Run `spelunk index {}` first.",
-            target_canonical.display(),
-            target_canonical.display()
-        ))?;
+                target_canonical.display(),
+                target_canonical.display()
+            )
+        })?;
 
     reg.add_dep(primary.id, dep.id)?;
 
@@ -790,7 +853,8 @@ pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
         primary.root_path.display(),
         dep.root_path.display()
     );
-    println!("Searches from '{}' will now include results from '{}'.",
+    println!(
+        "Searches from '{}' will now include results from '{}'.",
         primary.root_path.display(),
         dep.root_path.display()
     );
@@ -801,7 +865,8 @@ pub fn unlink(args: UnlinkArgs, _cfg: Config) -> Result<()> {
     let cwd = std::env::current_dir().context("getting current directory")?;
     let reg = Registry::open().context("opening registry")?;
 
-    let primary = reg.find_project_for_path(&cwd)?
+    let primary = reg
+        .find_project_for_path(&cwd)?
         .with_context(|| "No indexed project found for the current directory.")?;
 
     let target_path = if args.path.is_absolute() {
@@ -809,14 +874,16 @@ pub fn unlink(args: UnlinkArgs, _cfg: Config) -> Result<()> {
     } else {
         cwd.join(&args.path)
     };
-    let target_canonical = target_path.canonicalize()
+    let target_canonical = target_path
+        .canonicalize()
         .unwrap_or_else(|_| target_path.clone());
 
-    let dep = reg.find_by_root(&target_canonical)?
-        .with_context(|| format!(
+    let dep = reg.find_by_root(&target_canonical)?.with_context(|| {
+        format!(
             "No registered project found at '{}'.",
             target_canonical.display()
-        ))?;
+        )
+    })?;
 
     reg.remove_dep(primary.id, dep.id)?;
 
@@ -832,8 +899,10 @@ pub fn autoclean(_cfg: Config) -> Result<()> {
     let reg = Registry::open().context("opening registry")?;
     let removed = reg.autoclean()?;
     if removed.is_empty() {
-        println!("All {} registered project(s) have valid paths — nothing to clean.",
-            reg.all_projects()?.len());
+        println!(
+            "All {} registered project(s) have valid paths — nothing to clean.",
+            reg.all_projects()?.len()
+        );
     } else {
         println!("Removed {} stale project(s):", removed.len());
         for path in &removed {
@@ -879,12 +948,15 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
     let fresh = stale.is_empty();
 
     if fmt == "json" {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "fresh": fresh,
-            "indexed_files": stored.len(),
-            "stale_files": stale.len(),
-            "stale": stale,
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "fresh": fresh,
+                "indexed_files": stored.len(),
+                "stale_files": stale.len(),
+                "stale": stale,
+            }))?
+        );
     } else if fresh {
         println!("Index is up to date. ({} files indexed)", stored.len());
     } else {
@@ -906,7 +978,7 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
 pub fn hooks(args: HooksArgs) -> Result<()> {
     match args.command {
         HooksCommand::Install(a) => hooks_install(a),
-        HooksCommand::Uninstall  => hooks_uninstall(),
+        HooksCommand::Uninstall => hooks_uninstall(),
     }
 }
 
@@ -1014,18 +1086,19 @@ fn hooks_uninstall() -> Result<()> {
 
 pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
     cfg.validate()?;
-    let mem_path = args.db.clone().unwrap_or_else(|| {
-        resolve_db(None, &cfg.db_path).with_file_name("memory.db")
-    });
+    let mem_path = args
+        .db
+        .clone()
+        .unwrap_or_else(|| resolve_db(None, &cfg.db_path).with_file_name("memory.db"));
     match args.command {
-        MemoryCommand::Add(a)       => memory_add(a, &mem_path, &cfg).await,
-        MemoryCommand::Search(a)    => memory_search(a, &mem_path, &cfg).await,
-        MemoryCommand::List(a)      => memory_list(a, &mem_path, &cfg).await,
-        MemoryCommand::Show(a)      => memory_show(a, &mem_path, &cfg).await,
-        MemoryCommand::Harvest(a)   => memory_harvest(a, &mem_path, &cfg).await,
-        MemoryCommand::Archive(a)   => memory_archive(a, &mem_path, &cfg).await,
+        MemoryCommand::Add(a) => memory_add(a, &mem_path, &cfg).await,
+        MemoryCommand::Search(a) => memory_search(a, &mem_path, &cfg).await,
+        MemoryCommand::List(a) => memory_list(a, &mem_path, &cfg).await,
+        MemoryCommand::Show(a) => memory_show(a, &mem_path, &cfg).await,
+        MemoryCommand::Harvest(a) => memory_harvest(a, &mem_path, &cfg).await,
+        MemoryCommand::Archive(a) => memory_archive(a, &mem_path, &cfg).await,
         MemoryCommand::Supersede(a) => memory_supersede(a, &mem_path, &cfg).await,
-        MemoryCommand::Push(a)      => memory_push(a, &mem_path, &cfg).await,
+        MemoryCommand::Push(a) => memory_push(a, &mem_path, &cfg).await,
     }
 }
 
@@ -1036,13 +1109,16 @@ async fn memory_add(
 ) -> Result<()> {
     // Resolve title and body: from URL, explicit args, or editor.
     let (title, body) = if let Some(url) = &args.from_url {
-        let (fetched_title, fetched_body) = fetch_url_content(url).await
+        let (fetched_title, fetched_body) = fetch_url_content(url)
+            .await
             .with_context(|| format!("fetching {url}"))?;
         let title = args.title.clone().unwrap_or(fetched_title);
         let body = args.body.clone().unwrap_or(fetched_body);
         (title, body)
     } else {
-        let title = args.title.clone()
+        let title = args
+            .title
+            .clone()
             .context("--title is required when --from-url is not provided")?;
         let body = match args.body.clone() {
             Some(b) => b,
@@ -1057,10 +1133,14 @@ async fn memory_add(
         (title, body)
     };
 
-    let tags: Vec<String> = args.tags.as_deref()
+    let tags: Vec<String> = args
+        .tags
+        .as_deref()
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
         .unwrap_or_default();
-    let files: Vec<String> = args.files.as_deref()
+    let files: Vec<String> = args
+        .files
+        .as_deref()
         .map(|s| s.split(',').map(|f| f.trim().to_string()).collect())
         .unwrap_or_default();
 
@@ -1075,16 +1155,22 @@ async fn memory_add(
     let embedding = vecs.first().map(|v| vec_to_blob(v));
 
     let backend = open_memory_backend(cfg, mem_path)?;
-    let note_id = backend.add(NoteInput {
-        kind: args.kind.clone(),
-        title: title.clone(),
-        body: body.clone(),
-        tags,
-        linked_files: files,
-        embedding,
-    }).await?;
+    let note_id = backend
+        .add(NoteInput {
+            kind: args.kind.clone(),
+            title: title.clone(),
+            body: body.clone(),
+            tags,
+            linked_files: files,
+            embedding,
+        })
+        .await?;
 
-    println!("Stored [{kind}] #{id}: {title}", kind = args.kind, id = note_id);
+    println!(
+        "Stored [{kind}] #{id}: {title}",
+        kind = args.kind,
+        id = note_id
+    );
     Ok(())
 }
 
@@ -1096,14 +1182,13 @@ async fn memory_add(
 ///   3. Fallback: raw HTTP GET + naive HTML stripping
 async fn fetch_url_content(url: &str) -> Result<(String, String)> {
     // ── 1. GitHub issue ───────────────────────────────────────────────────────
-    let gh_issue_re = regex::Regex::new(
-        r"https?://github\.com/([^/]+)/([^/]+)/issues/(\d+)"
-    ).unwrap();
+    let gh_issue_re =
+        regex::Regex::new(r"https?://github\.com/([^/]+)/([^/]+)/issues/(\d+)").unwrap();
 
     if let Some(caps) = gh_issue_re.captures(url) {
         let owner = &caps[1];
-        let repo  = &caps[2];
-        let num   = &caps[3];
+        let repo = &caps[2];
+        let num = &caps[3];
         let api_path = format!("repos/{owner}/{repo}/issues/{num}");
         let out = tokio::process::Command::new("gh")
             .args(["api", &api_path])
@@ -1111,10 +1196,10 @@ async fn fetch_url_content(url: &str) -> Result<(String, String)> {
             .await;
         if let Ok(out) = out {
             if out.status.success() {
-                let json: serde_json::Value = serde_json::from_slice(&out.stdout)
-                    .context("parsing gh api response")?;
+                let json: serde_json::Value =
+                    serde_json::from_slice(&out.stdout).context("parsing gh api response")?;
                 let title = json["title"].as_str().unwrap_or("GitHub Issue").to_string();
-                let body  = json["body"].as_str().unwrap_or("").to_string();
+                let body = json["body"].as_str().unwrap_or("").to_string();
                 return Ok((title, body));
             }
         }
@@ -1150,18 +1235,23 @@ async fn fetch_url_content(url: &str) -> Result<(String, String)> {
     let html = client.get(url).send().await?.text().await?;
 
     let title_re = regex::Regex::new(r"(?i)<title[^>]*>([\s\S]*?)</title>").unwrap();
-    let title = title_re.captures(&html)
+    let title = title_re
+        .captures(&html)
         .and_then(|c| c.get(1))
         .map(|m| html_unescape(m.as_str().trim()))
         .unwrap_or_else(|| url.to_string());
 
     let no_script = regex::Regex::new(r"(?is)<(script|style)[^>]*>[\s\S]*?</\1>").unwrap();
-    let no_tags   = regex::Regex::new(r"<[^>]+>").unwrap();
-    let ws        = regex::Regex::new(r"\s{3,}").unwrap();
-    let stripped  = no_script.replace_all(&html, " ");
-    let stripped  = no_tags.replace_all(&stripped, " ");
+    let no_tags = regex::Regex::new(r"<[^>]+>").unwrap();
+    let ws = regex::Regex::new(r"\s{3,}").unwrap();
+    let stripped = no_script.replace_all(&html, " ");
+    let stripped = no_tags.replace_all(&stripped, " ");
     let body = ws.replace_all(stripped.trim(), "\n\n").to_string();
-    let body = if body.len() > 8192 { body[..8192].to_string() } else { body };
+    let body = if body.len() > 8192 {
+        body[..8192].to_string()
+    } else {
+        body
+    };
 
     Ok((title, body))
 }
@@ -1180,11 +1270,11 @@ fn parse_web_to_md_output(md: &str, url: &str) -> Result<(String, String)> {
 
 fn html_unescape(s: &str) -> String {
     s.replace("&amp;", "&")
-     .replace("&lt;", "<")
-     .replace("&gt;", ">")
-     .replace("&quot;", "\"")
-     .replace("&#39;", "'")
-     .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
 }
 
 async fn memory_search(
@@ -1220,9 +1310,15 @@ async fn memory_search(
     Ok(())
 }
 
-async fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+async fn memory_list(
+    args: super::MemoryListArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
-    let notes = backend.list(args.kind.as_deref(), args.limit, args.archived).await?;
+    let notes = backend
+        .list(args.kind.as_deref(), args.limit, args.archived)
+        .await?;
 
     if notes.is_empty() {
         println!("No memory entries found.");
@@ -1240,7 +1336,11 @@ async fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path, cf
     Ok(())
 }
 
-async fn memory_show(args: super::MemoryShowArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+async fn memory_show(
+    args: super::MemoryShowArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
     match backend.get(args.id).await? {
         None => anyhow::bail!("No memory entry with id {}.", args.id),
@@ -1258,19 +1358,32 @@ async fn memory_show(args: super::MemoryShowArgs, mem_path: &std::path::Path, cf
                 println!();
                 println!("{}", n.body);
             }
-        }
+        },
     }
     Ok(())
 }
 
 fn print_note_summary(n: &crate::storage::memory::Note) {
-    let dist = n.distance.map(|d| format!("  dist: {d:.4}")).unwrap_or_default();
-    let archived_badge = if n.status == "archived" { " \x1b[31m[archived]\x1b[0m" } else { "" };
+    let dist = n
+        .distance
+        .map(|d| format!("  dist: {d:.4}"))
+        .unwrap_or_default();
+    let archived_badge = if n.status == "archived" {
+        " \x1b[31m[archived]\x1b[0m"
+    } else {
+        ""
+    };
     println!(
         "\x1b[1m#{id}\x1b[0m  \x1b[33m[{kind}]\x1b[0m  {title}{archived}{dist_fmt}",
-        id = n.id, kind = n.kind, title = n.title,
+        id = n.id,
+        kind = n.kind,
+        title = n.title,
         archived = archived_badge,
-        dist_fmt = if dist.is_empty() { String::new() } else { format!("\x1b[2m{dist}\x1b[0m") },
+        dist_fmt = if dist.is_empty() {
+            String::new()
+        } else {
+            format!("\x1b[2m{dist}\x1b[0m")
+        },
     );
     println!("     \x1b[2m{}\x1b[0m", format_age(n.created_at));
     if !n.tags.is_empty() {
@@ -1293,7 +1406,10 @@ fn print_note_summary(n: &crate::storage::memory::Note) {
             println!("     \x1b[2m…\x1b[0m");
         }
     } else {
-        println!("     \x1b[2m(use `spelunk memory show {}` to read body)\x1b[0m", n.id);
+        println!(
+            "     \x1b[2m(use `spelunk memory show {}` to read body)\x1b[0m",
+            n.id
+        );
     }
     println!();
 }
@@ -1304,13 +1420,15 @@ fn open_editor_for_body(title: &str) -> Result<String> {
         .or_else(|_| std::env::var("EDITOR"))
         .unwrap_or_else(|_| "vi".to_string());
 
-    let tmp = std::env::temp_dir()
-        .join(format!("ca_memory_{}.md", std::process::id()));
-    std::fs::write(&tmp, format!(
-        "# {title}\n\n\
+    let tmp = std::env::temp_dir().join(format!("ca_memory_{}.md", std::process::id()));
+    std::fs::write(
+        &tmp,
+        format!(
+            "# {title}\n\n\
          # Write your memory entry below. Lines starting with # are ignored.\n\
          # Save and close the editor when done.\n\n"
-    ))?;
+        ),
+    )?;
 
     let status = std::process::Command::new(&editor)
         .arg(&tmp)
@@ -1362,7 +1480,11 @@ async fn memory_push(
 
     let remote = open_memory_backend(cfg, mem_path)?;
 
-    println!("Pushing {} entries to {}…", notes.len(), cfg.memory_server_url.as_deref().unwrap_or("?"));
+    println!(
+        "Pushing {} entries to {}…",
+        notes.len(),
+        cfg.memory_server_url.as_deref().unwrap_or("?")
+    );
     let mut pushed = 0usize;
     let mut skipped = 0usize;
 
@@ -1370,16 +1492,20 @@ async fn memory_push(
     for note in &notes {
         // Fetch the raw embedding blob from local store.
         let blob = local.get_embedding(note.id)?;
-        let result = remote.add(NoteInput {
-            kind: note.kind.clone(),
-            title: note.title.clone(),
-            body: note.body.clone(),
-            tags: note.tags.clone(),
-            linked_files: note.linked_files.clone(),
-            embedding: blob,
-        }).await;
+        let result = remote
+            .add(NoteInput {
+                kind: note.kind.clone(),
+                title: note.title.clone(),
+                body: note.body.clone(),
+                tags: note.tags.clone(),
+                linked_files: note.linked_files.clone(),
+                embedding: blob,
+            })
+            .await;
         match result {
-            Ok(_) => { pushed += 1; }
+            Ok(_) => {
+                pushed += 1;
+            }
             Err(e) => {
                 eprintln!("  [skip] #{}: {e}", note.id);
                 skipped += 1;
@@ -1390,7 +1516,11 @@ async fn memory_push(
     Ok(())
 }
 
-async fn memory_archive(args: super::MemoryArchiveArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+async fn memory_archive(
+    args: super::MemoryArchiveArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
     if backend.archive(args.id).await? {
         println!("Archived memory entry #{}.", args.id);
@@ -1400,14 +1530,22 @@ async fn memory_archive(args: super::MemoryArchiveArgs, mem_path: &std::path::Pa
     Ok(())
 }
 
-async fn memory_supersede(args: super::MemorySupersededArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
+async fn memory_supersede(
+    args: super::MemorySupersededArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
     // Verify the new entry exists.
     if backend.get(args.new_id).await?.is_none() {
         anyhow::bail!("No memory entry with id {} (new).", args.new_id);
     }
     if backend.supersede(args.old_id, args.new_id).await? {
-        println!("Archived #{old} → superseded by #{new}.", old = args.old_id, new = args.new_id);
+        println!(
+            "Archived #{old} → superseded by #{new}.",
+            old = args.old_id,
+            new = args.new_id
+        );
     } else {
         anyhow::bail!("No active memory entry with id {} (old).", args.old_id);
     }
@@ -1438,7 +1576,9 @@ async fn memory_harvest(
         .filter(|s| !s.trim().is_empty())
         .filter_map(|entry| {
             let parts: Vec<&str> = entry.splitn(4, '\x00').collect();
-            if parts.len() < 3 { return None; }
+            if parts.len() < 3 {
+                return None;
+            }
             Some((
                 parts[0].trim().to_string(),
                 parts[1].trim().to_string(),
@@ -1465,7 +1605,11 @@ async fn memory_harvest(
         return Ok(());
     }
 
-    println!("Analysing {} new commit(s) in '{}'…", new_commits.len(), args.git_range);
+    println!(
+        "Analysing {} new commit(s) in '{}'…",
+        new_commits.len(),
+        args.git_range
+    );
 
     // ── Step 3: ask LLM to classify the commits ───────────────────────────────
     let commit_list = new_commits
@@ -1539,17 +1683,23 @@ async fn memory_harvest(
     let generate = llm.generate(&messages, 2048, tx, Some(schema));
     let collect = async move {
         let mut buf = String::new();
-        while let Some(t) = rx.recv().await { buf.push_str(&t); }
+        while let Some(t) = rx.recv().await {
+            buf.push_str(&t);
+        }
         buf
     };
-    let (_, raw_json) = tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+    let (_, raw_json) =
+        tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
     let raw_json = crate::utils::strip_ansi(&raw_json);
 
     // ── Step 4: parse entries, embed, store ───────────────────────────────────
     let parsed: serde_json::Value = serde_json::from_str(&raw_json)
         .with_context(|| format!("parsing LLM harvest response:\n{raw_json}"))?;
 
-    let entries = parsed["entries"].as_array().map(|a| a.as_slice()).unwrap_or(&[]);
+    let entries = parsed["entries"]
+        .as_array()
+        .map(|a| a.as_slice())
+        .unwrap_or(&[]);
 
     if entries.is_empty() {
         println!("No significant commits found in this range.");
@@ -1563,18 +1713,23 @@ async fn memory_harvest(
 
     let mut stored = 0usize;
     for entry in entries {
-        let sha   = entry["sha"].as_str().unwrap_or("").to_string();
-        let kind  = entry["kind"].as_str().unwrap_or("note");
+        let sha = entry["sha"].as_str().unwrap_or("").to_string();
+        let kind = entry["kind"].as_str().unwrap_or("note");
         let title = entry["title"].as_str().unwrap_or("").to_string();
-        let body  = entry["body"].as_str().unwrap_or("").to_string();
+        let body = entry["body"].as_str().unwrap_or("").to_string();
         let tags_val = entry["tags"].as_array();
 
         let mut tags: Vec<String> = tags_val
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         // Store the full SHA as a tag for dedup on future harvests.
         // Find the full SHA from our commit list.
-        let full_sha = new_commits.iter()
+        let full_sha = new_commits
+            .iter()
             .find(|(s, _, _)| s.starts_with(&sha))
             .map(|(s, _, _)| s.clone())
             .unwrap_or(sha.clone());
@@ -1584,14 +1739,16 @@ async fn memory_harvest(
         let vecs = embedder.embed(&[&embed_text]).await?;
         let embedding = vecs.first().map(|v| vec_to_blob(v));
 
-        let note_id = backend.add(NoteInput {
-            kind: kind.to_string(),
-            title: title.clone(),
-            body: body.clone(),
-            tags: tags.clone(),
-            linked_files: vec![],
-            embedding,
-        }).await?;
+        let note_id = backend
+            .add(NoteInput {
+                kind: kind.to_string(),
+                title: title.clone(),
+                body: body.clone(),
+                tags: tags.clone(),
+                linked_files: vec![],
+                embedding,
+            })
+            .await?;
 
         println!("  + [{kind}] #{note_id}: {title}");
         stored += 1;
@@ -1615,12 +1772,16 @@ pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
     let target = &args.target;
     let all_chunks = db.chunks_for_file(target)?;
     if all_chunks.is_empty() {
-        anyhow::bail!("No indexed chunks found for '{}'. Try `spelunk index` first.", target);
+        anyhow::bail!(
+            "No indexed chunks found for '{}'. Try `spelunk index` first.",
+            target
+        );
     }
 
     // Build embedder and re-embed each chunk's current content.
     let sp = spinner(format!("Verifying {target}…"));
-    let embedder = crate::backends::ActiveEmbedder::load(&cfg).await
+    let embedder = crate::backends::ActiveEmbedder::load(&cfg)
+        .await
         .context("loading embedder")?;
 
     let mut results: Vec<serde_json::Value> = Vec::new();
@@ -1628,7 +1789,9 @@ pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
     for chunk in &all_chunks {
         let title = chunk.name.as_deref().unwrap_or("none");
         let embed_text = format!("title: {title} | text: {}", chunk.content);
-        let vecs = embedder.embed(&[&embed_text]).await
+        let vecs = embedder
+            .embed(&[&embed_text])
+            .await
             .context("embedding chunk")?;
         let Some(vec) = vecs.first() else { continue };
         let blob = vec_to_blob(vec);
@@ -1636,7 +1799,8 @@ pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
         // KNN search for this chunk's embedding.
         let neighbours_raw = db.search_similar(&blob, args.neighbours + 1)?;
         // Drop the chunk itself (distance ≈ 0).
-        let neighbours: Vec<_> = neighbours_raw.into_iter()
+        let neighbours: Vec<_> = neighbours_raw
+            .into_iter()
             .filter(|r| r.chunk_id != chunk.chunk_id)
             .take(args.neighbours)
             .collect();
@@ -1656,7 +1820,10 @@ pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
             }));
         } else {
             let name = chunk.name.as_deref().unwrap_or("<anonymous>");
-            let loc = format!("{}:{}-{}", chunk.file_path, chunk.start_line, chunk.end_line);
+            let loc = format!(
+                "{}:{}-{}",
+                chunk.file_path, chunk.start_line, chunk.end_line
+            );
             println!("\x1b[1m{name}\x1b[0m  \x1b[2m{loc}\x1b[0m");
             for (i, n) in neighbours.iter().enumerate() {
                 let nname = n.name.as_deref().unwrap_or("<anonymous>");
@@ -1701,7 +1868,8 @@ async fn plan_create(
 
     // Gather context: search for relevant chunks using the description as query.
     let sp = spinner("Gathering codebase context…");
-    let embedder = crate::backends::ActiveEmbedder::load(cfg).await
+    let embedder = crate::backends::ActiveEmbedder::load(cfg)
+        .await
         .context("loading embedder")?;
     let query_text = format!("task: question answering | query: {}", args.description);
     let vecs = embedder.embed(&[&query_text]).await?;
@@ -1716,8 +1884,16 @@ async fn plan_create(
         let mblob = vec_to_blob(vecs.first().context("no embedding")?);
         match open_memory_backend(cfg, &mem_path).ok() {
             Some(b) => b.search(&mblob, 5).await.ok().and_then(|notes| {
-                if notes.is_empty() { None } else {
-                    Some(notes.iter().map(|n| format!("[{}] {}: {}", n.kind, n.title, n.body)).collect::<Vec<_>>().join("\n"))
+                if notes.is_empty() {
+                    None
+                } else {
+                    Some(
+                        notes
+                            .iter()
+                            .map(|n| format!("[{}] {}: {}", n.kind, n.title, n.body))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    )
                 }
             }),
             None => None,
@@ -1725,14 +1901,18 @@ async fn plan_create(
     };
 
     // Build LLM prompt.
-    let code_ctx = chunks.iter().map(|c| {
-        let name = c.name.as_deref().unwrap_or("<anonymous>");
-        format!("// {name} ({})\n{}", c.file_path, c.content)
-    }).collect::<Vec<_>>().join("\n\n---\n\n");
+    let code_ctx = chunks
+        .iter()
+        .map(|c| {
+            let name = c.name.as_deref().unwrap_or("<anonymous>");
+            format!("// {name} ({})\n{}", c.file_path, c.content)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n---\n\n");
 
-    let memory_section = memory_context.map(|m| format!(
-        "\n<memory_context>\n{m}\n</memory_context>"
-    )).unwrap_or_default();
+    let memory_section = memory_context
+        .map(|m| format!("\n<memory_context>\n{m}\n</memory_context>"))
+        .unwrap_or_default();
 
     let system = "You are a senior software engineer creating an implementation plan as a markdown checklist. \
         Output ONLY the markdown document — no explanations before or after. \
@@ -1746,7 +1926,8 @@ async fn plan_create(
     );
 
     let sp2 = spinner("Generating plan…");
-    let llm = crate::backends::ActiveLlm::load(cfg).await
+    let llm = crate::backends::ActiveLlm::load(cfg)
+        .await
         .context("loading LLM")?;
     let messages = vec![
         crate::llm::Message::system(system),
@@ -1757,10 +1938,13 @@ async fn plan_create(
     let generate = llm.generate(&messages, 2048, tx, None);
     let collect = async move {
         let mut buf = String::new();
-        while let Some(t) = rx.recv().await { buf.push_str(&t); }
+        while let Some(t) = rx.recv().await {
+            buf.push_str(&t);
+        }
         buf
     };
-    let (_, plan_content) = tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+    let (_, plan_content) =
+        tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
     sp2.finish_and_clear();
 
     // Determine output path under docs/plans/.
@@ -1769,8 +1953,13 @@ async fn plan_create(
         // Walk up to find the project root (where .git lives, or fall back).
         let mut p = db_parent;
         loop {
-            if p.join(".git").exists() { break p.to_path_buf(); }
-            match p.parent() { Some(pp) => p = pp, None => break db_parent.to_path_buf() }
+            if p.join(".git").exists() {
+                break p.to_path_buf();
+            }
+            match p.parent() {
+                Some(pp) => p = pp,
+                None => break db_parent.to_path_buf(),
+            }
         }
     };
 
@@ -1793,21 +1982,49 @@ async fn plan_create(
     // Prepend a YAML-lite header if the LLM didn't.
     let date = {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let days = secs / 86400;
         // Simplified ISO date from epoch (accurate for dates 1970+).
         let mut y = 1970u32;
         let mut remaining = days;
         loop {
-            let leap = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
-            if remaining < leap { break; }
+            let leap = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+                366
+            } else {
+                365
+            };
+            if remaining < leap {
+                break;
+            }
             remaining -= leap;
             y += 1;
         }
-        let month_days = [31u32, if y%4==0&&(y%100!=0||y%400==0){29}else{28}, 31,30,31,30,31,31,30,31,30,31];
+        let month_days = [
+            31u32,
+            if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+                29
+            } else {
+                28
+            },
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
+        ];
         let mut m = 1u32;
         for md in &month_days {
-            if remaining < *md as u64 { break; }
+            if remaining < *md as u64 {
+                break;
+            }
             remaining -= *md as u64;
             m += 1;
         }
@@ -1854,13 +2071,19 @@ fn plan_status(args: super::PlanStatusArgs) -> Result<()> {
                 if p.join(".git").exists() {
                     break p.join("docs").join("plans");
                 }
-                match p.parent() { Some(pp) => p = pp, None => break candidate }
+                match p.parent() {
+                    Some(pp) => p = pp,
+                    None => break candidate,
+                }
             }
         }
     };
 
     if !plan_dir.exists() {
-        println!("No plans directory found (expected {}).", plan_dir.display());
+        println!(
+            "No plans directory found (expected {}).",
+            plan_dir.display()
+        );
         println!("Create a plan with: ca plan create \"<description>\"");
         return Ok(());
     }
@@ -1870,20 +2093,35 @@ fn plan_status(args: super::PlanStatusArgs) -> Result<()> {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") { continue; }
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
         if let Some(name_filter) = &args.name {
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            if stem != name_filter { continue; }
+            if stem != name_filter {
+                continue;
+            }
         }
         let content = std::fs::read_to_string(&path).unwrap_or_default();
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
 
         // Count checklist items.
-        let total = content.lines().filter(|l| l.trim_start().starts_with("- [")).count();
-        let done = content.lines().filter(|l| l.trim_start().starts_with("- [x]") || l.trim_start().starts_with("- [X]")).count();
+        let total = content
+            .lines()
+            .filter(|l| l.trim_start().starts_with("- ["))
+            .count();
+        let done = content
+            .lines()
+            .filter(|l| l.trim_start().starts_with("- [x]") || l.trim_start().starts_with("- [X]"))
+            .count();
 
         // Extract title from first `# ` line.
-        let title = content.lines()
+        let title = content
+            .lines()
             .find(|l| l.starts_with("# "))
             .map(|l| l.trim_start_matches("# ").trim().to_string())
             .unwrap_or_else(|| stem.clone());
@@ -1941,7 +2179,8 @@ fn resolve_project_and_deps(
         if let Ok(cwd) = std::env::current_dir() {
             if let Ok(Some(project)) = reg.find_project_for_path(&cwd) {
                 if project.db_path.exists() {
-                    let deps = reg.get_deps(project.id)
+                    let deps = reg
+                        .get_deps(project.id)
                         .unwrap_or_default()
                         .into_iter()
                         .map(|d| d.db_path)
@@ -1978,18 +2217,20 @@ fn search_all_dbs(
 
     for dep_path in dep_db_paths {
         match Database::open(dep_path) {
-            Ok(dep_db) => {
-                match dep_db.search_similar(query_blob, fetch) {
-                    Ok(mut dep_results) => all.append(&mut dep_results),
-                    Err(e) => tracing::warn!("search failed on dep {}: {e}", dep_path.display()),
-                }
-            }
+            Ok(dep_db) => match dep_db.search_similar(query_blob, fetch) {
+                Ok(mut dep_results) => all.append(&mut dep_results),
+                Err(e) => tracing::warn!("search failed on dep {}: {e}", dep_path.display()),
+            },
             Err(e) => tracing::warn!("could not open dep DB {}: {e}", dep_path.display()),
         }
     }
 
     // Sort by distance (ascending), deduplicate by (file_path, start_line, end_line).
-    all.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+    all.sort_by(|a, b| {
+        a.distance
+            .partial_cmp(&b.distance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let mut seen = std::collections::HashSet::new();
     all.retain(|r| seen.insert((r.file_path.clone(), r.start_line, r.end_line)));
     all.truncate(limit);
@@ -1998,13 +2239,21 @@ fn search_all_dbs(
 
 fn format_age(unix_ts: i64) -> String {
     use std::time::{Duration, UNIX_EPOCH};
-    if let Ok(t) = UNIX_EPOCH.checked_add(Duration::from_secs(unix_ts as u64)).ok_or(()) {
+    if let Ok(t) = UNIX_EPOCH
+        .checked_add(Duration::from_secs(unix_ts as u64))
+        .ok_or(())
+    {
         if let Ok(elapsed) = std::time::SystemTime::now().duration_since(t) {
             let secs = elapsed.as_secs();
-            return if secs < 60 { format!("{secs}s ago") }
-                else if secs < 3600 { format!("{}m ago", secs / 60) }
-                else if secs < 86400 { format!("{}h ago", secs / 3600) }
-                else { format!("{}d ago", secs / 86400) };
+            return if secs < 60 {
+                format!("{secs}s ago")
+            } else if secs < 3600 {
+                format!("{}m ago", secs / 60)
+            } else if secs < 86400 {
+                format!("{}h ago", secs / 3600)
+            } else {
+                format!("{}d ago", secs / 86400)
+            };
         }
     }
     "unknown".to_string()
@@ -2017,7 +2266,6 @@ fn progress_style(prefix: &str) -> ProgressStyle {
     .unwrap()
     .progress_chars("=>-")
 }
-
 
 fn short_path(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
@@ -2064,7 +2312,10 @@ fn print_results_text(results: &[crate::search::SearchResult]) {
             println!("    {line}");
         }
         if lines.len() > preview_lines {
-            println!("    \x1b[2m… ({} more lines)\x1b[0m", lines.len() - preview_lines);
+            println!(
+                "    \x1b[2m… ({} more lines)\x1b[0m",
+                lines.len() - preview_lines
+            );
         }
         println!();
     }
@@ -2075,7 +2326,12 @@ fn print_chunks_text(chunks: &[crate::search::SearchResult]) {
         let name = c.name.as_deref().unwrap_or("<anonymous>");
         println!(
             "{:2}. \x1b[2m{}:{}-{}\x1b[0m  \x1b[33m[{}: {}]\x1b[0m",
-            i + 1, c.language, c.start_line, c.end_line, c.node_type, name,
+            i + 1,
+            c.language,
+            c.start_line,
+            c.end_line,
+            c.node_type,
+            name,
         );
         let lines: Vec<&str> = c.content.lines().collect();
         let preview = lines.len().min(6);
@@ -2119,22 +2375,28 @@ fn ask_json_schema() -> serde_json::Value {
 
 fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
     // Group into outgoing (source) and incoming (target) edges.
-    let outgoing: Vec<_> = edges.iter().filter(|e| {
-        e.source_name.as_deref() == Some(query) || e.source_file == query
-    }).collect();
+    let outgoing: Vec<_> = edges
+        .iter()
+        .filter(|e| e.source_name.as_deref() == Some(query) || e.source_file == query)
+        .collect();
     let incoming: Vec<_> = edges.iter().filter(|e| e.target_name == query).collect();
-    let other: Vec<_> = edges.iter().filter(|e| {
-        e.source_name.as_deref() != Some(query)
-            && e.source_file != query
-            && e.target_name != query
-    }).collect();
+    let other: Vec<_> = edges
+        .iter()
+        .filter(|e| {
+            e.source_name.as_deref() != Some(query)
+                && e.source_file != query
+                && e.target_name != query
+        })
+        .collect();
 
     if !outgoing.is_empty() {
         println!("\x1b[1mOutgoing from '{query}':\x1b[0m");
         for e in &outgoing {
             let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
-            println!("  \x1b[33m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
-                e.kind, e.target_name, loc, e.line);
+            println!(
+                "  \x1b[33m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
+                e.kind, e.target_name, loc, e.line
+            );
         }
         println!();
     }
@@ -2142,8 +2404,10 @@ fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
         println!("\x1b[1mIncoming to '{query}':\x1b[0m");
         for e in &incoming {
             let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
-            println!("  \x1b[36m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
-                e.kind, e.source_file, loc, e.line);
+            println!(
+                "  \x1b[36m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
+                e.kind, e.source_file, loc, e.line
+            );
         }
         println!();
     }
@@ -2151,8 +2415,10 @@ fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
         println!("\x1b[1mRelated edges:\x1b[0m");
         for e in &other {
             let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
-            println!("  {} -- \x1b[33m{}\x1b[0m --> {}  \x1b[2m({}:{})\x1b[0m",
-                loc, e.kind, e.target_name, e.source_file, e.line);
+            println!(
+                "  {} -- \x1b[33m{}\x1b[0m --> {}  \x1b[2m({}:{})\x1b[0m",
+                loc, e.kind, e.target_name, e.source_file, e.line
+            );
         }
     }
 }

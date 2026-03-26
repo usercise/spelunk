@@ -1,9 +1,9 @@
 use anyhow::Result;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json,
 };
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,9 @@ pub struct ListQuery {
     #[serde(default)]
     pub archived: bool,
 }
-fn default_limit() -> usize { 20 }
+fn default_limit() -> usize {
+    20
+}
 
 #[derive(Deserialize)]
 pub struct SearchRequest {
@@ -63,7 +65,9 @@ pub struct SupersedeRequest {
 
 // ── Health ────────────────────────────────────────────────────────────────────
 
-pub async fn health() -> &'static str { "ok" }
+pub async fn health() -> &'static str {
+    "ok"
+}
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -106,7 +110,12 @@ pub async fn list_notes(
 ) -> Result<impl IntoResponse, AppError> {
     let db = state.db.lock().await;
     let project = require_project(&db, &project_id)?;
-    let notes = db.list_notes(project.id, params.kind.as_deref(), params.limit, params.archived)?;
+    let notes = db.list_notes(
+        project.id,
+        params.kind.as_deref(),
+        params.limit,
+        params.archived,
+    )?;
     Ok(Json(notes))
 }
 
@@ -176,9 +185,6 @@ pub async fn project_stats(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn require_project(
-    db: &super::db::ServerDb,
-    slug: &str,
-) -> Result<super::db::Project, AppError> {
+fn require_project(db: &super::db::ServerDb, slug: &str) -> Result<super::db::Project, AppError> {
     db.get_project(slug)?.ok_or(AppError::NotFound)
 }

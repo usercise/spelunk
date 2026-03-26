@@ -87,7 +87,6 @@ pub struct Config {
     pub lmstudio_base_url: String,
 
     // ── Shared memory server (optional) ──────────────────────────────────────
-
     /// URL of the spelunk-server instance, e.g. `http://spelunk.internal:7777`.
     /// Set in `.spelunk/config.toml` (project-level) or via `SPELUNK_SERVER_URL`.
     /// If unset, memory is stored locally in memory.db.
@@ -167,20 +166,33 @@ impl Config {
         // ── 2. Merge project-level config (.spelunk/config.toml) ─────────────
         if let Ok(cwd) = std::env::current_dir() {
             if let Some(proj_path) = find_project_config(&cwd) {
-                let raw = std::fs::read_to_string(&proj_path)
-                    .with_context(|| format!("reading project config at {}", proj_path.display()))?;
-                let proj: ProjectConfig = toml::from_str(&raw)
-                    .context("parsing .spelunk/config.toml")?;
-                if let Some(v) = proj.memory_server_url { cfg.memory_server_url = Some(v); }
-                if let Some(v) = proj.memory_server_key { cfg.memory_server_key = Some(v); }
-                if let Some(v) = proj.project_id        { cfg.project_id = Some(v); }
+                let raw = std::fs::read_to_string(&proj_path).with_context(|| {
+                    format!("reading project config at {}", proj_path.display())
+                })?;
+                let proj: ProjectConfig =
+                    toml::from_str(&raw).context("parsing .spelunk/config.toml")?;
+                if let Some(v) = proj.memory_server_url {
+                    cfg.memory_server_url = Some(v);
+                }
+                if let Some(v) = proj.memory_server_key {
+                    cfg.memory_server_key = Some(v);
+                }
+                if let Some(v) = proj.project_id {
+                    cfg.project_id = Some(v);
+                }
             }
         }
 
         // ── 3. Environment variable overrides ────────────────────────────────
-        if let Ok(v) = std::env::var("SPELUNK_SERVER_URL")  { cfg.memory_server_url = Some(v); }
-        if let Ok(v) = std::env::var("SPELUNK_SERVER_KEY")  { cfg.memory_server_key = Some(v); }
-        if let Ok(v) = std::env::var("SPELUNK_PROJECT_ID")  { cfg.project_id = Some(v); }
+        if let Ok(v) = std::env::var("SPELUNK_SERVER_URL") {
+            cfg.memory_server_url = Some(v);
+        }
+        if let Ok(v) = std::env::var("SPELUNK_SERVER_KEY") {
+            cfg.memory_server_key = Some(v);
+        }
+        if let Ok(v) = std::env::var("SPELUNK_PROJECT_ID") {
+            cfg.project_id = Some(v);
+        }
 
         Ok(cfg)
     }

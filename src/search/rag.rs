@@ -1,6 +1,6 @@
-use anyhow::Result;
-use crate::{embeddings::EmbeddingBackend, llm::LlmBackend, storage::Database};
 use super::SearchResult;
+use crate::{embeddings::EmbeddingBackend, llm::LlmBackend, storage::Database};
+use anyhow::Result;
 
 /// Full RAG pipeline: embed query → vector search → assemble context → LLM.
 #[allow(dead_code)]
@@ -19,7 +19,10 @@ impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
 
         let query_text = format!("task: code retrieval | query: {query}");
         let vecs = self.embedder.embed(&[&query_text]).await?;
-        let blob = vec_to_blob(vecs.first().ok_or_else(|| anyhow::anyhow!("no embedding"))?);
+        let blob = vec_to_blob(
+            vecs.first()
+                .ok_or_else(|| anyhow::anyhow!("no embedding"))?,
+        );
         self.db.search_similar(&blob, self.top_k)
     }
 
@@ -29,7 +32,15 @@ impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
 
         let context = results
             .iter()
-            .map(|r| format!("// {} ({}:{})\n{}", r.name.as_deref().unwrap_or("?"), r.file_path, r.start_line, r.content))
+            .map(|r| {
+                format!(
+                    "// {} ({}:{})\n{}",
+                    r.name.as_deref().unwrap_or("?"),
+                    r.file_path,
+                    r.start_line,
+                    r.content
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n\n---\n\n");
 
@@ -57,4 +68,3 @@ impl<E: EmbeddingBackend, L: LlmBackend> RagPipeline<E, L> {
         Ok(())
     }
 }
-

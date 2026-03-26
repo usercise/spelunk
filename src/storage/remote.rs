@@ -19,7 +19,12 @@ pub struct RemoteMemoryBackend {
 
 impl RemoteMemoryBackend {
     fn url(&self, path: &str) -> String {
-        format!("{}/v1/projects/{}/{}", self.base_url.trim_end_matches('/'), self.project_id, path)
+        format!(
+            "{}/v1/projects/{}/{}",
+            self.base_url.trim_end_matches('/'),
+            self.project_id,
+            path
+        )
     }
 
     fn authed(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -221,7 +226,10 @@ impl MemoryBackend for RemoteMemoryBackend {
     async fn supersede(&self, old_id: i64, new_id: i64) -> Result<bool> {
         let body = SupersedeRequest { new_id };
         let resp = self
-            .authed(self.client.post(self.url(&format!("memory/{old_id}/supersede"))))
+            .authed(
+                self.client
+                    .post(self.url(&format!("memory/{old_id}/supersede"))),
+            )
             .json(&body)
             .send()
             .await

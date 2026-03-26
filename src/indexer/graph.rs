@@ -28,9 +28,9 @@ pub enum EdgeKind {
 impl std::fmt::Display for EdgeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Imports    => write!(f, "imports"),
-            Self::Calls      => write!(f, "calls"),
-            Self::Extends    => write!(f, "extends"),
+            Self::Imports => write!(f, "imports"),
+            Self::Calls => write!(f, "calls"),
+            Self::Extends => write!(f, "extends"),
             Self::Implements => write!(f, "implements"),
         }
     }
@@ -40,10 +40,10 @@ impl EdgeKind {
     #[allow(dead_code)]
     pub fn from_str(s: &str) -> Self {
         match s {
-            "calls"      => Self::Calls,
-            "extends"    => Self::Extends,
+            "calls" => Self::Calls,
+            "extends" => Self::Extends,
             "implements" => Self::Implements,
-            _            => Self::Imports,
+            _ => Self::Imports,
         }
     }
 }
@@ -71,7 +71,7 @@ impl EdgeExtractor {
     /// Returns an empty vec on parse failure rather than an error.
     pub fn extract(source: &str, file_path: &str, language: &str) -> Result<Vec<Edge>> {
         let ts_lang = match super::parser::ts_language_pub(language) {
-            Ok(l)  => l,
+            Ok(l) => l,
             Err(_) => return Ok(vec![]),
         };
 
@@ -80,14 +80,22 @@ impl EdgeExtractor {
 
         let tree = match parser.parse(source, None) {
             Some(t) => t,
-            None    => return Ok(vec![]),
+            None => return Ok(vec![]),
         };
 
         let bytes = source.as_bytes();
         let mut edges = Vec::new();
         let mut seen: HashSet<(Option<String>, String, String)> = HashSet::new();
 
-        walk(tree.root_node(), bytes, file_path, language, None, &mut edges, &mut seen);
+        walk(
+            tree.root_node(),
+            bytes,
+            file_path,
+            language,
+            None,
+            &mut edges,
+            &mut seen,
+        );
         Ok(edges)
     }
 }
@@ -121,15 +129,15 @@ fn walk(
 /// If `node` introduces a named scope (function, class, …) return its name.
 fn enclosing_scope(node: &tree_sitter::Node<'_>, src: &[u8], language: &str) -> Option<String> {
     let field = match (language, node.kind()) {
-        ("rust",                       "function_item")        => "name",
-        ("python",                     "function_definition")  => "name",
-        ("python",                     "class_definition")     => "name",
-        ("javascript" | "typescript",  "function_declaration") => "name",
-        ("javascript" | "typescript",  "class_declaration")    => "name",
-        ("go",                         "function_declaration") => "name",
-        ("go",                         "method_declaration")   => "name",
-        ("java",                       "class_declaration")    => "name",
-        ("java",                       "method_declaration")   => "name",
+        ("rust", "function_item") => "name",
+        ("python", "function_definition") => "name",
+        ("python", "class_definition") => "name",
+        ("javascript" | "typescript", "function_declaration") => "name",
+        ("javascript" | "typescript", "class_declaration") => "name",
+        ("go", "function_declaration") => "name",
+        ("go", "method_declaration") => "name",
+        ("java", "class_declaration") => "name",
+        ("java", "method_declaration") => "name",
         _ => return None,
     };
     node.child_by_field_name(field)
@@ -150,19 +158,23 @@ fn collect(
     let line = node.start_position().row + 1;
 
     let candidates: Vec<(String, EdgeKind)> = match language {
-        "rust"                      => rust_edges(node, src),
-        "python"                    => python_edges(node, src),
+        "rust" => rust_edges(node, src),
+        "python" => python_edges(node, src),
         "javascript" | "typescript" => js_edges(node, src),
-        "go"                        => go_edges(node, src),
-        "java"                      => java_edges(node, src),
-        "c" | "cpp"                 => c_edges(node, src),
-        "html"                      => html_edges(node, src),
-        "css"                       => css_edges(node, src),
-        _                           => vec![],
+        "go" => go_edges(node, src),
+        "java" => java_edges(node, src),
+        "c" | "cpp" => c_edges(node, src),
+        "html" => html_edges(node, src),
+        "css" => css_edges(node, src),
+        _ => vec![],
     };
 
     for (target, kind) in candidates {
-        let key = (enclosing.map(str::to_owned), target.clone(), kind.to_string());
+        let key = (
+            enclosing.map(str::to_owned),
+            target.clone(),
+            kind.to_string(),
+        );
         if seen.insert(key) {
             out.push(Edge {
                 source_file: file_path.to_owned(),
@@ -483,10 +495,7 @@ fn html_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind
         }
 
         if matches!(attr_name, "src" | "href") {
-            let path = attr_value
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_owned();
+            let path = attr_value.trim_matches('"').trim_matches('\'').to_owned();
             if !path.is_empty() && !path.starts_with('#') && !path.starts_with("data:") {
                 out.push((path, EdgeKind::Imports));
             }
@@ -528,50 +537,140 @@ fn css_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)
 fn is_rust_builtin(name: &str) -> bool {
     matches!(
         name,
-        "Ok" | "Err" | "Some" | "None" | "Box" | "Vec" | "String"
-            | "Default" | "From" | "Into" | "Clone" | "Drop"
+        "Ok" | "Err"
+            | "Some"
+            | "None"
+            | "Box"
+            | "Vec"
+            | "String"
+            | "Default"
+            | "From"
+            | "Into"
+            | "Clone"
+            | "Drop"
     )
 }
 
 fn is_python_builtin(name: &str) -> bool {
     matches!(
         name,
-        "print" | "len" | "range" | "enumerate" | "zip" | "map" | "filter"
-            | "sorted" | "reversed" | "list" | "dict" | "set" | "tuple"
-            | "str" | "int" | "float" | "bool" | "type" | "isinstance"
-            | "hasattr" | "getattr" | "setattr" | "super" | "open"
-            | "input" | "repr" | "abs" | "max" | "min" | "sum" | "any" | "all"
-            | "iter" | "next" | "id" | "hash"
+        "print"
+            | "len"
+            | "range"
+            | "enumerate"
+            | "zip"
+            | "map"
+            | "filter"
+            | "sorted"
+            | "reversed"
+            | "list"
+            | "dict"
+            | "set"
+            | "tuple"
+            | "str"
+            | "int"
+            | "float"
+            | "bool"
+            | "type"
+            | "isinstance"
+            | "hasattr"
+            | "getattr"
+            | "setattr"
+            | "super"
+            | "open"
+            | "input"
+            | "repr"
+            | "abs"
+            | "max"
+            | "min"
+            | "sum"
+            | "any"
+            | "all"
+            | "iter"
+            | "next"
+            | "id"
+            | "hash"
     )
 }
 
 fn is_js_builtin(name: &str) -> bool {
     matches!(
         name,
-        "require" | "import" | "console" | "setTimeout" | "setInterval"
-            | "clearTimeout" | "clearInterval" | "Promise" | "Array"
-            | "Object" | "String" | "Number" | "Boolean" | "Error"
-            | "Map" | "Set" | "JSON" | "Math" | "Date" | "Symbol"
-            | "parseInt" | "parseFloat" | "isNaN" | "fetch"
+        "require"
+            | "import"
+            | "console"
+            | "setTimeout"
+            | "setInterval"
+            | "clearTimeout"
+            | "clearInterval"
+            | "Promise"
+            | "Array"
+            | "Object"
+            | "String"
+            | "Number"
+            | "Boolean"
+            | "Error"
+            | "Map"
+            | "Set"
+            | "JSON"
+            | "Math"
+            | "Date"
+            | "Symbol"
+            | "parseInt"
+            | "parseFloat"
+            | "isNaN"
+            | "fetch"
     )
 }
 
 fn is_go_builtin(name: &str) -> bool {
     matches!(
         name,
-        "make" | "new" | "len" | "cap" | "append" | "copy" | "delete"
-            | "close" | "panic" | "recover" | "print" | "println"
+        "make"
+            | "new"
+            | "len"
+            | "cap"
+            | "append"
+            | "copy"
+            | "delete"
+            | "close"
+            | "panic"
+            | "recover"
+            | "print"
+            | "println"
     )
 }
 
 fn is_c_builtin(name: &str) -> bool {
     matches!(
         name,
-        "printf" | "fprintf" | "sprintf" | "snprintf" | "scanf" | "fscanf"
-            | "malloc" | "calloc" | "realloc" | "free"
-            | "memcpy" | "memmove" | "memset" | "memcmp"
-            | "strlen" | "strcpy" | "strncpy" | "strcmp" | "strncmp"
-            | "fopen" | "fclose" | "fread" | "fwrite" | "fgets" | "fputs"
-            | "assert" | "exit" | "abort"
+        "printf"
+            | "fprintf"
+            | "sprintf"
+            | "snprintf"
+            | "scanf"
+            | "fscanf"
+            | "malloc"
+            | "calloc"
+            | "realloc"
+            | "free"
+            | "memcpy"
+            | "memmove"
+            | "memset"
+            | "memcmp"
+            | "strlen"
+            | "strcpy"
+            | "strncpy"
+            | "strcmp"
+            | "strncmp"
+            | "fopen"
+            | "fclose"
+            | "fread"
+            | "fwrite"
+            | "fgets"
+            | "fputs"
+            | "assert"
+            | "exit"
+            | "abort"
     )
 }

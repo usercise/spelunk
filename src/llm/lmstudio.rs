@@ -90,12 +90,14 @@ impl LlmBackend for LmStudioLlm {
     ) -> Result<()> {
         let chat_messages: Vec<ChatMessage> = messages
             .iter()
-            .map(|m| ChatMessage { role: &m.role, content: &m.content })
+            .map(|m| ChatMessage {
+                role: &m.role,
+                content: &m.content,
+            })
             .collect();
 
-        let response_format = json_schema.map(|schema| {
-            serde_json::json!({ "type": "json_schema", "json_schema": schema })
-        });
+        let response_format = json_schema
+            .map(|schema| serde_json::json!({ "type": "json_schema", "json_schema": schema }));
 
         let req = ChatRequest {
             model: &self.model,
@@ -150,9 +152,7 @@ impl LlmBackend for LmStudioLlm {
                         Ok(chunk) => {
                             for choice in chunk.choices {
                                 if let Some(content) = choice.delta.content {
-                                    if !content.is_empty()
-                                        && tx.send(content).await.is_err()
-                                    {
+                                    if !content.is_empty() && tx.send(content).await.is_err() {
                                         // Receiver dropped — caller cancelled.
                                         return Ok(());
                                     }

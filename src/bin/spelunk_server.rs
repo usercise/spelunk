@@ -2,11 +2,11 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 // Pull in the spelunk library crate (same workspace).
-use spelunk::server::{router, AppState};
 use spelunk::server::db::ServerDb;
+use spelunk::server::{AppState, router};
 
 #[derive(Parser, Debug)]
 #[command(name = "spelunk-server", about = "Shared memory server for spelunk")]
@@ -54,7 +54,9 @@ async fn main() -> Result<()> {
         .with_context(|| format!("opening server db at {}", args.db.display()))?;
 
     if args.key.is_none() {
-        tracing::warn!("No API key configured — server is running without authentication. Set --key or SPELUNK_SERVER_KEY for production use.");
+        tracing::warn!(
+            "No API key configured — server is running without authentication. Set --key or SPELUNK_SERVER_KEY for production use."
+        );
     }
 
     let state = AppState {

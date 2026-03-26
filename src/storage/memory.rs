@@ -38,7 +38,8 @@ impl MemoryStore {
     }
 
     fn migrate(&self) -> Result<()> {
-        self.conn.execute_batch(include_str!("../../migrations/004_memory.sql"))
+        self.conn
+            .execute_batch(include_str!("../../migrations/004_memory.sql"))
             .context("running memory migrations")?;
         // Migration 005: lifecycle columns — ALTER TABLE doesn't support IF NOT EXISTS,
         // so we ignore "duplicate column name" errors (idempotent re-open).
@@ -68,13 +69,7 @@ impl MemoryStore {
         self.conn.execute(
             "INSERT INTO notes (kind, title, body, tags, linked_files)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
-                kind,
-                title,
-                body,
-                tags.join(","),
-                linked_files.join(","),
-            ],
+            rusqlite::params![kind, title, body, tags.join(","), linked_files.join(","),],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -113,27 +108,37 @@ impl MemoryStore {
 
     /// List notes, optionally filtered by kind, newest first.
     /// When `include_archived` is false only active entries are returned.
-    pub fn list(&self, kind_filter: Option<&str>, limit: usize, include_archived: bool) -> Result<Vec<Note>> {
+    pub fn list(
+        &self,
+        kind_filter: Option<&str>,
+        limit: usize,
+        include_archived: bool,
+    ) -> Result<Vec<Note>> {
         let limit = limit.min(500);
-        let status_clause = if include_archived { "" } else { "AND status = 'active'" };
-        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
-            if let Some(kind) = kind_filter {
-                (
+        let status_clause = if include_archived {
+            ""
+        } else {
+            "AND status = 'active'"
+        };
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(kind) =
+            kind_filter
+        {
+            (
                     format!(
                         "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
                          FROM notes WHERE kind = ?1 {status_clause} ORDER BY created_at DESC LIMIT {limit}"
                     ),
                     vec![Box::new(kind.to_string())],
                 )
-            } else {
-                (
+        } else {
+            (
                     format!(
                         "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
                          FROM notes WHERE 1=1 {status_clause} ORDER BY created_at DESC LIMIT {limit}"
                     ),
                     vec![],
                 )
-            };
+        };
 
         let mut stmt = self.conn.prepare(&sql)?;
         let params_refs: Vec<&dyn rusqlite::types::ToSql> =
@@ -176,13 +181,19 @@ impl MemoryStore {
     }
 
     pub fn count(&self) -> Result<i64> {
-        Ok(self.conn.query_row("SELECT COUNT(*) FROM notes WHERE status = 'active'", [], |r| r.get(0))?)
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM notes WHERE status = 'active'",
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     /// Return all SHA tags stored (used by harvest to avoid duplicates).
     /// Harvest stores the git SHA as a tag in the format "git:<sha>".
     pub fn harvested_shas(&self) -> Result<std::collections::HashSet<String>> {
-        let mut stmt = self.conn.prepare_cached("SELECT tags FROM notes WHERE tags LIKE '%git:%'")?;
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT tags FROM notes WHERE tags LIKE '%git:%'")?;
         let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
         let mut shas = std::collections::HashSet::new();
         for row in rows {
@@ -242,6 +253,10 @@ fn row_to_note_with_distance(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> 
 fn split_csv(s: Option<&str>) -> Vec<String> {
     match s {
         None | Some("") => vec![],
-        Some(s) => s.split(',').map(|p| p.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+        Some(s) => s
+            .split(',')
+            .map(|p| p.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
     }
 }

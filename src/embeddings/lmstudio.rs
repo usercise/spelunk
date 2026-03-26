@@ -69,7 +69,10 @@ impl EmbeddingBackend for LmStudioEmbedder {
         // makes the Gemma tokenizer emit the actual EOS token ID.
         let with_eos: Vec<String> = texts.iter().map(|t| format!("{t}<eos>")).collect();
         let input_refs: Vec<&str> = with_eos.iter().map(String::as_str).collect();
-        let req = EmbedRequest { model: &self.model, input: &input_refs };
+        let req = EmbedRequest {
+            model: &self.model,
+            input: &input_refs,
+        };
         let resp: EmbedResponse = self
             .client
             .post(format!("{}/v1/embeddings", self.base_url))

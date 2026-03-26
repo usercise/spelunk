@@ -43,7 +43,9 @@ pub struct LocalMemoryBackend {
 
 impl LocalMemoryBackend {
     pub fn new(store: MemoryStore) -> Self {
-        Self { store: tokio::sync::Mutex::new(store) }
+        Self {
+            store: tokio::sync::Mutex::new(store),
+        }
     }
 }
 
@@ -70,7 +72,10 @@ impl MemoryBackend for LocalMemoryBackend {
         limit: usize,
         include_archived: bool,
     ) -> Result<Vec<Note>> {
-        self.store.lock().await.list(kind_filter, limit, include_archived)
+        self.store
+            .lock()
+            .await
+            .list(kind_filter, limit, include_archived)
     }
 
     async fn get(&self, id: i64) -> Result<Option<Note>> {
