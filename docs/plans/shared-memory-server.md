@@ -193,37 +193,37 @@ When `memory_server_url` is configured:
 
 ## Tasks
 
-### Phase 1: Memory lifecycle (local, no server required)
-- [ ] Add `status` field to `notes` table (`active` | `archived`)
-- [ ] `spelunk memory archive <id>`
-- [ ] `spelunk memory supersede <old-id> <new-id>` — marks old as archived, links to new
-- [ ] Show `created_at` as human-readable age in `spelunk memory list` output
-- [ ] Exclude archived entries from search and `spelunk ask` context
-- [ ] `spelunk memory list --archived` to view historical entries
+### Phase 1: Memory lifecycle (local, no server required) ✅
+- [x] Add `status` field to `notes` table (`active` | `archived`)
+- [x] `spelunk memory archive <id>`
+- [x] `spelunk memory supersede <old-id> <new-id>` — marks old as archived, links to new
+- [x] Show `created_at` as human-readable age in `spelunk memory list` output
+- [x] Exclude archived entries from search and `spelunk ask` context
+- [x] `spelunk memory list --archived` to view historical entries
 
-### Phase 2: Per-project config + client changes
-- [ ] Add `.spelunk/config.toml` project-level config (walk up to git root to discover)
-- [ ] Config loading order: global personal → project → env vars
-- [ ] Add `memory_server_url`, `memory_server_key`, `project_id` fields to `Config`
-- [ ] `project_id` required when `memory_server_url` is set; error clearly if missing
-- [ ] Abstract memory store behind a `MemoryBackend` trait (local SQLite vs remote HTTP)
-- [ ] Implement `RemoteMemoryBackend` (HTTP client, all routes scoped to project_id)
+### Phase 2: Per-project config + client changes ✅
+- [x] Add `.spelunk/config.toml` project-level config (walk up to git root to discover)
+- [x] Config loading order: global personal → project → env vars
+- [x] Add `memory_server_url`, `memory_server_key`, `project_id` fields to `Config`
+- [x] `project_id` required when `memory_server_url` is set; error clearly if missing
+- [x] Abstract memory store behind a `MemoryBackend` trait (local SQLite vs remote HTTP)
+- [x] Implement `RemoteMemoryBackend` (HTTP client, all routes scoped to project_id)
 
-### Phase 3: Server (`spelunk-server` binary)
-- [ ] Add `[[bin]] name = "spelunk-server" path = "src/bin/spelunk_server.rs"` to Cargo.toml
-- [ ] Implement `spelunk-server` entry point
-- [ ] `projects` table in server DB: `(id, slug, embedding_dim, created_at)`
-- [ ] Auto-create project on first write for unknown project_id
-- [ ] REST API: all routes under `/v1/projects/{project_id}/`
-- [ ] Server auth middleware (Bearer token, all routes except `/v1/health`)
-- [ ] Store + enforce embedding dimension per project (error on mismatch)
-- [ ] `spelunk memory push` — migrate local entries to server under correct project_id
-- [ ] `GET /v1/projects` — list projects (useful for server admin)
+### Phase 3: Server (`spelunk-server` binary) ✅
+- [x] Add `[[bin]] name = "spelunk-server" path = "src/bin/spelunk_server.rs"` to Cargo.toml
+- [x] Implement `spelunk-server` entry point
+- [x] `projects` table in server DB: `(id, slug, embedding_dim, created_at)`
+- [x] Auto-create project on first write for unknown project_id
+- [x] REST API: all routes under `/v1/projects/{project_id}/`
+- [x] Server auth middleware (Bearer token, all routes except `/v1/health`)
+- [x] Store + enforce embedding dimension per project (error on mismatch)
+- [x] `spelunk memory push` — migrate local entries to server under correct project_id
+- [x] `GET /v1/projects` — list projects (useful for server admin)
 
-### Phase 4: Packaging
-- [ ] `Dockerfile` for `spelunk-server`
-- [ ] `docker-compose.yml` (minimal: server + volume)
-- [ ] `docker-compose.full.yml` (server + Ollama with GPU compose profile)
-- [ ] Document server setup in `docs/server.md`
-- [ ] Update `docs/getting-started.md` with team setup section
-- [ ] Document `.spelunk/config.toml` format and what to commit vs gitignore
+### Phase 4: Packaging ✅
+- [x] `Dockerfile` for `spelunk-server`
+- [x] `docker-compose.yml` (minimal: server + volume)
+- [x] `docker-compose.full.yml` (server + Ollama with GPU compose profile)
+- [x] Document server setup in `docs/server.md`
+- [x] Update `docs/getting-started.md` with team setup section
+- [x] Document `.spelunk/config.toml` format and what to commit vs gitignore

@@ -1,0 +1,31 @@
+# spelunk-server — minimal compose (server + persistent volume)
+#
+# Usage:
+#   docker compose up -d
+#
+# With API key:
+#   SPELUNK_SERVER_KEY=your-key docker compose up -d
+#
+# Clients configure:
+#   memory_server_url = "http://your-host:7777"
+#   project_id        = "my-project"
+
+services:
+  spelunk-server:
+    build: .
+    image: spelunk-server:latest
+    restart: unless-stopped
+    ports:
+      - "7777:7777"
+    volumes:
+      - spelunk-data:/data
+    environment:
+      SPELUNK_SERVER_KEY: ${SPELUNK_SERVER_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7777/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  spelunk-data:
