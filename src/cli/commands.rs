@@ -1018,11 +1018,13 @@ pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
         resolve_db(None, &cfg.db_path).with_file_name("memory.db")
     });
     match args.command {
-        MemoryCommand::Add(a)     => memory_add(a, &mem_path, &cfg).await,
-        MemoryCommand::Search(a)  => memory_search(a, &mem_path, &cfg).await,
-        MemoryCommand::List(a)    => memory_list(a, &mem_path),
-        MemoryCommand::Show(a)    => memory_show(a, &mem_path),
-        MemoryCommand::Harvest(a) => memory_harvest(a, &mem_path, &cfg).await,
+        MemoryCommand::Add(a)       => memory_add(a, &mem_path, &cfg).await,
+        MemoryCommand::Search(a)    => memory_search(a, &mem_path, &cfg).await,
+        MemoryCommand::List(a)      => memory_list(a, &mem_path),
+        MemoryCommand::Show(a)      => memory_show(a, &mem_path),
+        MemoryCommand::Harvest(a)   => memory_harvest(a, &mem_path, &cfg).await,
+        MemoryCommand::Archive(a)   => memory_archive(a, &mem_path),
+        MemoryCommand::Supersede(a) => memory_supersede(a, &mem_path),
     }
 }
 
@@ -1217,7 +1219,7 @@ async fn memory_search(
 
 fn memory_list(args: super::MemoryListArgs, mem_path: &std::path::Path) -> Result<()> {
     let store = MemoryStore::open(mem_path)?;
-    let notes = store.list(args.kind.as_deref(), args.limit)?;
+    let notes = store.list(args.kind.as_deref(), args.limit, args.archived)?;
 
     if notes.is_empty() {
         println!("No memory entries found.");
@@ -1260,15 +1262,22 @@ fn memory_show(args: super::MemoryShowArgs, mem_path: &std::path::Path) -> Resul
 
 fn print_note_summary(n: &crate::storage::memory::Note) {
     let dist = n.distance.map(|d| format!("  dist: {d:.4}")).unwrap_or_default();
+    let archived_badge = if n.status == "archived" { " \x1b[31m[archived]\x1b[0m" } else { "" };
     println!(
-        "\x1b[1m#{id}\x1b[0m  \x1b[33m[{kind}]\x1b[0m  {title}\x1b[2m{dist}\x1b[0m",
-        id = n.id, kind = n.kind, title = n.title, dist = dist,
+        "\x1b[1m#{id}\x1b[0m  \x1b[33m[{kind}]\x1b[0m  {title}{archived}{dist_fmt}",
+        id = n.id, kind = n.kind, title = n.title,
+        archived = archived_badge,
+        dist_fmt = if dist.is_empty() { String::new() } else { format!("\x1b[2m{dist}\x1b[0m") },
     );
+    println!("     \x1b[2m{}\x1b[0m", format_age(n.created_at));
     if !n.tags.is_empty() {
         println!("     tags: {}", n.tags.join(", "));
     }
     if !n.linked_files.is_empty() {
         println!("     files: {}", n.linked_files.join(", "));
+    }
+    if let Some(sup) = n.superseded_by {
+        println!("     \x1b[2msuperseded by #{sup}\x1b[0m");
     }
     // For question/answer kinds: titles-only list — use `spelunk memory show <id>` for body.
     // For other kinds: show first 2 lines of body as preview.
@@ -1324,6 +1333,30 @@ fn open_editor_for_body(title: &str) -> Result<String> {
         anyhow::bail!("Body is empty; entry not saved.");
     }
     Ok(body)
+}
+
+fn memory_archive(args: super::MemoryArchiveArgs, mem_path: &std::path::Path) -> Result<()> {
+    let store = MemoryStore::open(mem_path)?;
+    if store.archive(args.id)? {
+        println!("Archived memory entry #{}.", args.id);
+    } else {
+        anyhow::bail!("No active memory entry with id {}.", args.id);
+    }
+    Ok(())
+}
+
+fn memory_supersede(args: super::MemorySupersededArgs, mem_path: &std::path::Path) -> Result<()> {
+    let store = MemoryStore::open(mem_path)?;
+    // Verify the new entry exists.
+    if store.get(args.new_id)?.is_none() {
+        anyhow::bail!("No memory entry with id {} (new).", args.new_id);
+    }
+    if store.supersede(args.old_id, args.new_id)? {
+        println!("Archived #{old} → superseded by #{new}.", old = args.old_id, new = args.new_id);
+    } else {
+        anyhow::bail!("No active memory entry with id {} (old).", args.old_id);
+    }
+    Ok(())
 }
 
 async fn memory_harvest(
