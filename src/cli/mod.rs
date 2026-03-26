@@ -233,6 +233,8 @@ pub enum MemoryCommand {
     Archive(MemoryArchiveArgs),
     /// Archive an entry and mark it as superseded by a newer entry
     Supersede(MemorySupersededArgs),
+    /// Push all local memory entries to the configured memory server
+    Push(MemoryPushArgs),
 }
 
 #[derive(Args, Debug)]
@@ -310,6 +312,16 @@ pub struct MemoryHarvestArgs {
     /// Git revision range to analyse (default: HEAD~10..HEAD)
     #[arg(long, default_value = "HEAD~10..HEAD")]
     pub git_range: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryPushArgs {
+    /// Local memory.db to push from (default: same as --db)
+    #[arg(long)]
+    pub source: Option<std::path::PathBuf>,
+    /// Push archived entries too
+    #[arg(long)]
+    pub include_archived: bool,
 }
 
 #[derive(Args, Debug)]

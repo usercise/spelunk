@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::path::Path;
 
@@ -160,6 +160,19 @@ impl MemoryStore {
             rusqlite::params![old_id, new_id],
         )?;
         Ok(changed > 0)
+    }
+
+    /// Retrieve the raw embedding blob for a note (for use by `memory push`).
+    pub fn get_embedding(&self, note_id: i64) -> Result<Option<Vec<u8>>> {
+        let blob: Option<Vec<u8>> = self
+            .conn
+            .query_row(
+                "SELECT embedding FROM note_embeddings WHERE note_id = ?1",
+                rusqlite::params![note_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(blob)
     }
 
     pub fn count(&self) -> Result<i64> {

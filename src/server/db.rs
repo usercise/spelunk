@@ -1,0 +1,352 @@
+use anyhow::{Context, Result};
+use rusqlite::{Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+
+use crate::embeddings::blob_to_vec;
+
+/// Shared state for all DB operations on the server.
+pub struct ServerDb {
+    pub conn: Connection,
+    pub embedding_dim: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Project {
+    pub id: i64,
+    pub slug: String,
+    pub embedding_dim: usize,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ServerNote {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub linked_files: Vec<String>,
+    pub created_at: i64,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance: Option<f64>,
+}
+
+impl ServerDb {
+    pub fn open(path: &std::path::Path, embedding_dim: usize) -> Result<Self> {
+        let conn = Connection::open(path)
+            .with_context(|| format!("opening server db at {}", path.display()))?;
+        // WAL mode for concurrent readers.
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        let db = Self { conn, embedding_dim };
+        db.migrate()?;
+        Ok(db)
+    }
+
+    fn migrate(&self) -> Result<()> {
+        self.conn
+            .execute_batch(include_str!("../../migrations/server_001.sql"))
+            .context("server migration 001")?;
+        // Create the embeddings virtual table with the configured dimension.
+        // IF NOT EXISTS means this is a no-op if the table already exists.
+        self.conn
+            .execute_batch(&format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS note_embeddings USING vec0(\
+                    note_id INTEGER PRIMARY KEY, embedding FLOAT[{dim}]\
+                )",
+                dim = self.embedding_dim
+            ))
+            .context("creating note_embeddings virtual table")?;
+        Ok(())
+    }
+
+    // ── Projects ──────────────────────────────────────────────────────────────
+
+    /// Get or auto-create a project by slug. On first write, records the
+    /// embedding dimension for subsequent validation.
+    pub fn upsert_project(&self, slug: &str, incoming_dim: usize) -> Result<Project> {
+        // Check if project exists.
+        let existing: Option<Project> = self
+            .conn
+            .query_row(
+                "SELECT id, slug, embedding_dim, created_at FROM projects WHERE slug = ?1",
+                rusqlite::params![slug],
+                row_to_project,
+            )
+            .optional()
+            .context("querying project")?;
+
+        if let Some(mut p) = existing {
+            // Validate dimension if already set.
+            if p.embedding_dim != 0 && p.embedding_dim != incoming_dim {
+                anyhow::bail!(
+                    "embedding dimension mismatch for project '{}': server expects {}, got {}. \
+                     All clients on the same project must use the same embedding model.",
+                    slug, p.embedding_dim, incoming_dim
+                );
+            }
+            // Set dimension on first note.
+            if p.embedding_dim == 0 {
+                self.conn.execute(
+                    "UPDATE projects SET embedding_dim = ?1 WHERE id = ?2",
+                    rusqlite::params![incoming_dim, p.id],
+                )?;
+                p.embedding_dim = incoming_dim;
+            }
+            Ok(p)
+        } else {
+            // Auto-create.
+            self.conn.execute(
+                "INSERT INTO projects (slug, embedding_dim) VALUES (?1, ?2)",
+                rusqlite::params![slug, incoming_dim],
+            )?;
+            let id = self.conn.last_insert_rowid();
+            Ok(Project { id, slug: slug.to_string(), embedding_dim: incoming_dim, created_at: now_unix() })
+        }
+    }
+
+    pub fn get_project(&self, slug: &str) -> Result<Option<Project>> {
+        self.conn
+            .query_row(
+                "SELECT id, slug, embedding_dim, created_at FROM projects WHERE slug = ?1",
+                rusqlite::params![slug],
+                row_to_project,
+            )
+            .optional()
+            .context("querying project")
+    }
+
+    pub fn list_projects(&self) -> Result<Vec<Project>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, slug, embedding_dim, created_at FROM projects ORDER BY slug",
+        )?;
+        let projects = stmt
+            .query_map([], row_to_project)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(projects)
+    }
+
+    // ── Notes ─────────────────────────────────────────────────────────────────
+
+    pub fn add_note(
+        &self,
+        project_id: i64,
+        kind: &str,
+        title: &str,
+        body: &str,
+        tags: &[String],
+        linked_files: &[String],
+        embedding: Option<&[f32]>,
+    ) -> Result<i64> {
+        let tags_csv = if tags.is_empty() { None } else { Some(tags.join(",")) };
+        let files_csv = if linked_files.is_empty() { None } else { Some(linked_files.join(",")) };
+        self.conn.execute(
+            "INSERT INTO notes (project_id, kind, title, body, tags, linked_files)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![project_id, kind, title, body, tags_csv, files_csv],
+        )?;
+        let note_id = self.conn.last_insert_rowid();
+
+        if let Some(vec) = embedding {
+            let blob = crate::embeddings::vec_to_blob(vec);
+            self.conn.execute(
+                "INSERT INTO note_embeddings (note_id, embedding) VALUES (?1, ?2)",
+                rusqlite::params![note_id, blob],
+            )?;
+        }
+        Ok(note_id)
+    }
+
+    pub fn get_note(&self, project_id: i64, note_id: i64) -> Result<Option<ServerNote>> {
+        self.conn
+            .query_row(
+                "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
+                 FROM notes WHERE id = ?1 AND project_id = ?2",
+                rusqlite::params![note_id, project_id],
+                row_to_note,
+            )
+            .optional()
+            .context("querying note")
+    }
+
+    pub fn list_notes(
+        &self,
+        project_id: i64,
+        kind_filter: Option<&str>,
+        limit: usize,
+        include_archived: bool,
+    ) -> Result<Vec<ServerNote>> {
+        let limit = limit.min(500);
+        let status_clause = if include_archived { "" } else { "AND status = 'active'" };
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+            if let Some(kind) = kind_filter {
+                (
+                    format!(
+                        "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
+                         FROM notes WHERE project_id = ?1 AND kind = ?2 {status_clause}
+                         ORDER BY created_at DESC LIMIT {limit}"
+                    ),
+                    vec![Box::new(project_id), Box::new(kind.to_string())],
+                )
+            } else {
+                (
+                    format!(
+                        "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
+                         FROM notes WHERE project_id = ?1 {status_clause}
+                         ORDER BY created_at DESC LIMIT {limit}"
+                    ),
+                    vec![Box::new(project_id)],
+                )
+            };
+        let mut stmt = self.conn.prepare(&sql)?;
+        let refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let notes = stmt
+            .query_map(refs.as_slice(), row_to_note)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(notes)
+    }
+
+    pub fn search_notes(
+        &self,
+        project_id: i64,
+        query_vec: &[f32],
+        limit: usize,
+    ) -> Result<Vec<ServerNote>> {
+        let limit = limit.min(100);
+        let blob = crate::embeddings::vec_to_blob(query_vec);
+        let sql = format!(
+            "WITH knn AS (
+                 SELECT note_id, distance
+                 FROM   note_embeddings
+                 WHERE  embedding MATCH ?1 AND k = {limit}
+             )
+             SELECT n.id, n.kind, n.title, n.body, n.tags, n.linked_files,
+                    n.created_at, n.status, n.superseded_by, CAST(k.distance AS REAL)
+             FROM   knn k
+             JOIN   notes n ON n.id = k.note_id
+             WHERE  n.project_id = ?2 AND n.status = 'active'
+             ORDER  BY k.distance"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let notes = stmt
+            .query_map(rusqlite::params![blob, project_id], row_to_note_with_distance)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(notes)
+    }
+
+    pub fn archive_note(&self, project_id: i64, note_id: i64) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE notes SET status = 'archived' WHERE id = ?1 AND project_id = ?2 AND status = 'active'",
+            rusqlite::params![note_id, project_id],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn supersede_note(&self, project_id: i64, old_id: i64, new_id: i64) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE notes SET status = 'archived', superseded_by = ?3
+             WHERE id = ?1 AND project_id = ?2 AND status = 'active'",
+            rusqlite::params![old_id, project_id, new_id],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn delete_note(&self, project_id: i64, note_id: i64) -> Result<bool> {
+        self.conn.execute(
+            "DELETE FROM note_embeddings WHERE note_id = ?1",
+            rusqlite::params![note_id],
+        )?;
+        let changed = self.conn.execute(
+            "DELETE FROM notes WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![note_id, project_id],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn stats(&self, project_id: i64) -> Result<ProjectStats> {
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM notes WHERE project_id = ?1",
+            rusqlite::params![project_id],
+            |r| r.get(0),
+        )?;
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM notes WHERE project_id = ?1 AND status = 'active'",
+            rusqlite::params![project_id],
+            |r| r.get(0),
+        )?;
+        Ok(ProjectStats { count, total, embedding_dim: self.embedding_dim })
+    }
+}
+
+#[derive(Serialize)]
+pub struct ProjectStats {
+    pub count: i64,
+    pub total: i64,
+    pub embedding_dim: usize,
+}
+
+// ── Row mappers ──────────────────────────────────────────────────────────────
+
+fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
+    Ok(Project {
+        id: row.get(0)?,
+        slug: row.get(1)?,
+        embedding_dim: row.get::<_, i64>(2)? as usize,
+        created_at: row.get(3)?,
+    })
+}
+
+fn split_csv(s: Option<&str>) -> Vec<String> {
+    s.unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<ServerNote> {
+    Ok(ServerNote {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        title: row.get(2)?,
+        body: row.get(3)?,
+        tags: split_csv(row.get::<_, Option<String>>(4)?.as_deref()),
+        linked_files: split_csv(row.get::<_, Option<String>>(5)?.as_deref()),
+        created_at: row.get(6)?,
+        status: row.get(7)?,
+        superseded_by: row.get(8)?,
+        distance: None,
+    })
+}
+
+fn row_to_note_with_distance(row: &rusqlite::Row<'_>) -> rusqlite::Result<ServerNote> {
+    Ok(ServerNote {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        title: row.get(2)?,
+        body: row.get(3)?,
+        tags: split_csv(row.get::<_, Option<String>>(4)?.as_deref()),
+        linked_files: split_csv(row.get::<_, Option<String>>(5)?.as_deref()),
+        created_at: row.get(6)?,
+        status: row.get(7)?,
+        superseded_by: row.get(8)?,
+        distance: Some(row.get(9)?),
+    })
+}
+
+fn now_unix() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+}
+
+// Need blob_to_vec for search — it's in embeddings module so the import works.
+// But we also need vec_to_blob for the vec0 match query. Both are in crate::embeddings.
+impl ServerDb {
+    /// Convenience: decode a raw embedding blob to f32 vec for use with search_notes.
+    pub fn decode_embedding(blob: &[u8]) -> Vec<f32> {
+        blob_to_vec(blob)
+    }
+}

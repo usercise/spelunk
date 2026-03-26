@@ -1,18 +1,9 @@
 use anyhow::Result;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-mod backends;
 mod cli;
-mod config;
-mod embeddings;
-mod error;
-mod indexer;
-mod llm;
-mod registry;
-mod search;
-mod storage;
-mod utils;
 
+use spelunk::{backends, config, embeddings, indexer, llm, registry, search, storage, utils};
 use cli::{Cli, Command};
 use clap::Parser;
 

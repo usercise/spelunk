@@ -2,13 +2,22 @@
 name = "spelunk"
 version = "0.1.0"
 edition = "2024"
+default-run = "spelunk"
 description = "Local code intelligence via RAG — indexed with tree-sitter, stored in SQLite"
 license = "MIT"
 repository = "https://github.com/usercise/spelunk"
 
+[lib]
+name = "spelunk"
+path = "src/lib.rs"
+
 [[bin]]
 name = "spelunk"
 path = "src/main.rs"
+
+[[bin]]
+name = "spelunk-server"
+path = "src/bin/spelunk_server.rs"
 
 [features]
 default = ["backend-lmstudio"]
@@ -63,6 +72,10 @@ tree-sitter-sequel     = "0.3"
 # HTTP client — used by LM Studio backend and remote memory backend
 reqwest      = { version = "0.12", features = ["json", "stream"] }
 futures-util = { version = "0.3", optional = true }
+
+# HTTP server — used by spelunk-server binary
+axum         = { version = "0.8", features = ["macros"] }
+tower-http   = { version = "0.6", features = ["auth"] }
 
 # Secret scanning in indexer
 regex = { version = "1", default-features = false, features = ["std"] }
