@@ -1,0 +1,49 @@
+# spelunk-server — full stack with Ollama for server-side LLM
+#
+# NOTE: Ollama GPU passthrough requires Linux + nvidia-container-toolkit.
+#       This compose does NOT work on Apple Silicon (Docker runs in a Linux VM).
+#       For Mac development, run Ollama natively and use the minimal compose.
+#
+# Usage (NVIDIA GPU):
+#   SPELUNK_SERVER_KEY=your-key docker compose -f docker-compose.full.yml up -d
+#
+# Usage (CPU-only, slow):
+#   SPELUNK_SERVER_KEY=your-key OLLAMA_GPUS= docker compose -f docker-compose.full.yml up -d
+
+services:
+  spelunk-server:
+    build: .
+    image: spelunk-server:latest
+    restart: unless-stopped
+    ports:
+      - "7777:7777"
+    volumes:
+      - spelunk-data:/data
+    environment:
+      SPELUNK_SERVER_KEY: ${SPELUNK_SERVER_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7777/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  spelunk-data:
+  ollama-data:

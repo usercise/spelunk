@@ -58,12 +58,7 @@ impl Database {
     // Files
     // -----------------------------------------------------------------------
 
-    pub fn upsert_file(
-        &self,
-        path: &str,
-        language: Option<&str>,
-        hash: &str,
-    ) -> Result<i64> {
+    pub fn upsert_file(&self, path: &str, language: Option<&str>, hash: &str) -> Result<i64> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -90,9 +85,9 @@ impl Database {
 
     /// Returns the stored hash for a file path, or None if not indexed.
     pub fn file_hash(&self, path: &str) -> Result<Option<String>> {
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT hash FROM files WHERE path = ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT hash FROM files WHERE path = ?1")?;
         let mut rows = stmt.query(rusqlite::params![path])?;
         Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
     }
@@ -101,6 +96,7 @@ impl Database {
     // Chunks
     // -----------------------------------------------------------------------
 
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_chunk(
         &self,
         file_id: i64,
@@ -115,9 +111,13 @@ impl Database {
             "INSERT INTO chunks (file_id, node_type, name, start_line, end_line, content, metadata)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
-                file_id, node_type, name,
-                start_line as i64, end_line as i64,
-                content, metadata
+                file_id,
+                node_type,
+                name,
+                start_line as i64,
+                end_line as i64,
+                content,
+                metadata
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -153,40 +153,37 @@ impl Database {
              WHERE c.id IN ({placeholders})"
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::ToSql> = ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
+        let params: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
         let rows = stmt.query_map(params.as_slice(), |row| {
             Ok(crate::search::SearchResult {
-                chunk_id:   row.get(0)?,
-                distance:   row.get(1)?,
-                node_type:  row.get(2)?,
-                name:       row.get(3)?,
+                chunk_id: row.get(0)?,
+                distance: row.get(1)?,
+                node_type: row.get(2)?,
+                name: row.get(3)?,
                 start_line: row.get::<_, i64>(4)? as usize,
-                end_line:   row.get::<_, i64>(5)? as usize,
-                content:    row.get(6)?,
-                file_path:  row.get(7)?,
-                language:   row.get(8)?,
+                end_line: row.get::<_, i64>(5)? as usize,
+                content: row.get(6)?,
+                file_path: row.get(7)?,
+                language: row.get(8)?,
                 from_graph: false,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// Return all chunk IDs and their embedding text for a given file.
     #[allow(dead_code)]
-    pub fn chunks_for_embedding(
-        &self,
-        file_id: i64,
-    ) -> Result<Vec<(i64, String)>> {
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT id, content FROM chunks WHERE file_id = ?1 ORDER BY id",
-        )?;
+    pub fn chunks_for_embedding(&self, file_id: i64) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT id, content FROM chunks WHERE file_id = ?1 ORDER BY id")?;
         let rows = stmt.query_map(rusqlite::params![file_id], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     // -----------------------------------------------------------------------
@@ -259,20 +256,21 @@ impl Database {
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params![query_blob], |row| {
             Ok(crate::search::SearchResult {
-                chunk_id:   row.get(0)?,
-                distance:   row.get(1)?,
-                node_type:  row.get(2)?,
-                name:       row.get(3)?,
+                chunk_id: row.get(0)?,
+                distance: row.get(1)?,
+                node_type: row.get(2)?,
+                name: row.get(3)?,
                 start_line: row.get::<_, i64>(4)? as usize,
-                end_line:   row.get::<_, i64>(5)? as usize,
-                content:    row.get(6)?,
-                file_path:  row.get(7)?,
-                language:   row.get(8)?,
+                end_line: row.get::<_, i64>(5)? as usize,
+                content: row.get(6)?,
+                file_path: row.get(7)?,
+                language: row.get(8)?,
                 from_graph: false,
             })
         })?;
 
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     // -----------------------------------------------------------------------
@@ -281,7 +279,11 @@ impl Database {
 
     /// Insert a batch of edges for one file. Existing rows for that file are
     /// removed first (called during re-index).
-    pub fn replace_edges(&self, file_path: &str, edges: &[crate::indexer::graph::Edge]) -> Result<()> {
+    pub fn replace_edges(
+        &self,
+        file_path: &str,
+        edges: &[crate::indexer::graph::Edge],
+    ) -> Result<()> {
         self.conn.execute(
             "DELETE FROM graph_edges WHERE source_file = ?1",
             rusqlite::params![file_path],
@@ -291,8 +293,11 @@ impl Database {
                 "INSERT INTO graph_edges (source_file, source_name, target_name, kind, line)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 rusqlite::params![
-                    e.source_file, e.source_name, e.target_name,
-                    e.kind.to_string(), e.line as i64
+                    e.source_file,
+                    e.source_name,
+                    e.target_name,
+                    e.kind.to_string(),
+                    e.line as i64
                 ],
             )?;
         }
@@ -308,7 +313,8 @@ impl Database {
              ORDER BY kind, target_name",
         )?;
         let rows = stmt.query_map(rusqlite::params![name], row_to_edge)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// All edges originating from `file_path`.
@@ -320,7 +326,8 @@ impl Database {
              ORDER BY kind, target_name",
         )?;
         let rows = stmt.query_map(rusqlite::params![file_path], row_to_edge)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// Return chunk IDs of symbols that are called-by or call the given chunk names.
@@ -341,20 +348,18 @@ impl Database {
              FROM chunks c
              WHERE c.name IN (
                  SELECT target_name FROM graph_edges
-                 WHERE source_name IN ({ph}) AND kind = 'calls'
+                 WHERE source_name IN ({placeholders}) AND kind = 'calls'
                  UNION
                  SELECT source_name FROM graph_edges
-                 WHERE target_name IN ({ph}) AND kind = 'calls'
-             )",
-            ph = placeholders
+                 WHERE target_name IN ({placeholders}) AND kind = 'calls'
+             )"
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::ToSql> = names
-            .iter()
-            .map(|n| n as &dyn rusqlite::ToSql)
-            .collect();
+        let params: Vec<&dyn rusqlite::ToSql> =
+            names.iter().map(|n| n as &dyn rusqlite::ToSql).collect();
         let rows = stmt.query_map(params.as_slice(), |r| r.get::<_, i64>(0))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// Return all chunks for a file path (exact match or LIKE suffix).
@@ -371,31 +376,33 @@ impl Database {
         )?;
         let rows = stmt.query_map(rusqlite::params![path], |row| {
             Ok(crate::search::SearchResult {
-                chunk_id:   row.get(0)?,
-                distance:   0.0,
-                node_type:  row.get(1)?,
-                name:       row.get(2)?,
+                chunk_id: row.get(0)?,
+                distance: 0.0,
+                node_type: row.get(1)?,
+                name: row.get(2)?,
                 start_line: row.get::<_, i64>(3)? as usize,
-                end_line:   row.get::<_, i64>(4)? as usize,
-                content:    row.get(5)?,
-                file_path:  row.get(6)?,
-                language:   row.get(7)?,
+                end_line: row.get::<_, i64>(4)? as usize,
+                content: row.get(5)?,
+                file_path: row.get(6)?,
+                language: row.get(7)?,
                 from_graph: false,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// List all indexed file paths under the given root prefix.
     pub fn file_paths_under(&self, root: &str) -> Result<Vec<(i64, String)>> {
         let prefix = format!("{root}%");
-        let mut stmt = self.conn.prepare_cached(
-            "SELECT id, path FROM files WHERE path LIKE ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT id, path FROM files WHERE path LIKE ?1")?;
         let rows = stmt.query_map(rusqlite::params![prefix], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// Delete a file record and all its chunks, embeddings, and graph edges.
@@ -404,12 +411,18 @@ impl Database {
             "DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE file_id = ?1)",
             rusqlite::params![file_id],
         )?;
-        self.conn.execute("DELETE FROM chunks WHERE file_id = ?1", rusqlite::params![file_id])?;
+        self.conn.execute(
+            "DELETE FROM chunks WHERE file_id = ?1",
+            rusqlite::params![file_id],
+        )?;
         self.conn.execute(
             "DELETE FROM graph_edges WHERE source_file = ?1",
             rusqlite::params![file_path],
         )?;
-        self.conn.execute("DELETE FROM files WHERE id = ?1", rusqlite::params![file_id])?;
+        self.conn.execute(
+            "DELETE FROM files WHERE id = ?1",
+            rusqlite::params![file_id],
+        )?;
         Ok(())
     }
 
@@ -428,16 +441,26 @@ impl Database {
     // -----------------------------------------------------------------------
 
     pub fn stats(&self) -> Result<IndexStats> {
-        let file_count: i64 =
-            self.conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
-        let chunk_count: i64 =
-            self.conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0))?;
+        let file_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
+        let chunk_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0))?;
         let embedding_count: i64 =
-            self.conn.query_row("SELECT COUNT(*) FROM embeddings", [], |r| r.get(0))?;
-        let last_indexed: Option<i64> = self.conn.query_row(
-            "SELECT MAX(indexed_at) FROM files", [], |r| r.get(0),
-        ).ok().flatten();
-        Ok(IndexStats { file_count, chunk_count, embedding_count, last_indexed })
+            self.conn
+                .query_row("SELECT COUNT(*) FROM embeddings", [], |r| r.get(0))?;
+        let last_indexed: Option<i64> = self
+            .conn
+            .query_row("SELECT MAX(indexed_at) FROM files", [], |r| r.get(0))
+            .ok()
+            .flatten();
+        Ok(IndexStats {
+            file_count,
+            chunk_count,
+            embedding_count,
+            last_indexed,
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -455,8 +478,11 @@ impl Database {
         min_days_behind: i64,
         limit: usize,
     ) -> Result<Vec<DriftCandidate>> {
-        let newest: i64 = self.conn
-            .query_row("SELECT MAX(indexed_at) FROM files", [], |r| r.get::<_, Option<i64>>(0))
+        let newest: i64 = self
+            .conn
+            .query_row("SELECT MAX(indexed_at) FROM files", [], |r| {
+                r.get::<_, Option<i64>>(0)
+            })
             .ok()
             .flatten()
             .unwrap_or(0);
@@ -488,11 +514,13 @@ impl Database {
                     ":min_days": min_days_behind,
                     ":lim":      limit as i64,
                 },
-                |row| Ok(DriftCandidate {
-                    path:         row.get(0)?,
-                    days_behind:  row.get(1)?,
-                    caller_count: row.get(2)?,
-                }),
+                |row| {
+                    Ok(DriftCandidate {
+                        path: row.get(0)?,
+                        days_behind: row.get(1)?,
+                        caller_count: row.get(2)?,
+                    })
+                },
             )?
             .collect::<rusqlite::Result<Vec<_>>>()?;
 
@@ -515,8 +543,8 @@ fn row_to_edge(row: &rusqlite::Row<'_>) -> rusqlite::Result<GraphEdge> {
         source_file: row.get(0)?,
         source_name: row.get(1)?,
         target_name: row.get(2)?,
-        kind:        row.get(3)?,
-        line:        row.get::<_, i64>(4)? as usize,
+        kind: row.get(3)?,
+        line: row.get::<_, i64>(4)? as usize,
     })
 }
 
