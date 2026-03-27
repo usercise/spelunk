@@ -6,7 +6,8 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 // Pull in the spelunk library crate (same workspace).
 use spelunk::server::db::ServerDb;
-use spelunk::server::{AppState, router};
+use spelunk::server::{ApiDoc, AppState, router};
+use utoipa::OpenApi;
 
 #[derive(Parser, Debug)]
 #[command(name = "spelunk-server", about = "Shared memory server for spelunk")]
@@ -31,6 +32,10 @@ struct Args {
     /// Default: 768 (EmbeddingGemma 300M).
     #[arg(long, default_value = "768")]
     embedding_dim: usize,
+
+    /// Print the OpenAPI spec as JSON and exit (for Postman / Newman import).
+    #[arg(long)]
+    print_openapi: bool,
 }
 
 #[tokio::main]
@@ -50,6 +55,11 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
+
+    if args.print_openapi {
+        println!("{}", ApiDoc::openapi().to_pretty_json()?);
+        return Ok(());
+    }
 
     let db = ServerDb::open(&args.db, args.embedding_dim)
         .with_context(|| format!("opening server db at {}", args.db.display()))?;
