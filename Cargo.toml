@@ -70,6 +70,10 @@ regex = { version = "1", default-features = false, features = ["std"] }
 # Content hashing (change detection for incremental indexing)
 blake3 = "1"
 
+# Document format parsers
+docx-rs  = "0.4"
+calamine = { version = "0.24", features = ["dates"] }
+
 # Filesystem traversal + .gitignore support
 ignore = "0.4"
 
