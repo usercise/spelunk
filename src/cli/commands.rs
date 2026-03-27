@@ -327,6 +327,31 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         stats.file_count, stats.chunk_count, stats.embedding_count
     );
 
+    // ── Phase 3: auto-discover spec files ────────────────────────────────────
+    // Any indexed markdown file that lives under docs/specs/ or specs/, or
+    // declares `spelunk_spec: true` in its frontmatter, is registered in the
+    // specs table so agents can find and link it.
+    let mut specs_found = 0u32;
+    for entry in &files {
+        let path = entry.path();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext != "md" {
+            continue;
+        }
+        if is_spec_file(path) {
+            let path_str = path.to_string_lossy().into_owned();
+            let title = extract_spec_title(path).unwrap_or_default();
+            if let Err(e) = db.upsert_spec(&path_str, &title, true) {
+                tracing::warn!("spec registration failed for {path_str}: {e}");
+            } else {
+                specs_found += 1;
+            }
+        }
+    }
+    if specs_found > 0 {
+        eprintln!("Registered {specs_found} spec file(s).");
+    }
+
     // Register / update this project in the global registry.
     if let Ok(reg) = Registry::open() {
         let db_canonical = db_path.canonicalize().unwrap_or(db_path.clone());
@@ -468,7 +493,54 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    // ── Step 2b: memory context (decisions / requirements / background) ──────
+    // ── Step 2b: spec context (governing specs for the retrieved files) ─────
+    let spec_context: Option<String> = {
+        let file_paths: Vec<String> = results.iter().map(|r| r.file_path.clone()).collect();
+        if let Ok(primary_db) = Database::open(&db_path) {
+            if let Ok(specs) = primary_db.specs_for_files(&file_paths) {
+                if specs.is_empty() {
+                    None
+                } else {
+                    // Fetch up to 5 spec file contents from chunks.
+                    let mut sections: Vec<String> = Vec::new();
+                    'spec_loop: for (spec_path, title) in &specs {
+                        if sections.len() >= 5 {
+                            break 'spec_loop;
+                        }
+                        // Fetch chunks for this spec file from the DB.
+                        if let Ok(file_id_row) = primary_db.file_id_for_path(spec_path) {
+                            if let Some(file_id) = file_id_row {
+                                if let Ok(chunks) = primary_db.chunks_content_for_file_id(file_id) {
+                                    let text = chunks
+                                        .iter()
+                                        .map(|(_, t)| t.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join("\n\n");
+                                    let display = if title.is_empty() {
+                                        spec_path.clone()
+                                    } else {
+                                        format!("{title} ({spec_path})")
+                                    };
+                                    sections.push(format!("### Spec: {display}\n{text}"));
+                                }
+                            }
+                        }
+                    }
+                    if sections.is_empty() {
+                        None
+                    } else {
+                        Some(sections.join("\n\n"))
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    // ── Step 2c: memory context (decisions / requirements / background) ──────
     let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
     let memory_context: Option<String> = if let Ok(backend) = open_memory_backend(&cfg, &mem_path) {
         match backend.search(&query_blob, 5).await {
@@ -524,14 +596,15 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     const SYSTEM_BASE: &str = "\
 You are an expert software analyst helping a developer understand a codebase.\n\
 \n\
-You have two sources of context:\n\
+You have up to three sources of context:\n\
 - Code context: excerpts from the source code showing HOW the system is built.\n\
   Reference specific file paths and line numbers when they are relevant.\n\
+- Spec context: human-authored design docs and contracts that govern the code.\n\
+  These capture intent, constraints, and API contracts — check for conflicts.\n\
 - Memory context: recorded decisions, requirements, and background explaining\n\
   WHAT was built and WHY those choices were made.\n\
-  Reference these when they explain the reasoning behind the code.\n\
 \n\
-Use both sources together to give accurate, grounded answers. \
+Use all available sources together to give accurate, grounded answers. \
 If the answer cannot be determined from the provided context, say so clearly rather than guessing.";
 
     let use_json = args.json || crate::utils::is_agent_mode();
@@ -552,23 +625,21 @@ If the answer cannot be determined from the provided context, say so clearly rat
         (SYSTEM_BASE, None)
     };
 
-    let user_message = if let Some(mem) = &memory_context {
-        format!(
-            "<code_context>\n{code}\n</code_context>\n\n\
-             <memory_context>\n{mem}\n</memory_context>\n\n\
-             <question>\n{q}\n</question>",
-            code = code_context,
-            mem = mem,
-            q = args.question,
-        )
-    } else {
-        format!(
-            "<code_context>\n{code}\n</code_context>\n\n\
-             <question>\n{q}\n</question>",
-            code = code_context,
-            q = args.question,
-        )
-    };
+    let spec_section = spec_context
+        .as_deref()
+        .map(|s| format!("\n\n<spec_context>\n{s}\n</spec_context>"))
+        .unwrap_or_default();
+    let mem_section = memory_context
+        .as_deref()
+        .map(|m| format!("\n\n<memory_context>\n{m}\n</memory_context>"))
+        .unwrap_or_default();
+    let user_message = format!(
+        "<code_context>\n{code}\n</code_context>{spec}{mem}\n\n<question>\n{q}\n</question>",
+        code = code_context,
+        spec = spec_section,
+        mem = mem_section,
+        q = args.question,
+    );
 
     let messages = vec![
         crate::llm::Message::system(system_prompt),
@@ -2290,6 +2361,21 @@ fn search_all_dbs(
     let mut seen = std::collections::HashSet::new();
     all.retain(|r| seen.insert((r.file_path.clone(), r.start_line, r.end_line)));
     all.truncate(limit);
+
+    // Annotate results with governing specs from the primary DB.
+    if let Ok(primary_db) = Database::open(primary_db_path) {
+        let file_paths: Vec<String> = all.iter().map(|r| r.file_path.clone()).collect();
+        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths) {
+            if !all_specs.is_empty() {
+                for result in &mut all {
+                    if let Ok(per) = primary_db.specs_for_files(&[result.file_path.clone()]) {
+                        result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
+                    }
+                }
+            }
+        }
+    }
+
     Ok(all)
 }
 
@@ -2361,6 +2447,10 @@ fn print_results_text(results: &[crate::search::SearchResult]) {
             suffix,
         );
 
+        if !r.governing_specs.is_empty() {
+            println!("    \x1b[2mSpec: {}\x1b[0m", r.governing_specs.join(", "));
+        }
+
         let lines: Vec<&str> = r.content.lines().collect();
         let preview_lines = lines.len().min(6);
         for line in &lines[..preview_lines] {
@@ -2426,6 +2516,199 @@ fn ask_json_schema() -> serde_json::Value {
             "additionalProperties": false
         }
     })
+}
+
+// ── Spec commands ─────────────────────────────────────────────────────────────
+
+pub fn spec(args: super::SpecArgs, cfg: Config) -> Result<()> {
+    let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
+    let db = Database::open(&db_path)?;
+    match args.command {
+        super::SpecCommand::Link(a) => spec_link(a, &db),
+        super::SpecCommand::Unlink(a) => spec_unlink(a, &db),
+        super::SpecCommand::List(a) => spec_list(a, &db),
+        super::SpecCommand::Check(a) => spec_check(a, &db),
+    }
+}
+
+fn spec_link(args: super::SpecLinkArgs, db: &Database) -> Result<()> {
+    let spec_path = args
+        .spec
+        .to_str()
+        .context("spec path is not valid UTF-8")?
+        .to_owned();
+
+    // Extract title from first `# Heading` in the file (best-effort).
+    let title = extract_spec_title(&args.spec).unwrap_or_default();
+
+    let spec_id = db.upsert_spec(&spec_path, &title, false)?;
+
+    for path in &args.paths {
+        db.add_spec_link(spec_id, path)?;
+        println!("Linked  {spec_path}  →  {path}");
+    }
+    Ok(())
+}
+
+fn spec_unlink(args: super::SpecUnlinkArgs, db: &Database) -> Result<()> {
+    let spec_path = args
+        .spec
+        .to_str()
+        .context("spec path is not valid UTF-8")?
+        .to_owned();
+
+    let record = db
+        .spec_by_path(&spec_path)?
+        .with_context(|| format!("spec not found: {spec_path}"))?;
+
+    match args.path {
+        Some(p) => {
+            db.remove_spec_link(record.id, &p)?;
+            println!("Unlinked  {spec_path}  →  {p}");
+        }
+        None => {
+            db.delete_spec(record.id)?;
+            println!("Removed spec (and all links): {spec_path}");
+        }
+    }
+    Ok(())
+}
+
+fn spec_list(args: super::SpecListArgs, db: &Database) -> Result<()> {
+    let specs = db.all_specs()?;
+
+    if specs.is_empty() {
+        println!(
+            "No specs registered. Run `spelunk spec link` or re-index a project with docs/specs/."
+        );
+        return Ok(());
+    }
+
+    #[derive(serde::Serialize)]
+    struct SpecOut<'a> {
+        path: &'a str,
+        title: &'a str,
+        is_auto: bool,
+        links: Vec<String>,
+    }
+
+    let mut out: Vec<SpecOut<'_>> = Vec::with_capacity(specs.len());
+    for s in &specs {
+        let links = db.spec_links(s.id)?;
+        out.push(SpecOut {
+            path: &s.path,
+            title: &s.title,
+            is_auto: s.is_auto,
+            links,
+        });
+    }
+
+    match crate::utils::effective_format(&args.format) {
+        "json" => println!("{}", serde_json::to_string_pretty(&out)?),
+        _ => {
+            for s in &out {
+                let auto = if s.is_auto {
+                    " \x1b[2m(auto)\x1b[0m"
+                } else {
+                    ""
+                };
+                let title = if s.title.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {}", s.title)
+                };
+                println!("\x1b[1m{}\x1b[0m{}{}", s.path, title, auto);
+                if s.links.is_empty() {
+                    println!("  \x1b[2m(no links)\x1b[0m");
+                }
+                for l in &s.links {
+                    println!("  → {l}");
+                }
+                println!();
+            }
+        }
+    }
+    Ok(())
+}
+
+fn spec_check(args: super::SpecCheckArgs, db: &Database) -> Result<()> {
+    let stale = db.stale_specs()?;
+
+    if stale.is_empty() {
+        println!("All specs are up to date with their linked code.");
+        return Ok(());
+    }
+
+    match crate::utils::effective_format(&args.format) {
+        "json" => println!("{}", serde_json::to_string_pretty(&stale)?),
+        _ => {
+            println!(
+                "\x1b[33mWarning:\x1b[0m {} spec(s) may be out of date:\n",
+                stale.len()
+            );
+            let mut last_spec = "";
+            for s in &stale {
+                if s.spec_path != last_spec {
+                    let title = if s.title.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" — {}", s.title)
+                    };
+                    println!("\x1b[1m{}\x1b[0m{}", s.spec_path, title);
+                    last_spec = &s.spec_path;
+                }
+                let days = (s.code_indexed_at - s.spec_indexed_at) / 86400;
+                println!(
+                    "  → {} \x1b[2m(code re-indexed ~{} day(s) after spec)\x1b[0m",
+                    s.linked_path, days
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Extract the first ATX heading (`# Title`) from a markdown file as a title string.
+fn extract_spec_title(path: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    content.lines().find_map(|line| {
+        let stripped = line.strip_prefix("# ")?;
+        let title = stripped.trim().to_owned();
+        if title.is_empty() { None } else { Some(title) }
+    })
+}
+
+/// Return true if a markdown file declares itself as a spec via frontmatter
+/// (`spelunk_spec: true`) or lives under a conventional spec directory.
+pub fn is_spec_file(path: &std::path::Path) -> bool {
+    // Directory convention: docs/specs/ or specs/
+    let path_str = path.to_string_lossy();
+    if path_str.contains("/specs/") || path_str.starts_with("specs/") {
+        return true;
+    }
+
+    // Frontmatter detection: look for `spelunk_spec: true` in the first 20 lines.
+    if let Ok(content) = std::fs::read_to_string(path) {
+        let mut in_frontmatter = false;
+        for (i, line) in content.lines().enumerate() {
+            if i == 0 && line.trim_end() == "---" {
+                in_frontmatter = true;
+                continue;
+            }
+            if in_frontmatter {
+                if line.trim_end() == "---" || line.trim_end() == "..." {
+                    break;
+                }
+                if line.trim() == "spelunk_spec: true" {
+                    return true;
+                }
+            }
+            if i >= 20 {
+                break;
+            }
+        }
+    }
+    false
 }
 
 fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {

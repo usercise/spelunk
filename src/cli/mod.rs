@@ -47,6 +47,8 @@ pub enum Command {
     Hooks(HooksArgs),
     /// Create and track codebase plans as markdown checklists in docs/plans/
     Plan(PlanArgs),
+    /// Manage spec files: link human-authored docs to the code they govern
+    Spec(SpecArgs),
 }
 
 #[derive(Args, Debug)]
@@ -396,6 +398,63 @@ pub struct PlanStatusArgs {
     /// Show only this plan (by filename stem, e.g. add-rate-limiting)
     pub name: Option<String>,
 
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+// ── Spec ──────────────────────────────────────────────────────────────────────
+
+#[derive(Args, Debug)]
+pub struct SpecArgs {
+    #[command(subcommand)]
+    pub command: SpecCommand,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SpecCommand {
+    /// Link a spec file to one or more code paths it governs
+    Link(SpecLinkArgs),
+    /// Remove a link between a spec and a code path
+    Unlink(SpecUnlinkArgs),
+    /// List all registered spec files and their links
+    List(SpecListArgs),
+    /// Show specs whose linked code has been re-indexed since the spec was last indexed
+    Check(SpecCheckArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SpecLinkArgs {
+    /// Path to the spec file (markdown)
+    pub spec: PathBuf,
+
+    /// One or more file paths or directory prefixes this spec governs
+    #[arg(required = true)]
+    pub paths: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct SpecUnlinkArgs {
+    /// Path to the spec file
+    pub spec: PathBuf,
+
+    /// Path prefix to remove (leave empty to remove all links for this spec)
+    pub path: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct SpecListArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SpecCheckArgs {
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     pub format: String,
