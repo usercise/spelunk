@@ -33,11 +33,7 @@ impl LmStudioLlm {
             .timeout(std::time::Duration::from_secs(300))
             .build()
             .context("building HTTP client for LM Studio LLM")?;
-        tracing::info!(
-            "LM Studio LLM: {} model={}",
-            cfg.lmstudio_base_url,
-            model
-        );
+        tracing::info!("LM Studio LLM: {} model={}", cfg.lmstudio_base_url, model);
         Ok(Self {
             client,
             base_url: cfg.lmstudio_base_url.clone(),
