@@ -20,6 +20,13 @@ pub struct LmStudioLlm {
 
 impl LmStudioLlm {
     pub async fn load(cfg: &crate::config::Config) -> Result<Self> {
+        let model = cfg.llm_model.as_deref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "llm_model is not configured.\n\
+                 Add 'llm_model = \"<model-id>\"' to ~/.config/spelunk/config.toml\n\
+                 to enable commands that require a chat model."
+            )
+        })?;
         // No warmup needed — the model is already loaded in LM Studio.
         let client = Client::builder()
             // Allow long responses without timeout during streaming.
@@ -29,12 +36,12 @@ impl LmStudioLlm {
         tracing::info!(
             "LM Studio LLM: {} model={}",
             cfg.lmstudio_base_url,
-            cfg.llm_model
+            model
         );
         Ok(Self {
             client,
             base_url: cfg.lmstudio_base_url.clone(),
-            model: cfg.llm_model.clone(),
+            model: model.to_string(),
         })
     }
 }

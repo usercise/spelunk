@@ -19,9 +19,10 @@ spelunk memory list --kind question              # check open questions
 **Before reading any file, search first:**
 ```bash
 spelunk search "<topic>"          # find relevant chunks by meaning
-spelunk ask "<question>"          # get a synthesised answer with citations
 spelunk graph <symbol>            # trace callers/callees when needed
 ```
+
+spelunk retrieves context — you synthesise the answer.
 
 **Store decisions as you make them** — don't wait until the end:
 ```bash
@@ -44,11 +45,14 @@ Full reference: `SKILL.md` and `docs/agent-guide.md`.
 
 `spelunk` (`spelunk`) is a Rust CLI that indexes a source tree using
 tree-sitter AST chunking, embeds every chunk via the LM Studio API
-(EmbeddingGemma 300M), stores vectors in SQLite, and answers natural language
-questions via a RAG pipeline backed by any chat model loaded in LM Studio.
+(EmbeddingGemma 300M), and stores vectors in SQLite for semantic search.
+
+It is a **context retrieval engine** for AI agents like you. You search with
+spelunk, then reason over the results yourself.
 
 **Requirement**: LM Studio running at `http://127.0.0.1:1234` (configurable)
-with an embedding model and a chat model loaded.
+with an **embedding model** loaded. A chat model is optional (enables `memory harvest`
+and `plan create`).
 
 ---
 
@@ -127,9 +131,7 @@ EmbeddingGemma's recommended document retrieval format:
 ```
 title: {name | "none"} | text: {content}
 ```
-Query-side prefixes are task-specific:
-- `spelunk search` → `task: code retrieval | query: {q}`
-- `spelunk ask`    → `task: question answering | query: {q}`
+Query-side prefix: `task: code retrieval | query: {q}`
 
 See `Chunk::embedding_text()` in `src/indexer/chunker.rs`.
 
@@ -144,8 +146,8 @@ Changed files: delete old chunks + embeddings, reparse, re-embed.
 
 ### Multi-project registry
 `~/.config/spelunk/registry.db` tracks all indexed projects and their
-dependency links. `spelunk search` and `spelunk ask` automatically query all linked
-project DBs and merge results by distance.
+dependency links. `spelunk search` automatically queries all linked project DBs
+and merges results by distance.
 
 ### Secret scanning
 `src/indexer/secrets.rs` runs before each chunk is stored. Chunks matching
@@ -184,8 +186,6 @@ cargo build --release
 # Run the CLI
 cargo run -- index ./some/project
 cargo run -- search "how does authentication work"
-cargo run -- ask "explain the error handling strategy"
-cargo run -- ask "what files handle auth" --json
 cargo run -- status
 cargo run -- status --all
 cargo run -- graph <symbol>

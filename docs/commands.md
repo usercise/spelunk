@@ -53,31 +53,6 @@ spelunk search "authentication middleware" --graph
 
 ---
 
-## spelunk ask
-
-Answer a natural language question using your indexed codebase.
-
-```
-spelunk ask <question> [options]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--context-chunks <n>` | 20 | Number of chunks to retrieve as context |
-| `--json` | false | Return structured JSON: `{ answer, relevant_files, confidence }` |
-| `-d, --db <path>` | auto | Override database path |
-
-**Example:**
-
-```bash
-spelunk ask "How does the indexer handle binary files?"
-spelunk ask "What is the retry strategy for failed embeddings?" --json
-```
-
-Setting `AGENT=true` in the environment forces JSON output regardless of `--json`.
-
----
-
 ## spelunk status
 
 Show indexing statistics for the current project (or all projects).
@@ -204,7 +179,7 @@ spelunk languages
 
 ## spelunk link / spelunk unlink
 
-Add or remove a project dependency. When linked, `spelunk search` and `spelunk ask` also query the linked project's index.
+Add or remove a project dependency. When linked, `spelunk search` also queries the linked project's index.
 
 ```
 spelunk link <path>

@@ -73,11 +73,11 @@ pub struct Config {
     #[serde(default = "Config::default_embedding_model")]
     pub embedding_model: String,
 
-    /// Model ID for the LLM used by `ask`.
+    /// Model ID for the LLM used by `ask`, `memory harvest`, and `plan create`.
     /// LM Studio: the model's API key (e.g. `google/gemma-3n-e4b`).
-    /// Metal: HuggingFace repo ID (e.g. `google/gemma-3-1b-it`).
-    #[serde(default = "Config::default_llm_model")]
-    pub llm_model: String,
+    /// When unset, commands that require a chat model are unavailable.
+    #[serde(default)]
+    pub llm_model: Option<String>,
 
     /// Default embedding batch size
     pub batch_size: usize,
@@ -110,9 +110,6 @@ impl Config {
     fn default_embedding_model() -> String {
         "text-embedding-embeddinggemma-300m-qat".to_string()
     }
-    fn default_llm_model() -> String {
-        "google/gemma-3n-e4b".to_string()
-    }
     fn default_lmstudio_base_url() -> String {
         "http://127.0.0.1:1234".to_string()
     }
@@ -128,7 +125,7 @@ impl Default for Config {
             db_path: base.join("index.db"),
             models_dir: base.join("models"),
             embedding_model: Self::default_embedding_model(),
-            llm_model: Self::default_llm_model(),
+            llm_model: None,
             batch_size: 32,
             lmstudio_base_url: Self::default_lmstudio_base_url(),
             memory_server_url: None,

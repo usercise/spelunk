@@ -36,7 +36,9 @@ lmstudio_base_url = "http://127.0.0.1:1234"
 
 # Must match the "API Identifier" shown in LM Studio for each model
 embedding_model = "text-embedding-embeddinggemma-300m-qat"
-llm_model       = "google/gemma-3n-e4b"
+
+# Optional: set a chat model to enable `memory harvest` and `plan create`
+# llm_model = "google/gemma-3n-e4b"
 
 # Embedding batch size — lower this if you run out of memory
 batch_size = 32
@@ -77,11 +79,6 @@ spelunk search "authentication" --graph
 
 # Return JSON instead of text
 spelunk search "database migrations" --format json
-```
-
-```bash
-spelunk ask "How does the incremental indexing work?"
-spelunk ask "What files handle user authentication?" --json
 ```
 
 ## 6. Check index health
