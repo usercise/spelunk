@@ -91,9 +91,10 @@ ignore = [
 allow = [
     "MIT",
     "Apache-2.0",
-    "0BSD",
+    "MPL-2.0",
     "Unicode-3.0",
     "BSD-2-Clause",
+    "BSD-3-Clause",
     "Unlicense",
     #"Apache-2.0 WITH LLVM-exception",
 ]
