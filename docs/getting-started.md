@@ -116,3 +116,28 @@ spelunk hooks uninstall
 - [Memory](memory.md) — storing project context across sessions
 - [Agent Guide](agent-guide.md) — using `spelunk` with AI coding agents
 - [Building from source](building.md) — for contributors and platform builders
+
+## Team setup (shared memory)
+
+Working with teammates? Run `spelunk-server` so the whole team shares memory
+instead of each person siloing their own decisions and context.
+
+Add a `.spelunk/config.toml` at your repo root and commit it:
+
+```toml
+# .spelunk/config.toml — commit this, it contains no secrets
+memory_server_url = "http://spelunk.internal:7777"
+project_id        = "my-awesome-app"
+```
+
+Each developer adds the API key to their personal config:
+
+```toml
+# ~/.config/spelunk/config.toml — never commit
+memory_server_key = "shared-team-key"
+```
+
+After that, all `spelunk memory` commands transparently use the server. Push
+any existing local entries with `spelunk memory push`.
+
+→ **[Server setup guide](server.md)** — Docker, API reference, production tips

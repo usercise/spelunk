@@ -7,8 +7,8 @@
 //! negatives) to avoid blocking legitimate code that discusses secrets
 //! conceptually (e.g., documentation, tests with placeholder values).
 
-use std::sync::OnceLock;
 use regex::Regex;
+use std::sync::OnceLock;
 
 /// Returns `true` if `text` appears to contain a secret that should not be indexed.
 pub fn contains_secret(text: &str) -> bool {
@@ -64,17 +64,23 @@ mod tests {
 
     #[test]
     fn detects_api_key_assignment() {
-        assert!(contains_secret(r#"api_key = "sk-abcdefghijklmnopqrstuvwxyz012345""#));
+        assert!(contains_secret(
+            r#"api_key = "sk-abcdefghijklmnopqrstuvwxyz012345""#
+        ));
     }
 
     #[test]
     fn detects_github_pat() {
-        assert!(contains_secret("token = ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef123456789012"));
+        assert!(contains_secret(
+            "token = ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef123456789012"
+        ));
     }
 
     #[test]
     fn clean_code_not_flagged() {
-        assert!(!contains_secret("fn verify_token(token: &str) -> bool { token.len() > 0 }"));
+        assert!(!contains_secret(
+            "fn verify_token(token: &str) -> bool { token.len() > 0 }"
+        ));
     }
 
     #[test]

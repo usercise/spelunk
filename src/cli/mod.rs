@@ -229,6 +229,12 @@ pub enum MemoryCommand {
     Show(MemoryShowArgs),
     /// Auto-harvest memory entries from git commit messages using the LLM
     Harvest(MemoryHarvestArgs),
+    /// Archive a memory entry (hidden from search and ask, but preserved)
+    Archive(MemoryArchiveArgs),
+    /// Archive an entry and mark it as superseded by a newer entry
+    Supersede(MemorySupersededArgs),
+    /// Push all local memory entries to the configured memory server
+    Push(MemoryPushArgs),
 }
 
 #[derive(Args, Debug)]
@@ -285,6 +291,10 @@ pub struct MemoryListArgs {
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     pub format: String,
+
+    /// Include archived entries
+    #[arg(long)]
+    pub archived: bool,
 }
 
 #[derive(Args, Debug)]
@@ -302,6 +312,30 @@ pub struct MemoryHarvestArgs {
     /// Git revision range to analyse (default: HEAD~10..HEAD)
     #[arg(long, default_value = "HEAD~10..HEAD")]
     pub git_range: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryPushArgs {
+    /// Local memory.db to push from (default: same as --db)
+    #[arg(long)]
+    pub source: Option<std::path::PathBuf>,
+    /// Push archived entries too
+    #[arg(long)]
+    pub include_archived: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryArchiveArgs {
+    /// ID of the entry to archive (from `spelunk memory list`)
+    pub id: i64,
+}
+
+#[derive(Args, Debug)]
+pub struct MemorySupersededArgs {
+    /// ID of the entry to archive (the outdated one)
+    pub old_id: i64,
+    /// ID of the entry that replaces it (the new one)
+    pub new_id: i64,
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────

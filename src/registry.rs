@@ -9,7 +9,7 @@
 //!   - Power `spelunk status --all` and `spelunk autoclean`
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,9 @@ impl Registry {
     }
 
     fn init(&self) -> Result<()> {
-        self.conn.execute_batch("
+        self.conn
+            .execute_batch(
+                "
             PRAGMA journal_mode=WAL;
             PRAGMA foreign_keys=ON;
 
@@ -65,7 +67,9 @@ impl Registry {
                 dep_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                 PRIMARY KEY (project_id, dep_id)
             );
-        ").context("initialising registry schema")?;
+        ",
+            )
+            .context("initialising registry schema")?;
         Ok(())
     }
 
@@ -74,18 +78,23 @@ impl Registry {
     /// Register (or update) a project.  Returns the project's id.
     pub fn register(&self, root: &Path, db: &Path) -> Result<i64> {
         let root_str = root.to_string_lossy();
-        let db_str   = db.to_string_lossy();
-        self.conn.execute(
-            "INSERT INTO projects (root_path, db_path)
+        let db_str = db.to_string_lossy();
+        self.conn
+            .execute(
+                "INSERT INTO projects (root_path, db_path)
              VALUES (?1, ?2)
              ON CONFLICT(root_path) DO UPDATE SET db_path = excluded.db_path",
-            params![root_str, db_str],
-        ).context("registering project")?;
-        let id: i64 = self.conn.query_row(
-            "SELECT id FROM projects WHERE root_path = ?1",
-            params![root_str],
-            |row| row.get(0),
-        ).context("fetching project id after register")?;
+                params![root_str, db_str],
+            )
+            .context("registering project")?;
+        let id: i64 = self
+            .conn
+            .query_row(
+                "SELECT id FROM projects WHERE root_path = ?1",
+                params![root_str],
+                |row| row.get(0),
+            )
+            .context("fetching project id after register")?;
         Ok(id)
     }
 
@@ -99,12 +108,16 @@ impl Registry {
         let mut dir = start.to_path_buf();
         loop {
             let dir_str = dir.to_string_lossy().to_string();
-            let maybe: Option<(i64, String, String, i64)> = self.conn.query_row(
-                "SELECT id, root_path, db_path, registered_at
+            let maybe: Option<(i64, String, String, i64)> = self
+                .conn
+                .query_row(
+                    "SELECT id, root_path, db_path, registered_at
                  FROM projects WHERE root_path = ?1",
-                params![dir_str],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            ).optional().context("querying registry")?;
+                    params![dir_str],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()
+                .context("querying registry")?;
 
             if let Some((id, root_path, db_path, registered_at)) = maybe {
                 return Ok(Some(Project {
@@ -114,7 +127,9 @@ impl Registry {
                     registered_at,
                 }));
             }
-            if !dir.pop() { break; }
+            if !dir.pop() {
+                break;
+            }
         }
 
         // 2. Filesystem fallback — look for .spelunk/index.db and auto-register.
@@ -130,7 +145,9 @@ impl Registry {
                     registered_at: 0,
                 }));
             }
-            if !dir.pop() { break; }
+            if !dir.pop() {
+                break;
+            }
         }
 
         Ok(None)
@@ -139,59 +156,72 @@ impl Registry {
     /// Find a project by its exact root path.
     pub fn find_by_root(&self, root: &Path) -> Result<Option<Project>> {
         let root_str = root.to_string_lossy().to_string();
-        self.conn.query_row(
-            "SELECT id, root_path, db_path, registered_at
+        self.conn
+            .query_row(
+                "SELECT id, root_path, db_path, registered_at
              FROM projects WHERE root_path = ?1",
-            params![root_str],
-            |row| {
-                Ok(Project {
-                    id: row.get(0)?,
-                    root_path: PathBuf::from(row.get::<_, String>(1)?),
-                    db_path:   PathBuf::from(row.get::<_, String>(2)?),
-                    registered_at: row.get(3)?,
-                })
-            },
-        ).optional().context("querying registry by root")
+                params![root_str],
+                |row| {
+                    Ok(Project {
+                        id: row.get(0)?,
+                        root_path: PathBuf::from(row.get::<_, String>(1)?),
+                        db_path: PathBuf::from(row.get::<_, String>(2)?),
+                        registered_at: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .context("querying registry by root")
     }
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
     /// Return all dep DB paths for a project (direct deps only).
     pub fn get_deps(&self, project_id: i64) -> Result<Vec<Project>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT p.id, p.root_path, p.db_path, p.registered_at
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.id, p.root_path, p.db_path, p.registered_at
              FROM projects p
              JOIN project_deps d ON d.dep_id = p.id
              WHERE d.project_id = ?1",
-        ).context("preparing dep query")?;
+            )
+            .context("preparing dep query")?;
 
-        let rows = stmt.query_map(params![project_id], |row| {
-            Ok(Project {
-                id: row.get(0)?,
-                root_path: PathBuf::from(row.get::<_, String>(1)?),
-                db_path:   PathBuf::from(row.get::<_, String>(2)?),
-                registered_at: row.get(3)?,
+        let rows = stmt
+            .query_map(params![project_id], |row| {
+                Ok(Project {
+                    id: row.get(0)?,
+                    root_path: PathBuf::from(row.get::<_, String>(1)?),
+                    db_path: PathBuf::from(row.get::<_, String>(2)?),
+                    registered_at: row.get(3)?,
+                })
             })
-        }).context("querying deps")?;
+            .context("querying deps")?;
 
-        rows.collect::<rusqlite::Result<Vec<_>>>().context("reading dep rows")
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("reading dep rows")
     }
 
     /// Add a dependency: `from_id` depends on `dep_id`.
     pub fn add_dep(&self, from_id: i64, dep_id: i64) -> Result<()> {
-        self.conn.execute(
-            "INSERT OR IGNORE INTO project_deps (project_id, dep_id) VALUES (?1, ?2)",
-            params![from_id, dep_id],
-        ).context("adding dependency")?;
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO project_deps (project_id, dep_id) VALUES (?1, ?2)",
+                params![from_id, dep_id],
+            )
+            .context("adding dependency")?;
         Ok(())
     }
 
     /// Remove a dependency.
     pub fn remove_dep(&self, from_id: i64, dep_id: i64) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM project_deps WHERE project_id = ?1 AND dep_id = ?2",
-            params![from_id, dep_id],
-        ).context("removing dependency")?;
+        self.conn
+            .execute(
+                "DELETE FROM project_deps WHERE project_id = ?1 AND dep_id = ?2",
+                params![from_id, dep_id],
+            )
+            .context("removing dependency")?;
         Ok(())
     }
 
@@ -199,43 +229,55 @@ impl Registry {
 
     /// Return all registered projects, ordered by root_path.
     pub fn all_projects(&self) -> Result<Vec<Project>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, root_path, db_path, registered_at
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, root_path, db_path, registered_at
              FROM projects ORDER BY root_path",
-        ).context("preparing all-projects query")?;
+            )
+            .context("preparing all-projects query")?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok(Project {
-                id: row.get(0)?,
-                root_path: PathBuf::from(row.get::<_, String>(1)?),
-                db_path:   PathBuf::from(row.get::<_, String>(2)?),
-                registered_at: row.get(3)?,
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(Project {
+                    id: row.get(0)?,
+                    root_path: PathBuf::from(row.get::<_, String>(1)?),
+                    db_path: PathBuf::from(row.get::<_, String>(2)?),
+                    registered_at: row.get(3)?,
+                })
             })
-        }).context("querying all projects")?;
+            .context("querying all projects")?;
 
-        rows.collect::<rusqlite::Result<Vec<_>>>().context("reading project rows")
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("reading project rows")
     }
 
     /// Return projects that list `project_id` as a dependency (reverse deps).
     #[allow(dead_code)]
     pub fn projects_depending_on(&self, project_id: i64) -> Result<Vec<Project>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT p.id, p.root_path, p.db_path, p.registered_at
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.id, p.root_path, p.db_path, p.registered_at
              FROM projects p
              JOIN project_deps d ON d.project_id = p.id
              WHERE d.dep_id = ?1",
-        ).context("preparing reverse-dep query")?;
+            )
+            .context("preparing reverse-dep query")?;
 
-        let rows = stmt.query_map(params![project_id], |row| {
-            Ok(Project {
-                id: row.get(0)?,
-                root_path: PathBuf::from(row.get::<_, String>(1)?),
-                db_path:   PathBuf::from(row.get::<_, String>(2)?),
-                registered_at: row.get(3)?,
+        let rows = stmt
+            .query_map(params![project_id], |row| {
+                Ok(Project {
+                    id: row.get(0)?,
+                    root_path: PathBuf::from(row.get::<_, String>(1)?),
+                    db_path: PathBuf::from(row.get::<_, String>(2)?),
+                    registered_at: row.get(3)?,
+                })
             })
-        }).context("querying reverse deps")?;
+            .context("querying reverse deps")?;
 
-        rows.collect::<rusqlite::Result<Vec<_>>>().context("reading reverse-dep rows")
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("reading reverse-dep rows")
     }
 
     // ── Autoclean ─────────────────────────────────────────────────────────────
@@ -247,10 +289,9 @@ impl Registry {
         let mut removed = Vec::new();
         for p in projects {
             if !p.root_path.exists() {
-                self.conn.execute(
-                    "DELETE FROM projects WHERE id = ?1",
-                    params![p.id],
-                ).context("deleting stale project from registry")?;
+                self.conn
+                    .execute("DELETE FROM projects WHERE id = ?1", params![p.id])
+                    .context("deleting stale project from registry")?;
                 removed.push(p.root_path.to_string_lossy().to_string());
             }
         }

@@ -28,9 +28,9 @@ pub enum EdgeKind {
 impl std::fmt::Display for EdgeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Imports    => write!(f, "imports"),
-            Self::Calls      => write!(f, "calls"),
-            Self::Extends    => write!(f, "extends"),
+            Self::Imports => write!(f, "imports"),
+            Self::Calls => write!(f, "calls"),
+            Self::Extends => write!(f, "extends"),
             Self::Implements => write!(f, "implements"),
         }
     }
@@ -38,12 +38,12 @@ impl std::fmt::Display for EdgeKind {
 
 impl EdgeKind {
     #[allow(dead_code)]
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
-            "calls"      => Self::Calls,
-            "extends"    => Self::Extends,
+            "calls" => Self::Calls,
+            "extends" => Self::Extends,
             "implements" => Self::Implements,
-            _            => Self::Imports,
+            _ => Self::Imports,
         }
     }
 }
@@ -71,7 +71,7 @@ impl EdgeExtractor {
     /// Returns an empty vec on parse failure rather than an error.
     pub fn extract(source: &str, file_path: &str, language: &str) -> Result<Vec<Edge>> {
         let ts_lang = match super::parser::ts_language_pub(language) {
-            Ok(l)  => l,
+            Ok(l) => l,
             Err(_) => return Ok(vec![]),
         };
 
@@ -80,14 +80,22 @@ impl EdgeExtractor {
 
         let tree = match parser.parse(source, None) {
             Some(t) => t,
-            None    => return Ok(vec![]),
+            None => return Ok(vec![]),
         };
 
         let bytes = source.as_bytes();
         let mut edges = Vec::new();
         let mut seen: HashSet<(Option<String>, String, String)> = HashSet::new();
 
-        walk(tree.root_node(), bytes, file_path, language, None, &mut edges, &mut seen);
+        walk(
+            tree.root_node(),
+            bytes,
+            file_path,
+            language,
+            None,
+            &mut edges,
+            &mut seen,
+        );
         Ok(edges)
     }
 }
@@ -121,15 +129,15 @@ fn walk(
 /// If `node` introduces a named scope (function, class, …) return its name.
 fn enclosing_scope(node: &tree_sitter::Node<'_>, src: &[u8], language: &str) -> Option<String> {
     let field = match (language, node.kind()) {
-        ("rust",                       "function_item")        => "name",
-        ("python",                     "function_definition")  => "name",
-        ("python",                     "class_definition")     => "name",
-        ("javascript" | "typescript",  "function_declaration") => "name",
-        ("javascript" | "typescript",  "class_declaration")    => "name",
-        ("go",                         "function_declaration") => "name",
-        ("go",                         "method_declaration")   => "name",
-        ("java",                       "class_declaration")    => "name",
-        ("java",                       "method_declaration")   => "name",
+        ("rust", "function_item") => "name",
+        ("python", "function_definition") => "name",
+        ("python", "class_definition") => "name",
+        ("javascript" | "typescript", "function_declaration") => "name",
+        ("javascript" | "typescript", "class_declaration") => "name",
+        ("go", "function_declaration") => "name",
+        ("go", "method_declaration") => "name",
+        ("java", "class_declaration") => "name",
+        ("java", "method_declaration") => "name",
         _ => return None,
     };
     node.child_by_field_name(field)
@@ -150,19 +158,23 @@ fn collect(
     let line = node.start_position().row + 1;
 
     let candidates: Vec<(String, EdgeKind)> = match language {
-        "rust"                      => rust_edges(node, src),
-        "python"                    => python_edges(node, src),
+        "rust" => rust_edges(node, src),
+        "python" => python_edges(node, src),
         "javascript" | "typescript" => js_edges(node, src),
-        "go"                        => go_edges(node, src),
-        "java"                      => java_edges(node, src),
-        "c" | "cpp"                 => c_edges(node, src),
-        "html"                      => html_edges(node, src),
-        "css"                       => css_edges(node, src),
-        _                           => vec![],
+        "go" => go_edges(node, src),
+        "java" => java_edges(node, src),
+        "c" | "cpp" => c_edges(node, src),
+        "html" => html_edges(node, src),
+        "css" => css_edges(node, src),
+        _ => vec![],
     };
 
     for (target, kind) in candidates {
-        let key = (enclosing.map(str::to_owned), target.clone(), kind.to_string());
+        let key = (
+            enclosing.map(str::to_owned),
+            target.clone(),
+            kind.to_string(),
+        );
         if seen.insert(key) {
             out.push(Edge {
                 source_file: file_path.to_owned(),
@@ -199,44 +211,41 @@ fn rust_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind
             if let Some(func) = node.child_by_field_name("function") {
                 match func.kind() {
                     "identifier" => {
-                        if let Ok(name) = func.utf8_text(src) {
-                            if !is_rust_builtin(name) {
-                                out.push((name.to_owned(), EdgeKind::Calls));
-                            }
+                        if let Ok(name) = func.utf8_text(src)
+                            && !is_rust_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                     }
                     // Type::method(…) — index the full form, the type, and the method.
                     "scoped_identifier" => {
-                        if let Ok(full) = func.utf8_text(src) {
-                            if !is_rust_builtin(full) {
-                                out.push((full.to_owned(), EdgeKind::Calls));
-                            }
+                        if let Ok(full) = func.utf8_text(src)
+                            && !is_rust_builtin(full)
+                        {
+                            out.push((full.to_owned(), EdgeKind::Calls));
                         }
                         // Emit the method name: `EdgeExtractor::extract` → `extract`
-                        if let Some(name_node) = func.child_by_field_name("name") {
-                            if let Ok(name) = name_node.utf8_text(src) {
-                                if !is_rust_builtin(name) {
-                                    out.push((name.to_owned(), EdgeKind::Calls));
-                                }
-                            }
+                        if let Some(name_node) = func.child_by_field_name("name")
+                            && let Ok(name) = name_node.utf8_text(src)
+                            && !is_rust_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                         // Emit the type/path: `EdgeExtractor::extract` → `EdgeExtractor`
-                        if let Some(path_node) = func.child_by_field_name("path") {
-                            if let Ok(path) = path_node.utf8_text(src) {
-                                if !is_rust_builtin(path) {
-                                    out.push((path.to_owned(), EdgeKind::Calls));
-                                }
-                            }
+                        if let Some(path_node) = func.child_by_field_name("path")
+                            && let Ok(path) = path_node.utf8_text(src)
+                            && !is_rust_builtin(path)
+                        {
+                            out.push((path.to_owned(), EdgeKind::Calls));
                         }
                     }
                     // obj.method(…) — index the method name.
                     "field_expression" => {
-                        if let Some(field) = func.child_by_field_name("field") {
-                            if let Ok(name) = field.utf8_text(src) {
-                                if !is_rust_builtin(name) {
-                                    out.push((name.to_owned(), EdgeKind::Calls));
-                                }
-                            }
+                        if let Some(field) = func.child_by_field_name("field")
+                            && let Ok(name) = field.utf8_text(src)
+                            && !is_rust_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                     }
                     _ => {}
@@ -253,18 +262,18 @@ fn python_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKi
     match node.kind() {
         "import_statement" => {
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i) {
-                    if matches!(child.kind(), "dotted_name" | "aliased_import") {
-                        let name_node = if child.kind() == "aliased_import" {
-                            child.child_by_field_name("name")
-                        } else {
-                            Some(child)
-                        };
-                        if let Some(n) = name_node {
-                            if let Ok(text) = n.utf8_text(src) {
-                                out.push((text.to_owned(), EdgeKind::Imports));
-                            }
-                        }
+                if let Some(child) = node.child(i)
+                    && matches!(child.kind(), "dotted_name" | "aliased_import")
+                {
+                    let name_node = if child.kind() == "aliased_import" {
+                        child.child_by_field_name("name")
+                    } else {
+                        Some(child)
+                    };
+                    if let Some(n) = name_node
+                        && let Ok(text) = n.utf8_text(src)
+                    {
+                        out.push((text.to_owned(), EdgeKind::Imports));
                     }
                 }
             }
@@ -282,20 +291,19 @@ fn python_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKi
             if let Some(func) = node.child_by_field_name("function") {
                 match func.kind() {
                     "identifier" => {
-                        if let Ok(name) = func.utf8_text(src) {
-                            if !is_python_builtin(name) {
-                                out.push((name.to_owned(), EdgeKind::Calls));
-                            }
+                        if let Ok(name) = func.utf8_text(src)
+                            && !is_python_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                     }
                     // obj.method(…)
                     "attribute" => {
-                        if let Some(attr) = func.child_by_field_name("attribute") {
-                            if let Ok(name) = attr.utf8_text(src) {
-                                if !is_python_builtin(name) {
-                                    out.push((name.to_owned(), EdgeKind::Calls));
-                                }
-                            }
+                        if let Some(attr) = func.child_by_field_name("attribute")
+                            && let Ok(name) = attr.utf8_text(src)
+                            && !is_python_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                     }
                     _ => {}
@@ -311,31 +319,30 @@ fn js_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)>
     let mut out = Vec::new();
     match node.kind() {
         "import_statement" => {
-            if let Some(source) = node.child_by_field_name("source") {
-                if let Ok(text) = source.utf8_text(src) {
-                    let module = text.trim_matches('"').trim_matches('\'').to_owned();
-                    out.push((module, EdgeKind::Imports));
-                }
+            if let Some(source) = node.child_by_field_name("source")
+                && let Ok(text) = source.utf8_text(src)
+            {
+                let module = text.trim_matches('"').trim_matches('\'').to_owned();
+                out.push((module, EdgeKind::Imports));
             }
         }
         "call_expression" => {
             if let Some(func) = node.child_by_field_name("function") {
                 match func.kind() {
                     "identifier" => {
-                        if let Ok(name) = func.utf8_text(src) {
-                            if !is_js_builtin(name) {
-                                out.push((name.to_owned(), EdgeKind::Calls));
-                            }
+                        if let Ok(name) = func.utf8_text(src)
+                            && !is_js_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                     }
                     // obj.method(…)
                     "member_expression" => {
-                        if let Some(prop) = func.child_by_field_name("property") {
-                            if let Ok(name) = prop.utf8_text(src) {
-                                if !is_js_builtin(name) {
-                                    out.push((name.to_owned(), EdgeKind::Calls));
-                                }
-                            }
+                        if let Some(prop) = func.child_by_field_name("property")
+                            && let Ok(name) = prop.utf8_text(src)
+                            && !is_js_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                     }
                     _ => {}
@@ -351,21 +358,21 @@ fn go_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)>
     let mut out = Vec::new();
     match node.kind() {
         "import_spec" => {
-            if let Some(path) = node.child_by_field_name("path") {
-                if let Ok(text) = path.utf8_text(src) {
-                    let module = text.trim_matches('"').to_owned();
-                    out.push((module, EdgeKind::Imports));
-                }
+            if let Some(path) = node.child_by_field_name("path")
+                && let Ok(text) = path.utf8_text(src)
+            {
+                let module = text.trim_matches('"').to_owned();
+                out.push((module, EdgeKind::Imports));
             }
         }
         "call_expression" => {
             if let Some(func) = node.child_by_field_name("function") {
                 match func.kind() {
                     "identifier" => {
-                        if let Ok(name) = func.utf8_text(src) {
-                            if !is_go_builtin(name) {
-                                out.push((name.to_owned(), EdgeKind::Calls));
-                            }
+                        if let Ok(name) = func.utf8_text(src)
+                            && !is_go_builtin(name)
+                        {
+                            out.push((name.to_owned(), EdgeKind::Calls));
                         }
                     }
                     "selector_expression" => {
@@ -387,41 +394,41 @@ fn java_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind
     match node.kind() {
         "import_declaration" => {
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i) {
-                    if matches!(child.kind(), "scoped_identifier" | "identifier") {
-                        if let Ok(text) = child.utf8_text(src) {
-                            out.push((text.to_owned(), EdgeKind::Imports));
-                        }
-                        break;
+                if let Some(child) = node.child(i)
+                    && matches!(child.kind(), "scoped_identifier" | "identifier")
+                {
+                    if let Ok(text) = child.utf8_text(src) {
+                        out.push((text.to_owned(), EdgeKind::Imports));
                     }
+                    break;
                 }
             }
         }
         "class_declaration" => {
-            if let Some(superclass) = node.child_by_field_name("superclass") {
-                if let Ok(text) = superclass.utf8_text(src) {
-                    let name = text.trim_start_matches("extends").trim().to_owned();
-                    if !name.is_empty() {
-                        out.push((name, EdgeKind::Extends));
-                    }
+            if let Some(superclass) = node.child_by_field_name("superclass")
+                && let Ok(text) = superclass.utf8_text(src)
+            {
+                let name = text.trim_start_matches("extends").trim().to_owned();
+                if !name.is_empty() {
+                    out.push((name, EdgeKind::Extends));
                 }
             }
-            if let Some(interfaces) = node.child_by_field_name("interfaces") {
-                if let Ok(text) = interfaces.utf8_text(src) {
-                    for name in text.trim_start_matches("implements").trim().split(',') {
-                        let n = name.trim().to_owned();
-                        if !n.is_empty() {
-                            out.push((n, EdgeKind::Implements));
-                        }
+            if let Some(interfaces) = node.child_by_field_name("interfaces")
+                && let Ok(text) = interfaces.utf8_text(src)
+            {
+                for name in text.trim_start_matches("implements").trim().split(',') {
+                    let n = name.trim().to_owned();
+                    if !n.is_empty() {
+                        out.push((n, EdgeKind::Implements));
                     }
                 }
             }
         }
         "method_invocation" => {
-            if let Some(name) = node.child_by_field_name("name") {
-                if let Ok(text) = name.utf8_text(src) {
-                    out.push((text.to_owned(), EdgeKind::Calls));
-                }
+            if let Some(name) = node.child_by_field_name("name")
+                && let Ok(text) = name.utf8_text(src)
+            {
+                out.push((text.to_owned(), EdgeKind::Calls));
             }
         }
         _ => {}
@@ -433,26 +440,24 @@ fn c_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)> 
     let mut out = Vec::new();
     match node.kind() {
         "preproc_include" => {
-            if let Some(path) = node.child_by_field_name("path") {
-                if let Ok(text) = path.utf8_text(src) {
-                    let module = text
-                        .trim_matches('"')
-                        .trim_start_matches('<')
-                        .trim_end_matches('>')
-                        .to_owned();
-                    out.push((module, EdgeKind::Imports));
-                }
+            if let Some(path) = node.child_by_field_name("path")
+                && let Ok(text) = path.utf8_text(src)
+            {
+                let module = text
+                    .trim_matches('"')
+                    .trim_start_matches('<')
+                    .trim_end_matches('>')
+                    .to_owned();
+                out.push((module, EdgeKind::Imports));
             }
         }
         "call_expression" => {
-            if let Some(func) = node.child_by_field_name("function") {
-                if func.kind() == "identifier" {
-                    if let Ok(name) = func.utf8_text(src) {
-                        if !is_c_builtin(name) {
-                            out.push((name.to_owned(), EdgeKind::Calls));
-                        }
-                    }
-                }
+            if let Some(func) = node.child_by_field_name("function")
+                && func.kind() == "identifier"
+                && let Ok(name) = func.utf8_text(src)
+                && !is_c_builtin(name)
+            {
+                out.push((name.to_owned(), EdgeKind::Calls));
             }
         }
         _ => {}
@@ -483,10 +488,7 @@ fn html_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind
         }
 
         if matches!(attr_name, "src" | "href") {
-            let path = attr_value
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_owned();
+            let path = attr_value.trim_matches('"').trim_matches('\'').to_owned();
             if !path.is_empty() && !path.starts_with('#') && !path.starts_with("data:") {
                 out.push((path, EdgeKind::Imports));
             }
@@ -500,21 +502,21 @@ fn css_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)
     // @import "file.css" or @import url("file.css")
     if node.kind() == "import_statement" {
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
-                if matches!(child.kind(), "string_value" | "call_expression") {
-                    if let Ok(text) = child.utf8_text(src) {
-                        let path = text
-                            .trim_start_matches("url(")
-                            .trim_end_matches(')')
-                            .trim_matches('"')
-                            .trim_matches('\'')
-                            .to_owned();
-                        if !path.is_empty() {
-                            out.push((path, EdgeKind::Imports));
-                        }
+            if let Some(child) = node.child(i)
+                && matches!(child.kind(), "string_value" | "call_expression")
+            {
+                if let Ok(text) = child.utf8_text(src) {
+                    let path = text
+                        .trim_start_matches("url(")
+                        .trim_end_matches(')')
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .to_owned();
+                    if !path.is_empty() {
+                        out.push((path, EdgeKind::Imports));
                     }
-                    break;
                 }
+                break;
             }
         }
     }
@@ -528,50 +530,140 @@ fn css_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)
 fn is_rust_builtin(name: &str) -> bool {
     matches!(
         name,
-        "Ok" | "Err" | "Some" | "None" | "Box" | "Vec" | "String"
-            | "Default" | "From" | "Into" | "Clone" | "Drop"
+        "Ok" | "Err"
+            | "Some"
+            | "None"
+            | "Box"
+            | "Vec"
+            | "String"
+            | "Default"
+            | "From"
+            | "Into"
+            | "Clone"
+            | "Drop"
     )
 }
 
 fn is_python_builtin(name: &str) -> bool {
     matches!(
         name,
-        "print" | "len" | "range" | "enumerate" | "zip" | "map" | "filter"
-            | "sorted" | "reversed" | "list" | "dict" | "set" | "tuple"
-            | "str" | "int" | "float" | "bool" | "type" | "isinstance"
-            | "hasattr" | "getattr" | "setattr" | "super" | "open"
-            | "input" | "repr" | "abs" | "max" | "min" | "sum" | "any" | "all"
-            | "iter" | "next" | "id" | "hash"
+        "print"
+            | "len"
+            | "range"
+            | "enumerate"
+            | "zip"
+            | "map"
+            | "filter"
+            | "sorted"
+            | "reversed"
+            | "list"
+            | "dict"
+            | "set"
+            | "tuple"
+            | "str"
+            | "int"
+            | "float"
+            | "bool"
+            | "type"
+            | "isinstance"
+            | "hasattr"
+            | "getattr"
+            | "setattr"
+            | "super"
+            | "open"
+            | "input"
+            | "repr"
+            | "abs"
+            | "max"
+            | "min"
+            | "sum"
+            | "any"
+            | "all"
+            | "iter"
+            | "next"
+            | "id"
+            | "hash"
     )
 }
 
 fn is_js_builtin(name: &str) -> bool {
     matches!(
         name,
-        "require" | "import" | "console" | "setTimeout" | "setInterval"
-            | "clearTimeout" | "clearInterval" | "Promise" | "Array"
-            | "Object" | "String" | "Number" | "Boolean" | "Error"
-            | "Map" | "Set" | "JSON" | "Math" | "Date" | "Symbol"
-            | "parseInt" | "parseFloat" | "isNaN" | "fetch"
+        "require"
+            | "import"
+            | "console"
+            | "setTimeout"
+            | "setInterval"
+            | "clearTimeout"
+            | "clearInterval"
+            | "Promise"
+            | "Array"
+            | "Object"
+            | "String"
+            | "Number"
+            | "Boolean"
+            | "Error"
+            | "Map"
+            | "Set"
+            | "JSON"
+            | "Math"
+            | "Date"
+            | "Symbol"
+            | "parseInt"
+            | "parseFloat"
+            | "isNaN"
+            | "fetch"
     )
 }
 
 fn is_go_builtin(name: &str) -> bool {
     matches!(
         name,
-        "make" | "new" | "len" | "cap" | "append" | "copy" | "delete"
-            | "close" | "panic" | "recover" | "print" | "println"
+        "make"
+            | "new"
+            | "len"
+            | "cap"
+            | "append"
+            | "copy"
+            | "delete"
+            | "close"
+            | "panic"
+            | "recover"
+            | "print"
+            | "println"
     )
 }
 
 fn is_c_builtin(name: &str) -> bool {
     matches!(
         name,
-        "printf" | "fprintf" | "sprintf" | "snprintf" | "scanf" | "fscanf"
-            | "malloc" | "calloc" | "realloc" | "free"
-            | "memcpy" | "memmove" | "memset" | "memcmp"
-            | "strlen" | "strcpy" | "strncpy" | "strcmp" | "strncmp"
-            | "fopen" | "fclose" | "fread" | "fwrite" | "fgets" | "fputs"
-            | "assert" | "exit" | "abort"
+        "printf"
+            | "fprintf"
+            | "sprintf"
+            | "snprintf"
+            | "scanf"
+            | "fscanf"
+            | "malloc"
+            | "calloc"
+            | "realloc"
+            | "free"
+            | "memcpy"
+            | "memmove"
+            | "memset"
+            | "memcmp"
+            | "strlen"
+            | "strcpy"
+            | "strncpy"
+            | "strcmp"
+            | "strncmp"
+            | "fopen"
+            | "fclose"
+            | "fread"
+            | "fwrite"
+            | "fgets"
+            | "fputs"
+            | "assert"
+            | "exit"
+            | "abort"
     )
 }
