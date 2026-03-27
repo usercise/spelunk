@@ -61,7 +61,11 @@ AGENT=true spelunk search "auth flow" | jq '.[0].file_path'
 
 ## Supported languages
 
-Rust, Go, Python, TypeScript, JavaScript, JSX, TSX, Java, C, C++, Ruby, Swift, Kotlin, JSON, HTML, CSS, HCL, Proto, SQL, Markdown, plain text.
+The following languages get **AST-aware indexing** — spelunk uses tree-sitter to extract semantic chunks (functions, classes, methods) rather than raw line splits:
+
+Rust, Go, Python, TypeScript, JavaScript, JSX, TSX, Java, C, C++, Ruby, Swift, Kotlin, JSON, HTML, CSS, HCL, Proto, SQL, Markdown.
+
+Any other file type is indexed as plain text using a sliding-window chunker, so it still shows up in search results.
 
 ## License
 
