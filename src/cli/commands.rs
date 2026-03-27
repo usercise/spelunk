@@ -1989,7 +1989,7 @@ async fn plan_create(
         let mut y = 1970u32;
         let mut remaining = days;
         loop {
-            let leap = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+            let leap = if y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400)) {
                 366
             } else {
                 365
@@ -2002,7 +2002,7 @@ async fn plan_create(
         }
         let month_days = [
             31u32,
-            if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+            if y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400)) {
                 29
             } else {
                 28
@@ -2135,7 +2135,7 @@ fn plan_status(args: super::PlanStatusArgs) -> Result<()> {
         } else {
             let pct = if total > 0 { done * 100 / total } else { 0 };
             let bar = {
-                let filled = (pct / 10) as usize;
+                let filled = pct / 10;
                 format!("[{}{}]", "#".repeat(filled), ".".repeat(10 - filled))
             };
             println!("\x1b[1m{title}\x1b[0m  \x1b[2m{stem}\x1b[0m");
