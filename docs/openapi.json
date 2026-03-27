@@ -196,6 +196,53 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/memory/harvested-shas": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "Return all git commit SHAs stored in note tags for a project.",
+        "description": "Each harvested commit is tagged `git:<sha>`. Clients call this endpoint\nto skip commits they have already stored, enabling incremental harvest.",
+        "operationId": "harvested_shas",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of harvested git SHAs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/projects/{project_id}/memory/search": {
       "post": {
         "tags": [

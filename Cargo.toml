@@ -117,7 +117,7 @@ serial_test = "3"
 # axum oneshot testing
 tower = { version = "0.5", features = ["util"] }
 
-# OpenAPI docs
+# OpenAPI docs — also used by server handler tests
 utoipa = { version = "5", features = ["axum_extras"] }
 
 [profile.release]
