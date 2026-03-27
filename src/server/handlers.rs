@@ -349,6 +349,34 @@ pub async fn project_stats(
     Ok(Json(stats))
 }
 
+/// Return all git commit SHAs stored in note tags for a project.
+///
+/// Each harvested commit is tagged `git:<sha>`. Clients call this endpoint
+/// to skip commits they have already stored, enabling incremental harvest.
+#[utoipa::path(
+    get,
+    path = "/v1/projects/{project_id}/memory/harvested-shas",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+    ),
+    responses(
+        (status = 200, description = "List of harvested git SHAs", body = Vec<String>),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
+pub async fn harvested_shas(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let db = state.db.lock().await;
+    let project = require_project(&db, &project_id)?;
+    let shas = db.harvested_shas(project.id)?;
+    Ok(Json(shas))
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn require_project(db: &super::db::ServerDb, slug: &str) -> Result<super::db::Project, AppError> {

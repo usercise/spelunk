@@ -45,6 +45,7 @@ pub struct AppState {
         handlers::archive_note,
         handlers::supersede_note,
         handlers::project_stats,
+        handlers::harvested_shas,
     ),
     components(schemas(
         handlers::AddNoteRequest,
@@ -105,6 +106,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/v1/projects/{project_id}/memory/search",
             post(handlers::search_notes),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/harvested-shas",
+            get(handlers::harvested_shas),
         )
         .route(
             "/v1/projects/{project_id}/memory/{note_id}",

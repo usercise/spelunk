@@ -243,9 +243,16 @@ impl MemoryBackend for RemoteMemoryBackend {
     }
 
     async fn harvested_shas(&self) -> Result<HashSet<String>> {
-        // The server doesn't expose a harvested-SHA query endpoint yet.
-        // Return empty set — remote mode won't deduplicate harvest across runs.
-        // TODO(Phase 3): add GET /memory?tags_contains=git: to server API.
-        Ok(HashSet::new())
+        let resp = self
+            .authed(self.client.get(self.url("memory/harvested-shas")))
+            .send()
+            .await
+            .context("GET /memory/harvested-shas")?
+            .error_for_status()
+            .context("server returned error for GET /memory/harvested-shas")?
+            .json::<Vec<String>>()
+            .await
+            .context("parsing harvested-shas response")?;
+        Ok(resp.into_iter().collect())
     }
 }

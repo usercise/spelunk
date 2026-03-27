@@ -269,6 +269,30 @@ impl ServerDb {
         Ok(notes)
     }
 
+    /// Return all git SHAs stored in tags for a project.
+    ///
+    /// Tags are stored as comma-separated strings; each SHA is stored as `git:<sha>`.
+    /// Used by the client's `harvested_shas()` to avoid re-harvesting commits.
+    pub fn harvested_shas(&self, project_id: i64) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT tags FROM notes WHERE project_id = ?1 AND tags LIKE '%git:%'",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![project_id], |r| {
+            r.get::<_, Option<String>>(0)
+        })?;
+        let mut shas = Vec::new();
+        for row in rows {
+            if let Some(tags) = row? {
+                for tag in tags.split(',').map(str::trim) {
+                    if let Some(sha) = tag.strip_prefix("git:") {
+                        shas.push(sha.to_string());
+                    }
+                }
+            }
+        }
+        Ok(shas)
+    }
+
     pub fn archive_note(&self, project_id: i64, note_id: i64) -> Result<bool> {
         let changed = self.conn.execute(
             "UPDATE notes SET status = 'archived' WHERE id = ?1 AND project_id = ?2 AND status = 'active'",
