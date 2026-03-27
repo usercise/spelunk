@@ -62,12 +62,12 @@ pub fn detect_text_language(path: &std::path::Path) -> Option<&'static str> {
     // Check extension first
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         return match ext.to_lowercase().as_str() {
-            "md" | "mdx" | "markdown"           => Some("markdown"),
+            "md" | "mdx" | "markdown" => Some("markdown"),
             // R Markdown / Quarto documents are markdown with fenced code blocks.
-            "rmd" | "qmd"                        => Some("markdown"),
+            "rmd" | "qmd" => Some("markdown"),
             "txt" | "rst" | "adoc" | "asciidoc" => Some("text"),
             // Jupyter notebooks: custom JSON-based parser.
-            "ipynb"                              => Some("notebook"),
+            "ipynb" => Some("notebook"),
             _ => None,
         };
     }
@@ -85,9 +85,9 @@ pub fn detect_text_language(path: &std::path::Path) -> Option<&'static str> {
 /// These are handled by `docparser` — they cannot be read with `read_to_string`.
 pub fn detect_doc_language(path: &std::path::Path) -> Option<&'static str> {
     match path.extension()?.to_str()?.to_lowercase().as_str() {
-        "docx"                     => Some("docx"),
-        "xlsx" | "xls" | "ods"    => Some("spreadsheet"),
-        _                          => None,
+        "docx" => Some("docx"),
+        "xlsx" | "xls" | "ods" => Some("spreadsheet"),
+        _ => None,
     }
 }
 
@@ -580,13 +580,13 @@ fn parse_notebook(source: &str, file_path: &str) -> Vec<Chunk> {
         fn text(&self) -> String {
             match self {
                 Self::Lines(v) => v.join(""),
-                Self::Blob(s)  => s.clone(),
+                Self::Blob(s) => s.clone(),
             }
         }
     }
 
     let nb: Notebook = match serde_json::from_str(source) {
-        Ok(n)  => n,
+        Ok(n) => n,
         Err(e) => {
             tracing::warn!("failed to parse notebook {file_path}: {e}");
             return sliding_window(source, file_path, "notebook", 120, 15);
@@ -600,7 +600,7 @@ fn parse_notebook(source: &str, file_path: &str) -> Vec<Chunk> {
     };
 
     let mut chunks = Vec::new();
-    let mut line   = 1usize;
+    let mut line = 1usize;
 
     for (idx, cell) in nb.cells.iter().enumerate() {
         let text = cell.source.text();
@@ -609,18 +609,18 @@ fn parse_notebook(source: &str, file_path: &str) -> Vec<Chunk> {
         }
         let line_count = text.lines().count().max(1);
         let (kind, lang) = match cell.cell_type.as_str() {
-            "markdown" | "raw" => (ChunkKind::Section,  "markdown"),
-            _                   => (ChunkKind::Verbatim, kernel_lang.as_str()),
+            "markdown" | "raw" => (ChunkKind::Section, "markdown"),
+            _ => (ChunkKind::Verbatim, kernel_lang.as_str()),
         };
         chunks.push(Chunk {
-            file_path:    file_path.to_owned(),
-            language:     lang.to_owned(),
+            file_path: file_path.to_owned(),
+            language: lang.to_owned(),
             kind,
-            name:         Some(format!("cell {}", idx + 1)),
-            start_line:   line,
-            end_line:     line + line_count - 1,
-            content:      text,
-            docstring:    None,
+            name: Some(format!("cell {}", idx + 1)),
+            start_line: line,
+            end_line: line + line_count - 1,
+            content: text,
+            docstring: None,
             parent_scope: None,
         });
         line += line_count;

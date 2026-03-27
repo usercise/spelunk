@@ -15,7 +15,10 @@ use crate::{
     indexer::{
         docparser::parse_doc,
         graph::EdgeExtractor,
-        parser::{detect_doc_language, detect_language, detect_text_language, is_binary_file, SourceParser},
+        parser::{
+            SourceParser, detect_doc_language, detect_language, detect_text_language,
+            is_binary_file,
+        },
     },
     registry::Registry,
     search::SearchResult,
@@ -128,7 +131,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         // These cannot be read with read_to_string and have no call graph.
         if let Some(doc_lang) = detect_doc_language(path) {
             let bytes = match std::fs::read(path) {
-                Ok(b)  => b,
+                Ok(b) => b,
                 Err(e) => {
                     tracing::warn!("read error for {path_str}: {e}");
                     parse_bar.inc(1);
@@ -136,14 +139,13 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
                 }
             };
             let hash = format!("{}", blake3::hash(&bytes));
-            if !args.force {
-                if let Some(existing) = db.file_hash(&path_str)? {
-                    if existing == hash {
-                        skipped += 1;
-                        parse_bar.inc(1);
-                        continue;
-                    }
-                }
+            if !args.force
+                && let Some(existing) = db.file_hash(&path_str)?
+                && existing == hash
+            {
+                skipped += 1;
+                parse_bar.inc(1);
+                continue;
             }
             let chunks = parse_doc(&bytes, &path_str, doc_lang);
             let file_id = db.upsert_file(&path_str, Some(doc_lang), &hash)?;

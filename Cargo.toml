@@ -100,6 +100,26 @@ indicatif = "0.18"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[dev-dependencies]
+
+# Temporary files/directories for integration tests
+tempfile = "3"
+
+# HTTP mock server for LM Studio API tests
+wiremock = "0.6"
+
+# Cleaner assertion diffs
+pretty_assertions = "1"
+
+# Serialise assertions stay serial (sqlite-vec auto_extension is process-global)
+serial_test = "3"
+
+# axum oneshot testing
+tower = { version = "0.5", features = ["util"] }
+
+# OpenAPI docs
+utoipa = { version = "5", features = ["axum_extras"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

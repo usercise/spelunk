@@ -4,7 +4,7 @@
 //! tree-sitter pipeline entirely.  Each parser extracts plain text and returns
 //! chunks suitable for embedding.
 
-use super::chunker::{sliding_window, Chunk, ChunkKind};
+use super::chunker::{Chunk, ChunkKind, sliding_window};
 
 // ---------------------------------------------------------------------------
 // Public dispatch
@@ -14,7 +14,7 @@ use super::chunker::{sliding_window, Chunk, ChunkKind};
 /// `language` must be `"docx"` or `"spreadsheet"`.
 pub fn parse_doc(bytes: &[u8], file_path: &str, language: &str) -> Vec<Chunk> {
     match language {
-        "docx"        => parse_docx(bytes, file_path),
+        "docx" => parse_docx(bytes, file_path),
         "spreadsheet" => parse_spreadsheet(bytes, file_path),
         other => {
             tracing::warn!("docparser: unknown doc language '{other}' for {file_path}");
@@ -30,7 +30,7 @@ pub fn parse_doc(bytes: &[u8], file_path: &str, language: &str) -> Vec<Chunk> {
 /// Extract text from a DOCX file and return as sliding-window chunks.
 fn parse_docx(bytes: &[u8], file_path: &str) -> Vec<Chunk> {
     let doc = match docx_rs::read_docx(bytes) {
-        Ok(d)  => d,
+        Ok(d) => d,
         Err(e) => {
             tracing::warn!("failed to parse DOCX {file_path}: {e}");
             return vec![];
@@ -61,7 +61,9 @@ fn collect_doc_text(children: &[docx_rs::DocumentChild], out: &mut Vec<String>) 
                 for docx_rs::TableChild::TableRow(row) in &table.rows {
                     let mut cells: Vec<String> = Vec::new();
                     for docx_rs::TableRowChild::TableCell(cell) in &row.cells {
-                        let cell_text: Vec<String> = cell.children.iter()
+                        let cell_text: Vec<String> = cell
+                            .children
+                            .iter()
                             .filter_map(|tc| {
                                 if let docx_rs::TableCellContent::Paragraph(p) = tc {
                                     let t = para_text(p);
@@ -87,19 +89,29 @@ fn collect_doc_text(children: &[docx_rs::DocumentChild], out: &mut Vec<String>) 
 
 /// Extract plain text from a single paragraph's runs.
 fn para_text(p: &docx_rs::Paragraph) -> String {
-    p.children.iter().filter_map(|child| {
-        if let docx_rs::ParagraphChild::Run(run) = child {
-            Some(run_text(run))
-        } else {
-            None
-        }
-    }).collect()
+    p.children
+        .iter()
+        .filter_map(|child| {
+            if let docx_rs::ParagraphChild::Run(run) = child {
+                Some(run_text(run))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn run_text(run: &docx_rs::Run) -> String {
-    run.children.iter().filter_map(|rc| {
-        if let docx_rs::RunChild::Text(t) = rc { Some(t.text.as_str()) } else { None }
-    }).collect()
+    run.children
+        .iter()
+        .filter_map(|rc| {
+            if let docx_rs::RunChild::Text(t) = rc {
+                Some(t.text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -109,12 +121,12 @@ fn run_text(run: &docx_rs::Run) -> String {
 /// Extract spreadsheet data and return one chunk per sheet (or sliding-window
 /// chunks for sheets with more than 120 rows).
 fn parse_spreadsheet(bytes: &[u8], file_path: &str) -> Vec<Chunk> {
-    use calamine::{open_workbook_auto_from_rs, Reader};
+    use calamine::{Reader, open_workbook_auto_from_rs};
     use std::io::Cursor;
 
     let cursor = Cursor::new(bytes.to_vec());
     let mut wb = match open_workbook_auto_from_rs(cursor) {
-        Ok(w)  => w,
+        Ok(w) => w,
         Err(e) => {
             tracing::warn!("failed to open spreadsheet {file_path}: {e}");
             return vec![];
@@ -126,7 +138,7 @@ fn parse_spreadsheet(bytes: &[u8], file_path: &str) -> Vec<Chunk> {
 
     for sheet_name in &sheet_names {
         let range: calamine::Range<calamine::Data> = match wb.worksheet_range(sheet_name) {
-            Ok(r)  => r,
+            Ok(r) => r,
             Err(e) => {
                 tracing::warn!("failed to read sheet '{sheet_name}' in {file_path}: {e}");
                 continue;
@@ -149,24 +161,25 @@ fn parse_spreadsheet(bytes: &[u8], file_path: &str) -> Vec<Chunk> {
         }
 
         let content = lines.join("\n");
-        let total   = lines.len();
+        let total = lines.len();
 
         if total <= 120 {
             chunks.push(Chunk {
-                file_path:    file_path.to_owned(),
-                language:     "spreadsheet".to_owned(),
-                kind:         ChunkKind::Section,
-                name:         Some(sheet_name.clone()),
-                start_line:   1,
-                end_line:     total,
+                file_path: file_path.to_owned(),
+                language: "spreadsheet".to_owned(),
+                kind: ChunkKind::Section,
+                name: Some(sheet_name.clone()),
+                start_line: 1,
+                end_line: total,
                 content,
-                docstring:    None,
+                docstring: None,
                 parent_scope: None,
             });
         } else {
             for mut chunk in sliding_window(&content, file_path, "spreadsheet", 120, 15) {
                 chunk.name = Some(format!(
-                    "{} (rows {}–{})", sheet_name, chunk.start_line, chunk.end_line
+                    "{} (rows {}–{})",
+                    sheet_name, chunk.start_line, chunk.end_line
                 ));
                 chunks.push(chunk);
             }

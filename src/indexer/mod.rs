@@ -5,6 +5,6 @@ pub mod parser;
 pub mod secrets;
 
 #[allow(unused_imports)]
-pub use chunker::{Chunk, ChunkKind};
+pub use chunker::{Chunk, ChunkKind, sliding_window};
 #[allow(unused_imports)]
 pub use parser::SourceParser;
