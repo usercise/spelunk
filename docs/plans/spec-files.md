@@ -5,9 +5,10 @@ explicitly linkable to the code index and semantically searchable alongside code
 
 ## Background
 
-Augment Code's recent blog posts frame specs as infrastructure — living documents
-that agents consult during implementation to stay aligned with intent. The pattern
-is: write the spec first, implement against it, keep both in sync.
+A useful pattern emerging in AI-assisted development is to treat specs as
+infrastructure — living documents that agents consult during implementation to stay
+aligned with intent. The pattern is: write the spec first, implement against it,
+keep both in sync.
 
 spelunk has `spelunk plan create` (one-shot LLM-generated checklists) but no concept
 of a spec: a human-authored document that persists, stays linked to relevant code,

@@ -5,10 +5,10 @@ so agents understand team patterns without requiring manual `spelunk memory add`
 
 ## Background
 
-Augment Code learns team patterns automatically from the codebase. spelunk's memory
-is entirely manual today — high-value but high-friction. Auto-extracting conventions
-closes this gap for a class of context that is highly repetitive to document by hand
-and tends to be consistent across a project.
+AI coding tools that learn team patterns automatically from the codebase are raising
+the bar. spelunk's memory is entirely manual today — high-value but high-friction.
+Auto-extracting conventions closes this gap for a class of context that is highly
+repetitive to document by hand and tends to be consistent across a project.
 
 Conventions worth extracting:
 - Error handling patterns (e.g. `anyhow::Result`, `thiserror`, custom `AppError`)
