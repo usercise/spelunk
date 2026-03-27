@@ -18,7 +18,10 @@ fn sliding_window_single_chunk_when_file_fits() {
 fn sliding_window_produces_overlap() {
     // 6 lines, window=4, overlap=2 → step=2
     // chunk1: lines 1-4, chunk2: lines 3-6
-    let src = (1..=6).map(|n| format!("line{n}")).collect::<Vec<_>>().join("\n");
+    let src = (1..=6)
+        .map(|n| format!("line{n}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let chunks = spelunk::indexer::sliding_window(&src, "test.txt", "text", 4, 2);
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0].start_line, 1);

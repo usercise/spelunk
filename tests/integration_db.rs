@@ -37,7 +37,8 @@ fn upsert_file_returns_stable_id() {
 #[serial]
 fn file_hash_round_trips() {
     let db = common::open_test_db();
-    db.upsert_file("src/main.rs", Some("rust"), "abc123").unwrap();
+    db.upsert_file("src/main.rs", Some("rust"), "abc123")
+        .unwrap();
     let hash = db.file_hash("src/main.rs").unwrap();
     assert_eq!(hash.as_deref(), Some("abc123"));
 }
@@ -119,7 +120,9 @@ fn knn_limit_is_respected() {
             .unwrap();
     }
 
-    let results = db.search_similar(&vec_to_blob(&unit_vec(DIM, 0)), 3).unwrap();
+    let results = db
+        .search_similar(&vec_to_blob(&unit_vec(DIM, 0)), 3)
+        .unwrap();
     assert!(results.len() <= 3);
 }
 

@@ -60,7 +60,9 @@ async fn health_returns_ok() {
 async fn list_projects_empty_initially() {
     let resp = send(make_state(), "GET", "/v1/projects", Body::empty(), false).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let projects: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(projects, serde_json::json!([]));
 }
@@ -90,7 +92,9 @@ async fn add_note_creates_project_automatically() {
 
     // Project should now exist.
     let resp2 = send(state, "GET", "/v1/projects", Body::empty(), false).await;
-    let bytes = axum::body::to_bytes(resp2.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp2.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let projects: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(projects.as_array().unwrap().len(), 1);
     assert_eq!(projects[0]["slug"], "test-project");
@@ -115,9 +119,18 @@ async fn list_notes_returns_added_note() {
     )
     .await;
 
-    let resp = send(state, "GET", "/v1/projects/proj/memory", Body::empty(), false).await;
+    let resp = send(
+        state,
+        "GET",
+        "/v1/projects/proj/memory",
+        Body::empty(),
+        false,
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let notes: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(notes.as_array().unwrap().len(), 1);
     assert_eq!(notes[0]["title"], "First note");
@@ -140,7 +153,14 @@ async fn get_note_returns_404_for_unknown_id() {
     )
     .await;
 
-    let resp = send(state, "GET", "/v1/projects/p/memory/9999", Body::empty(), false).await;
+    let resp = send(
+        state,
+        "GET",
+        "/v1/projects/p/memory/9999",
+        Body::empty(),
+        false,
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -150,7 +170,8 @@ async fn get_note_returns_404_for_unknown_id() {
 #[serial]
 async fn archive_note_hides_it_from_list() {
     let state = make_state();
-    let add = serde_json::json!({"kind":"decision","title":"Arch","embedding":[0.0_f32,0.0,0.0,0.0]});
+    let add =
+        serde_json::json!({"kind":"decision","title":"Arch","embedding":[0.0_f32,0.0,0.0,0.0]});
     let resp = send(
         state.clone(),
         "POST",
@@ -159,7 +180,9 @@ async fn archive_note_hides_it_from_list() {
         true,
     )
     .await;
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let created: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let id = created["id"].as_i64().unwrap();
 
@@ -175,7 +198,9 @@ async fn archive_note_hides_it_from_list() {
 
     // Default list excludes archived.
     let list_resp = send(state, "GET", "/v1/projects/q/memory", Body::empty(), false).await;
-    let bytes = axum::body::to_bytes(list_resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(list_resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let notes: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(notes.as_array().unwrap().is_empty());
 }
@@ -195,7 +220,9 @@ async fn delete_note_removes_it() {
         true,
     )
     .await;
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let created: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let id = created["id"].as_i64().unwrap();
 
@@ -288,7 +315,9 @@ async fn search_returns_closest_note() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let notes: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(!notes.as_array().unwrap().is_empty());
     assert_eq!(notes[0]["title"], "alpha");
@@ -311,7 +340,9 @@ async fn project_stats_returns_correct_counts() {
 
     let resp = send(state, "GET", "/v1/projects/t/stats", Body::empty(), false).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let stats: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(stats["count"], 1);
     assert_eq!(stats["total"], 1);
