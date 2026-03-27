@@ -1,10 +1,7 @@
 use anyhow::{Context, Result};
 
-use crate::{
-    config::Config,
-    registry::Registry,
-};
 use super::super::{LinkArgs, UnlinkArgs};
+use crate::{config::Config, registry::Registry};
 
 pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {
     let cwd = std::env::current_dir().context("getting current directory")?;

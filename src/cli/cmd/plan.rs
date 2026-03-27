@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
 
+use super::super::{PlanArgs, PlanCommand};
+use super::search::{resolve_project_and_deps, search_all_dbs};
+use super::ui::spinner;
 use crate::{
     config::{Config, resolve_db},
     embeddings::{EmbeddingBackend as _, vec_to_blob},
     storage::open_memory_backend,
 };
-use super::super::{PlanArgs, PlanCommand};
-use super::ui::spinner;
-use super::search::{resolve_project_and_deps, search_all_dbs};
 
 pub async fn plan(args: PlanArgs, cfg: Config) -> Result<()> {
     match args.command {

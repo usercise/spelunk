@@ -1,11 +1,11 @@
 use anyhow::Result;
 
+use super::super::ChunksArgs;
+use super::ui::print_chunks_text;
 use crate::{
     config::{Config, resolve_db},
     storage::Database,
 };
-use super::super::{ChunksArgs};
-use super::ui::print_chunks_text;
 
 pub fn languages() -> Result<()> {
     let langs = crate::indexer::parser::SUPPORTED_LANGUAGES;

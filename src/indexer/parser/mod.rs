@@ -1,8 +1,8 @@
-mod ts_walker;
 mod text;
+mod ts_walker;
 
-use anyhow::Result;
 use super::chunker::{Chunk, sliding_window};
+use anyhow::Result;
 
 /// All languages recognised by the indexer (tree-sitter, text, and document formats).
 pub const SUPPORTED_LANGUAGES: &[&str] = &[

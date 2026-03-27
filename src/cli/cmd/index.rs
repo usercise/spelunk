@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar};
 
+use super::super::IndexArgs;
+use super::ui::{is_tty, progress_style, short_path};
 use crate::{
     config::Config,
     embeddings::{EmbeddingBackend as _, vec_to_blob},
@@ -16,8 +18,6 @@ use crate::{
     registry::Registry,
     storage::Database,
 };
-use super::super::IndexArgs;
-use super::ui::{is_tty, progress_style, short_path};
 
 pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
     // Compile secret-scanning regexes once before the hot loop.

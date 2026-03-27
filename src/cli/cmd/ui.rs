@@ -1,5 +1,5 @@
-use std::io::IsTerminal as _;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::io::IsTerminal as _;
 
 pub(crate) fn is_tty() -> bool {
     std::io::stderr().is_terminal()

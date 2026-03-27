@@ -1,17 +1,16 @@
 use anyhow::{Context, Result};
 
+use super::super::{
+    MemoryAddArgs, MemoryArchiveArgs, MemoryArgs, MemoryCommand, MemoryHarvestArgs, MemoryListArgs,
+    MemoryPushArgs, MemorySearchArgs, MemoryShowArgs, MemorySupersededArgs,
+};
+use super::status::format_age;
+use super::ui::spinner;
 use crate::{
     config::{Config, resolve_db},
     embeddings::{EmbeddingBackend as _, vec_to_blob},
     storage::{NoteInput, open_memory_backend},
 };
-use super::super::{
-    MemoryArgs, MemoryCommand,
-    MemoryAddArgs, MemorySearchArgs, MemoryListArgs, MemoryShowArgs,
-    MemoryHarvestArgs, MemoryArchiveArgs, MemorySupersededArgs, MemoryPushArgs,
-};
-use super::ui::spinner;
-use super::status::format_age;
 
 pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
     cfg.validate()?;
@@ -31,11 +30,7 @@ pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
     }
 }
 
-async fn memory_add(
-    args: MemoryAddArgs,
-    mem_path: &std::path::Path,
-    cfg: &Config,
-) -> Result<()> {
+async fn memory_add(args: MemoryAddArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
     // Resolve title and body: from URL, explicit args, or editor.
     let (title, body) = if let Some(url) = &args.from_url {
         let (fetched_title, fetched_body) = fetch_url_content(url)
@@ -241,11 +236,7 @@ async fn memory_search(
     Ok(())
 }
 
-async fn memory_list(
-    args: MemoryListArgs,
-    mem_path: &std::path::Path,
-    cfg: &Config,
-) -> Result<()> {
+async fn memory_list(args: MemoryListArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
     let notes = backend
         .list(args.kind.as_deref(), args.limit, args.archived)
@@ -267,11 +258,7 @@ async fn memory_list(
     Ok(())
 }
 
-async fn memory_show(
-    args: MemoryShowArgs,
-    mem_path: &std::path::Path,
-    cfg: &Config,
-) -> Result<()> {
+async fn memory_show(args: MemoryShowArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
     match backend.get(args.id).await? {
         None => anyhow::bail!("No memory entry with id {}.", args.id),
@@ -387,11 +374,7 @@ fn open_editor_for_body(title: &str) -> Result<String> {
     Ok(body)
 }
 
-async fn memory_push(
-    args: MemoryPushArgs,
-    mem_path: &std::path::Path,
-    cfg: &Config,
-) -> Result<()> {
+async fn memory_push(args: MemoryPushArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
     if cfg.memory_server_url.is_none() {
         anyhow::bail!(
             "memory_server_url is not configured.\n\

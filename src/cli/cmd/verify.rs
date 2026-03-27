@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
 
+use super::super::VerifyArgs;
+use super::search::resolve_project_and_deps;
+use super::ui::spinner;
 use crate::{
     config::Config,
     embeddings::{EmbeddingBackend as _, vec_to_blob},
     storage::Database,
 };
-use super::super::VerifyArgs;
-use super::ui::spinner;
-use super::search::resolve_project_and_deps;
 
 pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
     use crate::utils::effective_format;

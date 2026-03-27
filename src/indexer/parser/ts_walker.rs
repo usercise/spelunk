@@ -1,5 +1,5 @@
-use anyhow::{Result, bail};
 use super::super::chunker::{Chunk, ChunkKind};
+use anyhow::{Result, bail};
 
 pub(super) fn ts_language(name: &str) -> Result<tree_sitter::Language> {
     // Grammar crates 0.23+ expose a `LANGUAGE: LanguageFn` constant via the
@@ -38,7 +38,11 @@ pub(super) struct NodeSpec {
     pub name_field: Option<&'static str>,
 }
 
-pub(super) fn s(kind: &'static str, chunk_kind: ChunkKind, name_field: Option<&'static str>) -> NodeSpec {
+pub(super) fn s(
+    kind: &'static str,
+    chunk_kind: ChunkKind,
+    name_field: Option<&'static str>,
+) -> NodeSpec {
     NodeSpec {
         kind,
         chunk_kind,

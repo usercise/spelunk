@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 
+use super::super::SearchArgs;
+use super::ui::{print_results_text, spinner};
 use crate::{
     config::{Config, resolve_db},
     embeddings::{EmbeddingBackend as _, vec_to_blob},
@@ -7,8 +9,6 @@ use crate::{
     search::SearchResult,
     storage::Database,
 };
-use super::super::{SearchArgs};
-use super::ui::{spinner, print_results_text};
 
 pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     let (db_path, dep_dbs) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;

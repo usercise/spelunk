@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 
+use super::super::StatusArgs;
+use super::search::resolve_project_and_deps;
 use crate::{
     config::{Config, resolve_db},
     registry::Registry,
     storage::{Database, open_memory_backend},
 };
-use super::super::StatusArgs;
-use super::search::resolve_project_and_deps;
 
 pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
     let fmt = crate::utils::effective_format(&args.format);

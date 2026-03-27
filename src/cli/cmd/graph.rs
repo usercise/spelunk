@@ -1,10 +1,10 @@
 use anyhow::Result;
 
+use super::super::GraphArgs;
 use crate::{
     config::{Config, resolve_db},
     storage::Database,
 };
-use super::super::GraphArgs;
 
 pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
     let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
