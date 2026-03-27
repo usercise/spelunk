@@ -17,7 +17,11 @@
       "Bash(spelunk plan:*)",
       "Bash(spelunk search:*)",
       "Bash(spelunk verify:*)",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "Bash(gh issue:*)",
+      "Bash(for i:*)",
+      "Bash(do echo:*)",
+      "Bash(done)"
     ]
   }
 }

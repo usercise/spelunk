@@ -6,34 +6,43 @@ use axum::{
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use super::{AppError, AppState};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AddNoteRequest {
+    /// Kind of memory entry: `decision`, `requirement`, `note`, `question`, `handoff`.
     pub kind: String,
     pub title: String,
+    #[serde(default)]
     pub body: String,
+    /// Optional tags for filtering.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Source file paths this entry is linked to.
     #[serde(default)]
     pub linked_files: Vec<String>,
-    /// Pre-computed embedding from the client (required).
+    /// Pre-computed embedding vector from the client (required for semantic search).
     pub embedding: Option<Vec<f32>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct AddNoteResponse {
+    /// ID of the created note.
     pub id: i64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct ListQuery {
+    /// Filter by kind (`decision`, `requirement`, `note`, `question`, `handoff`).
     pub kind: Option<String>,
+    /// Maximum number of results to return (default: 20).
     #[serde(default = "default_limit")]
     pub limit: usize,
+    /// Include archived entries (default: false).
     #[serde(default)]
     pub archived: bool,
 }
@@ -41,36 +50,60 @@ fn default_limit() -> usize {
     20
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct SearchRequest {
+    /// Query embedding vector (must match project's embedding dimension).
     pub embedding: Vec<f32>,
+    /// Maximum number of results to return (default: 20).
     #[serde(default = "default_limit")]
     pub limit: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct BoolResponse {
+    /// Whether the operation modified a record.
     pub changed: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct CountResponse {
     pub count: i64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct SupersedeRequest {
+    /// ID of the new note that replaces the superseded one.
     pub new_id: i64,
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
 
+/// Server liveness check. No authentication required.
+#[utoipa::path(
+    get,
+    path = "/v1/health",
+    responses(
+        (status = 200, description = "Server is up", body = str, example = "ok")
+    ),
+    tag = "health"
+)]
 pub async fn health() -> &'static str {
     "ok"
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
+/// List all projects registered on this server.
+#[utoipa::path(
+    get,
+    path = "/v1/projects",
+    responses(
+        (status = 200, description = "List of projects", body = Vec<super::db::Project>),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "projects"
+)]
 pub async fn list_projects(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
     let db = state.db.lock().await;
     let projects = db.list_projects()?;
@@ -79,6 +112,25 @@ pub async fn list_projects(State(state): State<AppState>) -> Result<impl IntoRes
 
 // ── Memory CRUD ───────────────────────────────────────────────────────────────
 
+/// Add a memory entry to a project. The project is auto-created on first write.
+///
+/// The client must supply a pre-computed `embedding` vector. All entries in
+/// a project must use the same embedding dimension — the first write fixes it.
+#[utoipa::path(
+    post,
+    path = "/v1/projects/{project_id}/memory",
+    params(
+        ("project_id" = String, Path, description = "Project slug (e.g. `usercise/spelunk`)")
+    ),
+    request_body = AddNoteRequest,
+    responses(
+        (status = 201, description = "Note created", body = AddNoteResponse),
+        (status = 400, description = "Embedding dimension mismatch"),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn add_note(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
@@ -103,6 +155,22 @@ pub async fn add_note(
     Ok((StatusCode::CREATED, Json(AddNoteResponse { id })))
 }
 
+/// List memory entries for a project, optionally filtered by kind.
+#[utoipa::path(
+    get,
+    path = "/v1/projects/{project_id}/memory",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+        ListQuery,
+    ),
+    responses(
+        (status = 200, description = "List of notes", body = Vec<super::db::ServerNote>),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn list_notes(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
@@ -119,6 +187,22 @@ pub async fn list_notes(
     Ok(Json(notes))
 }
 
+/// Get a single memory entry by ID.
+#[utoipa::path(
+    get,
+    path = "/v1/projects/{project_id}/memory/{note_id}",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+        ("note_id" = i64, Path, description = "Note ID"),
+    ),
+    responses(
+        (status = 200, description = "Note found", body = super::db::ServerNote),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Note not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn get_note(
     State(state): State<AppState>,
     Path((project_id, note_id)): Path<(String, i64)>,
@@ -131,6 +215,22 @@ pub async fn get_note(
     }
 }
 
+/// Semantic search over memory entries using a pre-computed query embedding.
+#[utoipa::path(
+    post,
+    path = "/v1/projects/{project_id}/memory/search",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+    ),
+    request_body = SearchRequest,
+    responses(
+        (status = 200, description = "Nearest neighbours", body = Vec<super::db::ServerNote>),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn search_notes(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
@@ -142,6 +242,22 @@ pub async fn search_notes(
     Ok(Json(notes))
 }
 
+/// Delete a memory entry permanently.
+#[utoipa::path(
+    delete,
+    path = "/v1/projects/{project_id}/memory/{note_id}",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+        ("note_id" = i64, Path, description = "Note ID"),
+    ),
+    responses(
+        (status = 200, description = "Deletion result", body = BoolResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Note not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn delete_note(
     State(state): State<AppState>,
     Path((project_id, note_id)): Path<(String, i64)>,
@@ -152,6 +268,23 @@ pub async fn delete_note(
     Ok(Json(BoolResponse { changed }))
 }
 
+/// Archive a memory entry. Archived entries are excluded from search and `ask`
+/// context but remain visible via `?archived=true`.
+#[utoipa::path(
+    post,
+    path = "/v1/projects/{project_id}/memory/{note_id}/archive",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+        ("note_id" = i64, Path, description = "Note ID"),
+    ),
+    responses(
+        (status = 200, description = "Archive result", body = BoolResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Note not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn archive_note(
     State(state): State<AppState>,
     Path((project_id, note_id)): Path<(String, i64)>,
@@ -162,6 +295,24 @@ pub async fn archive_note(
     Ok(Json(BoolResponse { changed }))
 }
 
+/// Mark a memory entry as superseded by a newer one. The old entry is archived
+/// and linked to the new one.
+#[utoipa::path(
+    post,
+    path = "/v1/projects/{project_id}/memory/{note_id}/supersede",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+        ("note_id" = i64, Path, description = "Note ID to supersede"),
+    ),
+    request_body = SupersedeRequest,
+    responses(
+        (status = 200, description = "Supersede result", body = BoolResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Note not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn supersede_note(
     State(state): State<AppState>,
     Path((project_id, note_id)): Path<(String, i64)>,
@@ -173,6 +324,21 @@ pub async fn supersede_note(
     Ok(Json(BoolResponse { changed }))
 }
 
+/// Return entry counts and embedding dimension for a project.
+#[utoipa::path(
+    get,
+    path = "/v1/projects/{project_id}/stats",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+    ),
+    responses(
+        (status = 200, description = "Project stats", body = super::db::ProjectStats),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
 pub async fn project_stats(
     State(state): State<AppState>,
     Path(project_id): Path<String>,

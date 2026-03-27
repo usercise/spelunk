@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::embeddings::blob_to_vec;
 
@@ -10,26 +11,31 @@ pub struct ServerDb {
     pub embedding_dim: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct Project {
     pub id: i64,
     pub slug: String,
     pub embedding_dim: usize,
+    /// Unix timestamp of project creation.
     pub created_at: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct ServerNote {
     pub id: i64,
+    /// Kind: `decision`, `requirement`, `note`, `question`, or `handoff`.
     pub kind: String,
     pub title: String,
     pub body: String,
     pub tags: Vec<String>,
     pub linked_files: Vec<String>,
+    /// Unix timestamp of creation.
     pub created_at: i64,
+    /// `active` or `archived`.
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<i64>,
+    /// Cosine distance from query (only present in search results).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distance: Option<f64>,
 }
@@ -311,9 +317,11 @@ impl ServerDb {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ProjectStats {
+    /// Number of active memory entries.
     pub count: i64,
+    /// Total entries including archived.
     pub total: i64,
     pub embedding_dim: usize,
 }
