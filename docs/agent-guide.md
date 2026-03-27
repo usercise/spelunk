@@ -2,6 +2,8 @@
 
 `spelunk` is designed to work as infrastructure for AI coding agents, not just as a human developer tool. This guide covers the patterns that make agents most effective when paired with `spelunk`.
 
+**The key mental model**: spelunk retrieves context; you reason over it. Use `spelunk search` to find the right code, read the results, then synthesise the answer yourself — just as you would after reading documentation. spelunk is a fast, semantic grep with memory, not an oracle.
+
 ## The core loop
 
 A productive agentic session with `spelunk` looks like this:
@@ -22,7 +24,6 @@ Set `AGENT=true` and every `spelunk` command returns JSON:
 export AGENT=true
 
 spelunk search "error handling"          # → JSON array of results
-spelunk ask "what does the indexer do"   # → { answer, relevant_files, confidence }
 spelunk status                           # → { files, chunks, embeddings, ... }
 spelunk memory list                      # → JSON array of notes
 spelunk memory search "auth decisions"   # → JSON array of notes with distance scores
@@ -65,14 +66,17 @@ AGENT=true spelunk graph validate_token
 
 The `--graph` flag on `spelunk search` adds 1-hop callers and callees to the result set, which is often exactly the context needed to understand blast radius before a change.
 
-## Asking targeted questions
+## Retrieving targeted context
+
+Use `spelunk search` with a focused query, then read the returned chunks and reason over them yourself:
 
 ```bash
-# Structured answer with confidence score
-AGENT=true spelunk ask "what would break if I change the embedding format?" --json
+# Find what touches the embedding format
+AGENT=true spelunk search "embedding format storage" --graph --format json
 
-# Adjust context window size for complex questions
-AGENT=true spelunk ask "describe the full request lifecycle" --context-chunks 30 --json
+# Trace call chains across the request lifecycle
+AGENT=true spelunk graph handle_request
+AGENT=true spelunk search "request lifecycle middleware" --limit 20 --format json
 ```
 
 ## Creating plans
@@ -170,7 +174,7 @@ spelunk link ../shared-utils
 spelunk link ../api-contracts
 ```
 
-Now `spelunk search` and `spelunk ask` query all three indexes and merge results by distance.
+Now `spelunk search` queries all three indexes and merges results by distance.
 
 ## CI integration
 
@@ -190,9 +194,9 @@ spelunk check
 AGENT=true spelunk memory list --kind handoff --limit 3
 AGENT=true spelunk memory list --kind question
 
-# Before writing code
+# Before writing code — retrieve context, then reason yourself
 AGENT=true spelunk search "<topic>" --graph --format json
-AGENT=true spelunk ask "<question>" --json
+AGENT=true spelunk memory search "<topic>" --format json
 
 # Planning
 spelunk plan create "<description>"

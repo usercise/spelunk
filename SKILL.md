@@ -1,15 +1,19 @@
 # spelunk — AI Agent Skill Reference
 
-How to use `spelunk` as an AI agent to understand, search, and answer questions
-about a codebase — and to build up a persistent memory of why it was built
+How to use `spelunk` as an AI agent to understand, search, and query
+a codebase — and to build up a persistent memory of why it was built
 the way it was.
+
+spelunk is a **context retrieval tool** for AI agents. You are the reasoning
+engine. Use spelunk to find the right code and prior decisions, then reason
+over that context yourself.
 
 ---
 
 ## Prerequisites
 
 - `spelunk` installed and in PATH (`cargo install --path .` or copy the binary)
-- LM Studio running with an embedding model and a chat model loaded
+- LM Studio running with an **embedding model** loaded (required for all search)
 - Default endpoint: `http://127.0.0.1:1234` (override with `lmstudio_base_url`
   in `~/.config/spelunk/config.toml`)
 
@@ -44,19 +48,9 @@ spelunk search "<query>" --graph             # enrich with call-graph neighbours
 Returns ranked chunks with file path, line range, language, symbol name, and
 a content preview. Use `--format json` for programmatic access.
 
-### Ask — answer a question
-
-```bash
-spelunk ask "<question>"
-spelunk ask "<question>" --context-chunks 30     # retrieve more context (max 100)
-spelunk ask "<question>" --json                  # structured output
-```
-
-`--json` returns: `{"answer": "...", "relevant_files": [...], "confidence": "high|medium|low"}`
-
-`spelunk ask` automatically includes both code context (HOW the system is built) and
-memory context (WHAT was decided and WHY) when both are available. No extra flags
-needed — if `memory.db` exists and has relevant entries, they are included.
+**This is the primary tool.** Use it to retrieve context, then reason over the
+results yourself — the same way `spelunk ask` does internally, but you are the
+reasoning engine.
 
 ### Chunks — inspect what was indexed
 
@@ -177,8 +171,8 @@ spelunk index <project-root>
 If you changed the embedding model or prompt format, add `--force` to
 regenerate all embeddings from scratch.
 
-Not re-indexing means searches and `spelunk ask` will miss new code and may
-surface deleted code. Make it the last step of any commit workflow.
+Not re-indexing means searches will miss new code and may surface deleted code.
+Make it the last step of any commit workflow.
 
 ---
 
@@ -245,7 +239,7 @@ Store a memory entry whenever any of the following occurs:
 2. Read the files at the reported line ranges
 3. `spelunk graph <symbol>` to trace call chains or imports
 4. `spelunk memory search "<topic>"` — check if there's recorded context explaining *why*
-5. `spelunk ask "<question>"` for a synthesised answer when needed
+5. Synthesise an answer from the retrieved context yourself
 
 **For code changes:**
 1. Search and read before changing
@@ -253,9 +247,9 @@ Store a memory entry whenever any of the following occurs:
 3. If the human explains a constraint that shaped your approach, store it too
 4. After committing, re-index: `spelunk index <project-root>`
 
-**For structured answers (pipelines):**
+**For structured context retrieval (pipelines):**
 ```bash
-spelunk ask "<question>" --json | jq '.answer'
+spelunk search "<topic>" --format json | jq '.[].content'
 spelunk memory search "<topic>" --format json | jq '.[].body'
 ```
 
@@ -270,8 +264,8 @@ spelunk unlink <path-to-B>
 spelunk autoclean        # remove registry entries for deleted projects
 ```
 
-Once linked, `spelunk search` and `spelunk ask` query both indexes and merge results
-by semantic distance. Memory is always per-project.
+Once linked, `spelunk search` queries both indexes and merges results by semantic
+distance. Memory is always per-project.
 
 ---
 
@@ -282,15 +276,12 @@ machine-readable output without extra flags:
 
 ```bash
 AGENT=true spelunk search "authentication flow"        # → JSON, no spinner
-AGENT=true spelunk ask "how does the indexer work"     # → JSON schema output, no spinner
 AGENT=true spelunk graph src/storage/db.rs             # → JSON
 AGENT=true spelunk memory search "storage decisions"   # → JSON
 ```
 
 What changes when `AGENT=true` is set:
 - All `--format text` defaults become `--format json` automatically.
-- `spelunk ask` behaves as if `--json` was passed: returns
-  `{"answer":"...","relevant_files":[...],"confidence":"..."}`.
 - Progress spinners and animated progress bars are suppressed, keeping stdout
   clean for downstream parsing.
 
@@ -306,6 +297,5 @@ You can still pass `--format text` explicitly to override even in agent mode.
   regenerate all embeddings. Also re-run `spelunk memory add` for important entries
   so their embeddings reflect the new model.
 - `spelunk search` and `spelunk memory search` only need the embedding model.
-  `spelunk ask` requires both the embedding model and a chat model.
 - Secret-containing chunks (AWS keys, PEM headers, tokens, etc.) are
   automatically skipped during indexing and will not appear in results.

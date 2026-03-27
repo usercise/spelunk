@@ -576,11 +576,12 @@ If the answer cannot be determined from the provided context, say so clearly rat
     ];
 
     // ── Step 4: load LLM + stream answer ─────────────────────────────────────
-    let sp2 = spinner(format!("Loading LLM ({})…", cfg.llm_model));
+    let llm_model_name = cfg.llm_model.as_deref().unwrap_or("<not configured>");
+    let sp2 = spinner(format!("Loading LLM ({llm_model_name})…"));
 
     let llm = crate::backends::ActiveLlm::load(&cfg)
         .await
-        .with_context(|| format!("loading LLM '{}'", cfg.llm_model))?;
+        .with_context(|| format!("loading LLM '{llm_model_name}'"))?;
 
     sp2.finish_and_clear();
     println!();

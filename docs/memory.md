@@ -125,9 +125,9 @@ Install the git hook and harvesting happens on every commit:
 spelunk hooks install
 ```
 
-## Using memory in `spelunk ask`
+## Using memory as context
 
-Memory context is automatically included when you run `spelunk ask`. The LLM receives both the retrieved code chunks and relevant memory entries, so it can factor in design decisions and requirements when answering.
+`spelunk memory search` results are best consumed alongside `spelunk search` results — they answer the *why* while the code search answers the *how*. Pass both to your reasoning model for a complete picture.
 
 ## Machine-readable output
 
