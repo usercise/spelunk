@@ -15,7 +15,7 @@
 #     spelunk-server
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM rust:1.86-slim AS builder
+FROM rust:1.94.1-slim AS builder
 
 WORKDIR /build
 
