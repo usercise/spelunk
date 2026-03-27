@@ -7,3 +7,4 @@
 /models
 .spelunk/
 .claude/settings.local.json
+.claude/worktrees/

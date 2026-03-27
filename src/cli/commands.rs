@@ -13,8 +13,12 @@ use crate::{
     config::{Config, resolve_db},
     embeddings::{EmbeddingBackend as _, vec_to_blob},
     indexer::{
+        docparser::parse_doc,
         graph::EdgeExtractor,
-        parser::{SourceParser, detect_language, detect_text_language, is_binary_file},
+        parser::{
+            SourceParser, detect_doc_language, detect_language, detect_text_language,
+            is_binary_file,
+        },
     },
     registry::Registry,
     search::SearchResult,
@@ -93,7 +97,9 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
         .filter(|e| {
             let p = e.path();
-            detect_language(p).is_some() || detect_text_language(p).is_some()
+            detect_language(p).is_some()
+                || detect_text_language(p).is_some()
+                || detect_doc_language(p).is_some()
         })
         .collect();
 
@@ -121,6 +127,59 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         let path_str = path.to_string_lossy();
         parse_bar.set_message(short_path(&path_str));
 
+        // ── Binary document formats (DOCX, XLSX, …) ──────────────────────────
+        // These cannot be read with read_to_string and have no call graph.
+        if let Some(doc_lang) = detect_doc_language(path) {
+            let bytes = match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("read error for {path_str}: {e}");
+                    parse_bar.inc(1);
+                    continue;
+                }
+            };
+            let hash = format!("{}", blake3::hash(&bytes));
+            if !args.force
+                && let Some(existing) = db.file_hash(&path_str)?
+                && existing == hash
+            {
+                skipped += 1;
+                parse_bar.inc(1);
+                continue;
+            }
+            let chunks = parse_doc(&bytes, &path_str, doc_lang);
+            let file_id = db.upsert_file(&path_str, Some(doc_lang), &hash)?;
+            db.delete_embeddings_for_file(file_id)?;
+            db.delete_chunks_for_file(file_id)?;
+            for chunk in &chunks {
+                if crate::indexer::secrets::contains_secret(&chunk.content) {
+                    tracing::warn!(
+                        "skipping chunk '{}' in {path_str} (possible secret detected)",
+                        chunk.name.as_deref().unwrap_or("<anonymous>"),
+                    );
+                    continue;
+                }
+                let metadata = serde_json::json!({
+                    "docstring": chunk.docstring,
+                    "parent_scope": chunk.parent_scope,
+                });
+                let chunk_id = db.insert_chunk(
+                    file_id,
+                    &chunk.kind.to_string(),
+                    chunk.name.as_deref(),
+                    chunk.start_line,
+                    chunk.end_line,
+                    &chunk.content,
+                    Some(&metadata.to_string()),
+                )?;
+                chunk_ids_and_texts.push((chunk_id, chunk.embedding_text()));
+            }
+            indexed += 1;
+            parse_bar.inc(1);
+            continue;
+        }
+
+        // ── Text / code formats ───────────────────────────────────────────────
         let language = detect_language(path)
             .or_else(|| detect_text_language(path))
             .unwrap(); // safe: files were filtered to only include detectable files
