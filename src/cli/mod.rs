@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
-pub mod commands;
+pub mod cmd;
 
 /// spelunk — local code intelligence
 #[derive(Parser, Debug)]
