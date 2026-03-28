@@ -90,6 +90,10 @@ pub struct SearchArgs {
     #[arg(long, default_value = "10")]
     pub graph_limit: usize,
 
+    /// Search mode: hybrid (default), semantic, text
+    #[arg(long, default_value = "hybrid")]
+    pub mode: String,
+
     /// Path to the SQLite database (overrides config)
     #[arg(short, long)]
     pub db: Option<PathBuf>,

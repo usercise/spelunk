@@ -17,20 +17,46 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
         maybe_warn_stale(&db_path);
     }
 
-    let sp = spinner("Loading model…");
+    let mode = args.mode.as_str();
 
-    let embedder = crate::backends::ActiveEmbedder::load(&cfg)
-        .await
-        .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
+    let mut results = if mode == "text" {
+        // Text mode: FTS5 only, no embedding model required.
+        let sp = spinner("Searching (text)…");
+        let db = Database::open(&db_path)?;
+        let res = db
+            .search_text(&args.query, args.limit.min(100))
+            .unwrap_or_default();
+        sp.finish_and_clear();
+        res
+    } else {
+        // semantic or hybrid: need an embedding.
+        let sp = spinner("Loading model…");
+        let embedder = crate::backends::ActiveEmbedder::load(&cfg)
+            .await
+            .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
 
-    sp.set_message("Embedding query…");
-    let query_text = format!("task: code retrieval | query: {}", args.query);
-    let vecs = embedder.embed(&[&query_text]).await?;
-    let query_blob = vec_to_blob(vecs.first().context("no embedding returned")?);
+        sp.set_message("Embedding query…");
+        let query_text = format!("task: code retrieval | query: {}", args.query);
+        let vecs = embedder.embed(&[&query_text]).await?;
+        let query_vec = vecs.first().context("no embedding returned")?.clone();
+        let query_blob = vec_to_blob(&query_vec);
 
-    sp.set_message("Searching…");
-    let mut results = search_all_dbs(&db_path, &dep_dbs, &query_blob, args.limit.min(100))?;
-    sp.finish_and_clear();
+        sp.set_message("Searching…");
+        let res = if mode == "hybrid" {
+            search_all_dbs_hybrid(
+                &db_path,
+                &dep_dbs,
+                &args.query,
+                &query_vec,
+                args.limit.min(100),
+            )?
+        } else {
+            // semantic
+            search_all_dbs(&db_path, &dep_dbs, &query_blob, args.limit.min(100))?
+        };
+        sp.finish_and_clear();
+        res
+    };
 
     if results.is_empty() {
         println!("No results found. Make sure the index has embeddings (`spelunk index <path>`).");
@@ -157,6 +183,61 @@ pub(crate) fn search_all_dbs(
     }
 
     // Sort by distance (ascending), deduplicate by (file_path, start_line, end_line).
+    all.sort_by(|a, b| {
+        a.distance
+            .partial_cmp(&b.distance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut seen = std::collections::HashSet::new();
+    all.retain(|r| seen.insert((r.file_path.clone(), r.start_line, r.end_line)));
+    all.truncate(limit);
+
+    // Annotate results with governing specs from the primary DB.
+    if let Ok(primary_db) = Database::open(primary_db_path) {
+        let file_paths: Vec<String> = all.iter().map(|r| r.file_path.clone()).collect();
+        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths)
+            && !all_specs.is_empty()
+        {
+            for result in &mut all {
+                if let Ok(per) = primary_db.specs_for_files(std::slice::from_ref(&result.file_path))
+                {
+                    result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
+                }
+            }
+        }
+    }
+
+    Ok(all)
+}
+
+/// Hybrid search across a primary DB and any dep DBs.
+/// Each DB is searched independently with `search_hybrid`; results are merged
+/// by deduplicating on (file_path, start_line, end_line) and re-sorting by
+/// ascending `distance` (lower = better RRF score).
+pub(crate) fn search_all_dbs_hybrid(
+    primary_db_path: &std::path::Path,
+    dep_db_paths: &[std::path::PathBuf],
+    query: &str,
+    embedding: &[f32],
+    limit: usize,
+) -> Result<Vec<SearchResult>> {
+    let primary_db = Database::open(primary_db_path)?;
+    let fetch = (limit * 2).max(limit + 10);
+    let mut all = primary_db
+        .search_hybrid(query, embedding, fetch)
+        .unwrap_or_default();
+
+    for dep_path in dep_db_paths {
+        match Database::open(dep_path) {
+            Ok(dep_db) => match dep_db.search_hybrid(query, embedding, fetch) {
+                Ok(mut dep_results) => all.append(&mut dep_results),
+                Err(e) => tracing::warn!("hybrid search failed on dep {}: {e}", dep_path.display()),
+            },
+            Err(e) => tracing::warn!("could not open dep DB {}: {e}", dep_path.display()),
+        }
+    }
+
+    // Sort by ascending distance (lower RRF reciprocal = better score).
     all.sort_by(|a, b| {
         a.distance
             .partial_cmp(&b.distance)
