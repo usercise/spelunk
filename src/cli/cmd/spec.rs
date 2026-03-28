@@ -163,8 +163,23 @@ pub(super) fn extract_spec_title(path: &std::path::Path) -> Option<String> {
 
 /// Return true if a markdown file declares itself as a spec via frontmatter
 /// (`spelunk_spec: true`) or lives under a conventional spec directory.
-pub fn is_spec_file(path: &std::path::Path) -> bool {
+///
+/// `specs_dir` is the configured specs directory (e.g. `docs/specs`).
+/// In addition to `specs_dir`, the legacy `specs/` prefix is always matched
+/// so that projects that haven't configured a custom value still work.
+pub fn is_spec_file(path: &std::path::Path, specs_dir: &std::path::Path) -> bool {
     let path_str = path.to_string_lossy();
+    // Check configured specs_dir first (both as prefix and as interior component).
+    if path.starts_with(specs_dir) {
+        return true;
+    }
+    let specs_dir_str = specs_dir.to_string_lossy();
+    if path_str.contains(&format!("/{}/", specs_dir_str))
+        || path_str.starts_with(&format!("{}/", specs_dir_str))
+    {
+        return true;
+    }
+    // Legacy fallback: bare `specs/` prefix (matches projects that have no config).
     if path_str.contains("/specs/") || path_str.starts_with("specs/") {
         return true;
     }

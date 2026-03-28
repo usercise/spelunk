@@ -313,7 +313,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
-        if super::spec::is_spec_file(path) {
+        if super::spec::is_spec_file(path, &cfg.specs_dir) {
             let path_str = path.to_string_lossy().into_owned();
             let title = super::spec::extract_spec_title(path).unwrap_or_default();
             if let Err(e) = db.upsert_spec(&path_str, &title, true) {

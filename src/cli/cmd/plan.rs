@@ -12,7 +12,7 @@ use crate::{
 pub async fn plan(args: PlanArgs, cfg: Config) -> Result<()> {
     match args.command {
         PlanCommand::Create(a) => plan_create(a, args.db.as_ref(), &cfg).await,
-        PlanCommand::Status(a) => plan_status(a),
+        PlanCommand::Status(a) => plan_status(a, &cfg),
     }
 }
 
@@ -132,7 +132,7 @@ async fn plan_create(
             .collect::<Vec<_>>()
             .join("-")
     });
-    let plan_dir = project_root.join("docs").join("plans");
+    let plan_dir = project_root.join(&cfg.plans_dir);
     std::fs::create_dir_all(&plan_dir)?;
     let plan_file = plan_dir.join(format!("{slug}.md"));
 
@@ -211,14 +211,14 @@ async fn plan_create(
     Ok(())
 }
 
-fn plan_status(args: super::super::PlanStatusArgs) -> Result<()> {
+fn plan_status(args: super::super::PlanStatusArgs, cfg: &Config) -> Result<()> {
     use crate::utils::effective_format;
     let fmt = effective_format(&args.format);
 
-    // Find docs/plans/ relative to cwd or git root.
+    // Find plans dir relative to cwd or git root.
     let plan_dir = {
         let cwd = std::env::current_dir()?;
-        let candidate = cwd.join("docs").join("plans");
+        let candidate = cwd.join(&cfg.plans_dir);
         if candidate.exists() {
             candidate
         } else {
@@ -226,7 +226,7 @@ fn plan_status(args: super::super::PlanStatusArgs) -> Result<()> {
             let mut p = cwd.as_path();
             loop {
                 if p.join(".git").exists() {
-                    break p.join("docs").join("plans");
+                    break p.join(&cfg.plans_dir);
                 }
                 match p.parent() {
                     Some(pp) => p = pp,
@@ -241,7 +241,7 @@ fn plan_status(args: super::super::PlanStatusArgs) -> Result<()> {
             "No plans directory found (expected {}).",
             plan_dir.display()
         );
-        println!("Create a plan with: ca plan create \"<description>\"");
+        println!("Create a plan with: spelunk plan create \"<description>\"");
         return Ok(());
     }
 

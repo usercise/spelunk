@@ -45,6 +45,13 @@ batch_size = 32
 
 # Default database location (default: ~/.local/share/spelunk/<project-slug>.db)
 # db_path = "/custom/path/myproject.db"
+
+# Directory (relative to project root) where `spelunk plan create` writes plan files
+# plans_dir = "docs/plans"
+
+# Directory (relative to project root) where spec markdown files are discovered
+# during `spelunk index` and where `spelunk spec link` defaults to looking
+# specs_dir = "docs/specs"
 ```
 
 You can also override the database path per-command with `--db <path>`.
