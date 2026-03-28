@@ -104,6 +104,18 @@ pub struct Config {
     /// Set in `.spelunk/config.toml` (project-level) or via `SPELUNK_PROJECT_ID`.
     #[serde(default)]
     pub project_id: Option<String>,
+
+    // ── Directory conventions ─────────────────────────────────────────────────
+    /// Directory (relative to project root) where `spelunk plan create` writes plan files.
+    /// Default: `docs/plans`
+    #[serde(default = "Config::default_plans_dir")]
+    pub plans_dir: PathBuf,
+
+    /// Directory (relative to project root) where spec markdown files are discovered
+    /// during `spelunk index` and where `spelunk spec` looks for spec files.
+    /// Default: `docs/specs`
+    #[serde(default = "Config::default_specs_dir")]
+    pub specs_dir: PathBuf,
 }
 
 impl Config {
@@ -112,6 +124,12 @@ impl Config {
     }
     fn default_lmstudio_base_url() -> String {
         "http://127.0.0.1:1234".to_string()
+    }
+    fn default_plans_dir() -> PathBuf {
+        PathBuf::from("docs/plans")
+    }
+    fn default_specs_dir() -> PathBuf {
+        PathBuf::from("docs/specs")
     }
 }
 
@@ -131,6 +149,8 @@ impl Default for Config {
             memory_server_url: None,
             memory_server_key: None,
             project_id: None,
+            plans_dir: Self::default_plans_dir(),
+            specs_dir: Self::default_specs_dir(),
         }
     }
 }
