@@ -41,18 +41,19 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
         let query_vec = vecs.first().context("no embedding returned")?.clone();
         let query_blob = vec_to_blob(&query_vec);
 
+        // Budget mode overfetches a candidate pool; limit is applied after packing.
+        let fetch_limit = if let Some(budget) = args.budget {
+            (budget / 50).clamp(20, 100)
+        } else {
+            args.limit.min(100)
+        };
+
         sp.set_message("Searching…");
         let res = if mode == "hybrid" {
-            search_all_dbs_hybrid(
-                &db_path,
-                &dep_dbs,
-                &args.query,
-                &query_vec,
-                args.limit.min(100),
-            )?
+            search_all_dbs_hybrid(&db_path, &dep_dbs, &args.query, &query_vec, fetch_limit)?
         } else {
             // semantic
-            search_all_dbs(&db_path, &dep_dbs, &query_blob, args.limit.min(100))?
+            search_all_dbs(&db_path, &dep_dbs, &query_blob, fetch_limit)?
         };
         sp.finish_and_clear();
         res
@@ -88,6 +89,52 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
                 results.extend(extra);
             }
         }
+    }
+
+    // ── Budget-aware packing ──────────────────────────────────────────────────
+    if let Some(budget) = args.budget {
+        let mut remaining = budget;
+        let mut packed: Vec<SearchResult> = Vec::new();
+        for chunk in results {
+            // Chunks with token_count = 0 (not yet backfilled) get an on-the-fly estimate.
+            let tc = if chunk.token_count > 0 {
+                chunk.token_count
+            } else {
+                crate::search::tokens::estimate_tokens(&chunk.content)
+            };
+            if tc <= remaining {
+                remaining -= tc;
+                packed.push(chunk);
+            }
+            if remaining < 10 {
+                break;
+            }
+        }
+        let tokens_used = budget - remaining;
+
+        match crate::utils::effective_format(&args.format) {
+            "json" => {
+                #[derive(serde::Serialize)]
+                struct BudgetResponse<'a> {
+                    token_budget: usize,
+                    tokens_used: usize,
+                    tokens_remaining: usize,
+                    results: &'a [SearchResult],
+                }
+                let resp = BudgetResponse {
+                    token_budget: budget,
+                    tokens_used,
+                    tokens_remaining: remaining,
+                    results: &packed,
+                };
+                println!("{}", serde_json::to_string_pretty(&resp)?);
+            }
+            _ => {
+                print_results_text(&packed);
+                println!("tokens used: {tokens_used}/{budget}");
+            }
+        }
+        return Ok(());
     }
 
     match crate::utils::effective_format(&args.format) {

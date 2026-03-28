@@ -17,6 +17,7 @@ use crate::{
         },
     },
     registry::Registry,
+    search::tokens::estimate_tokens,
     storage::Database,
 };
 
@@ -30,6 +31,13 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         .clone()
         .unwrap_or_else(|| args.path.join(".spelunk").join("index.db"));
     let db = Database::open(&db_path)?;
+
+    // --recount: backfill token_count for existing chunks, then exit.
+    if args.recount {
+        let updated = db.backfill_token_counts()?;
+        println!("Backfilled token counts for {updated} chunk(s).");
+        return Ok(());
+    }
 
     // Canonicalise the root so symlinks don't create duplicate entries.
     let root_canonical = args
@@ -143,6 +151,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
                     "docstring": chunk.docstring,
                     "parent_scope": chunk.parent_scope,
                 });
+                let tc = estimate_tokens(&chunk.content);
                 let chunk_id = db.insert_chunk(
                     file_id,
                     &chunk.kind.to_string(),
@@ -151,6 +160,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
                     chunk.end_line,
                     &chunk.content,
                     Some(&metadata.to_string()),
+                    tc,
                 )?;
                 chunk_ids_and_texts.push((chunk_id, chunk.embedding_text()));
             }
@@ -219,6 +229,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
                 "docstring": chunk.docstring,
                 "parent_scope": chunk.parent_scope,
             });
+            let tc = estimate_tokens(&chunk.content);
             let chunk_id = db.insert_chunk(
                 file_id,
                 &chunk.kind.to_string(),
@@ -227,6 +238,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
                 chunk.end_line,
                 &chunk.content,
                 Some(&metadata.to_string()),
+                tc,
             )?;
             chunk_ids_and_texts.push((chunk_id, chunk.embedding_text()));
         }

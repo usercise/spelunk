@@ -67,6 +67,10 @@ pub struct IndexArgs {
     /// Force full re-index (ignore change detection)
     #[arg(long)]
     pub force: bool,
+
+    /// Backfill token_count for all existing chunks and exit (useful for upgrading old indexes)
+    #[arg(long)]
+    pub recount: bool,
 }
 
 #[derive(Args, Debug)]
@@ -75,8 +79,12 @@ pub struct SearchArgs {
     pub query: String,
 
     /// Number of results to return (max 100)
-    #[arg(short, long, default_value = "10")]
+    #[arg(short, long, default_value = "10", conflicts_with = "budget")]
     pub limit: usize,
+
+    /// Return best chunks fitting within this token budget (mutually exclusive with --limit)
+    #[arg(long, conflicts_with = "limit")]
+    pub budget: Option<usize>,
 
     /// Output format: text or json
     #[arg(long, default_value = "text")]
