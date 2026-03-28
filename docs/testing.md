@@ -2,10 +2,26 @@
 
 ## Current state
 
-Coverage is minimal: 13 tests across 2 files (`src/utils.rs` and
-`src/indexer/secrets.rs`). Everything else is untested. The goal of this
-document is to define a realistic path to solid coverage without trying to
-test everything at once.
+58 tests across 9 test files. The suite covers unit logic, SQLite integration,
+HTTP mock tests, server handler tests, and CLI end-to-end tests.
+
+```
+tests/
+  common/               — shared helpers (TempDb, sqlite-vec registration)
+  unit_chunker.rs       — sliding-window chunker logic
+  unit_embeddings.rs    — vec_to_blob / blob_to_vec roundtrips; ChunkKind parsing
+  unit_graph.rs         — EdgeKind parsing and display
+  integration_db.rs     — Database CRUD, KNN search, graph edges (real SQLite)
+  integration_server.rs — axum server handlers (in-process, no port binding)
+  mock_openai_compat.rs — OpenAiCompatEmbedder against a wiremock server
+  mock_lmstudio.rs      — legacy stub (kept for reference; superseded by mock_openai_compat.rs)
+  e2e_cli.rs            — CLI binary smoke tests via assert_cmd
+```
+
+Plus `#[cfg(test)]` blocks in:
+- `src/utils.rs` — ANSI stripping
+- `src/indexer/secrets.rs` — credential pattern detection
+- `src/search/tokens.rs` — token count estimation
 
 ---
 
@@ -13,160 +29,84 @@ test everything at once.
 
 ### Unit tests (no I/O, no mocks)
 
-Pure-logic functions that take inputs and return outputs. These are the
-cheapest tests to write and maintain.
+Pure-logic functions. Cheapest to write and maintain.
 
-| Area | What to test |
-|------|-------------|
-| `src/indexer/chunker.rs` | `sliding_window`: empty file, single line, exact window size, overlap boundaries |
-| `src/indexer/parser.rs` | Per-language chunk extraction (Rust, Python, JS, Markdown at minimum); fallback to sliding-window on parse failure |
-| `src/indexer/graph.rs` | Edge extraction per language (imports, calls, extends); deduplication |
-| `src/embeddings/mod.rs` | `vec_to_blob` / `blob_to_vec` roundtrip; empty vec; float precision |
-| `src/storage/memory.rs` | `split_csv`: empty, single, whitespace, trailing commas |
-| `src/utils.rs` | ✅ Done |
-| `src/indexer/secrets.rs` | ✅ Done |
+| File | What is tested |
+|------|---------------|
+| `tests/unit_chunker.rs` | `sliding_window`: empty source, single chunk, overlap boundaries, verbatim content |
+| `tests/unit_embeddings.rs` | `vec_to_blob` / `blob_to_vec` roundtrip; empty vec; multi-value; blob length |
+| `tests/unit_graph.rs` | `EdgeKind` display and parse; unknown kind falls back to `Imports` |
+| `src/utils.rs` | `strip_ansi`: clean strings, colour codes, OSC sequences, C0 controls, newline/tab preservation |
+| `src/indexer/secrets.rs` | AWS key, GitHub PAT, PEM header detection; clean code and placeholders not flagged |
+| `src/search/tokens.rs` | `estimate_tokens`: empty string returns 1; chars/4 heuristic |
 
 ### Integration tests (real SQLite, no external HTTP)
 
-These use a real in-memory or temp-file database. `sqlite-vec` must be
-registered before these run (same as `main.rs` — add a `#[ctor]` or call it
-in a `once_cell`).
+Use a temp-file database with the sqlite-vec extension registered via
+`tests/common/mod.rs`. Run serially where needed (`#[serial]` from `serial_test`).
 
-| Area | What to test |
-|------|-------------|
-| `src/config.rs` | Default config; global file override; project-level `.spelunk/config.toml` walk-up; env var overrides (`SPELUNK_SERVER_URL`, `SPELUNK_PROJECT_ID`, `SPELUNK_SERVER_KEY`); validation error when URL set without project_id |
-| `src/storage/db.rs` | `upsert_file` + `file_hash` (change detection); `insert_chunk` / `delete_chunks_for_file`; `search_similar` with a real embedding blob; `replace_edges` + `edges_for_symbol` |
-| `src/storage/memory.rs` | `add_note` / `list` / `get` / `count`; `archive`; `supersede`; `list --include_archived`; KNN `search` returns closest entry |
-| `src/storage/backend.rs` | `LocalMemoryBackend` wraps `MemoryStore` correctly under async concurrent access |
-| `src/server/db.rs` | `upsert_project` auto-creates; dimension mismatch returns error; `add_note` / `list_notes` / `search_notes`; `archive` / `supersede` lifecycle |
-| `src/registry.rs` | Register + find by root; walk-up path discovery; `add_dep` / `remove_dep` / `get_deps`; autoclean removes stale entries |
+| File | What is tested |
+|------|---------------|
+| `tests/integration_db.rs` | `upsert_file` stable IDs and hash round-trips; `insert_chunk` / `delete_chunks_for_file`; `search_similar` KNN ordering and limit; `replace_edges` stale-edge removal |
+| `tests/integration_server.rs` | `GET /v1/health`; `POST /v1/projects/{id}/memory` creates note; `GET` lists; `POST .../search` returns KNN; archive; delete; project stats; auth middleware (valid token, missing token) |
 
 ### HTTP mock tests (wiremock)
 
-External HTTP is mocked with `wiremock`. No real LM Studio or server needed.
+External HTTP is mocked with `wiremock`. No real inference server required.
 
-| Area | What to test |
-|------|-------------|
-| `src/embeddings/openai_compat.rs` | Successful embed (verify `<eos>` appended, correct request shape); batch handling; 500 / timeout error handling |
-| `src/llm/openai_compat.rs` | SSE stream parsing; complete message assembly; error mid-stream |
-| `src/storage/remote.rs` | `add` / `search` / `list` / `get` / `archive` / `supersede`; auth header sent; 404 on missing note |
-| `src/server/mod.rs` | Auth middleware: valid token passes, invalid token → 401, no key configured → passes |
+| File | What is tested |
+|------|---------------|
+| `tests/mock_openai_compat.rs` | Successful embed (EOS token appended, correct request shape); empty data array error; 500 error handling; multiple vectors returned |
 
-### Server handler tests (axum test harness)
+### CLI end-to-end tests (assert_cmd)
 
-Use `axum::serve` with `tokio_test::io::Builder` or `tower::ServiceExt::oneshot`
-to drive the router in-process without binding a port.
+Invoke the compiled `spelunk` binary as a subprocess. These run in CI on every
+push and do not require an inference server.
 
-| Area | What to test |
-|------|-------------|
-| `src/server/handlers.rs` | `GET /v1/health`; `POST /v1/projects/{id}/memory` creates note + enforces dimension; `GET /v1/projects/{id}/memory` lists; `POST /v1/projects/{id}/memory/search` returns KNN; `POST …/archive`; `POST …/supersede`; `DELETE`; `GET /v1/projects/{id}/stats` |
-
-### End-to-end tests (optional, not in CI by default)
-
-Require an OpenAI-compatible server running at `http://127.0.0.1:1234`. Gate behind a
-`#[cfg(feature = "e2e")]` feature flag or a `RUN_E2E=1` env var guard so they
-never run in CI unless explicitly enabled.
-
-- Index a small fixture directory, search for a known symbol, verify it appears
-  in results.
-- `spelunk ask` over that index produces a non-empty answer.
-- Two clients push to `spelunk-server`, both see each other's entries.
-
----
-
-## Required additions to `Cargo.toml`
-
-```toml
-[dev-dependencies]
-tempfile        = "3"      # temp dirs/files for DB isolation
-wiremock        = "0.6"    # mock HTTP server for OpenAI-compatible API + remote memory
-tokio-test      = "0.4"    # async test helpers
-serial_test     = "3"      # serialize tests that share global state (sqlite-vec extension)
-pretty_assertions = "1"    # coloured diffs on assertion failures
-```
+| File | What is tested |
+|------|---------------|
+| `tests/e2e_cli.rs` | `--version`; `--help`; invalid command error; `languages` output; `status` on empty project; `index` + `status` round-trip against a fixture directory |
 
 ---
 
 ## sqlite-vec in tests
 
-`sqlite3_auto_extension` is global and can only be called once per process.
-Two options:
-
-1. Call it in a `std::sync::OnceLock` helper in `tests/common/mod.rs` and
-   invoke that helper at the top of every test that opens a database.
-2. Add a `#[ctor]` attribute on a registration function (requires the `ctor`
-   crate).
-
-Option 1 is simpler and has no extra dependency.
+`sqlite3_auto_extension` is process-global and must only be registered once.
+A `OnceLock` helper in `tests/common/mod.rs` handles this:
 
 ```rust
-// tests/common/mod.rs
-pub fn register_sqlite_vec() {
+pub fn open_test_db() -> Database {
     static ONCE: std::sync::OnceLock<()> = std::sync::OnceLock::new();
     ONCE.get_or_init(|| unsafe {
-        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+        sqlite_vec::sqlite3_auto_extension(Some(std::mem::transmute(
             sqlite_vec::sqlite3_vec_init as *const (),
         )));
     });
+    let path = tempfile::NamedTempFile::new().unwrap().into_temp_path();
+    Database::open(&path).unwrap()
 }
 ```
 
----
-
-## Test file layout
-
-```
-src/
-  utils.rs                    ← #[cfg(test)] block already here
-  indexer/
-    chunker.rs                ← add #[cfg(test)] block
-    parser.rs                 ← add #[cfg(test)] block
-    graph.rs                  ← add #[cfg(test)] block
-    secrets.rs                ← #[cfg(test)] block already here
-  embeddings/
-    mod.rs                    ← add #[cfg(test)] block (vec_to_blob roundtrip)
-    lmstudio.rs               ← add #[cfg(test)] block (wiremock)
-  storage/
-    memory.rs                 ← add #[cfg(test)] block
-    db.rs                     ← add #[cfg(test)] block
-    backend.rs                ← add #[cfg(test)] block
-    remote.rs                 ← add #[cfg(test)] block (wiremock)
-  server/
-    db.rs                     ← add #[cfg(test)] block
-    handlers.rs               ← add #[cfg(test)] block (axum oneshot)
-    mod.rs                    ← add #[cfg(test)] block (auth middleware)
-
-tests/
-  common/
-    mod.rs                    ← register_sqlite_vec(), TempDb, mock builders
-  config.rs                   ← config layering tests (needs filesystem)
-  registry.rs                 ← registry integration tests
-```
-
-Prefer `#[cfg(test)]` blocks inside the module file for unit/integration tests
-that access private items. Use `tests/` top-level files only for tests that
-are purely external to the module (config, registry).
+Tests that open a database call `common::open_test_db()` and are annotated
+`#[serial]` to avoid races on the global extension state.
 
 ---
 
-## Suggested order of implementation
+## Running the tests
 
-Start with the cheapest, highest-confidence tests and work outward:
+```bash
+# All tests
+cargo test
 
-1. **Chunker, parser, graph, vec roundtrip, CSV** — pure logic, zero
-   infrastructure. Gets core indexing logic under test quickly.
-2. **Config** — catches regressions whenever config fields change. Needs
-   `tempfile` and env-var isolation (`std::env::set_var` with a lock or
-   `serial_test`).
-3. **MemoryStore + Database** — SQLite CRUD. Needs `tempfile` +
-   `register_sqlite_vec()`.
-4. **Embedding + LLM backends** — needs `wiremock`. Catches HTTP contract
-   regressions.
-5. **RemoteMemoryBackend** — needs `wiremock`. Can reuse the mock builders
-   from step 4.
-6. **Server DB + handlers** — in-process axum harness. Fast, no network.
-7. **Registry** — needs `tempfile` and a fake filesystem layout.
-8. **E2E** — optional, behind feature flag.
+# A specific test file
+cargo test --test integration_db
+
+# With output (useful for debugging)
+cargo test -- --nocapture
+
+# E2E tests require the binary to be built first
+cargo build && cargo test --test e2e_cli
+```
 
 ---
 
@@ -175,7 +115,16 @@ Start with the cheapest, highest-confidence tests and work outward:
 | Area | Reason |
 |------|--------|
 | Interactive `$EDITOR` (memory add without --body) | Requires a TTY; test manually |
-| Real inference server output quality | Model output is non-deterministic; use E2E heuristics at best |
+| Real inference server output quality | Non-deterministic; use E2E heuristics at best |
 | sqlite-vec KNN ranking precision | Depends on embedding geometry; covered by integration smoke tests |
-| CLI binary output / argument parsing | clap handles most of this; add `assert_cmd` tests only if custom validation is added |
-| Concurrent SQLite writes under load | sqlite WAL handles this; benchmark separately if a bottleneck |
+| Concurrent SQLite writes under load | sqlite WAL handles this; benchmark separately if needed |
+| PDF text extraction accuracy | Depends on PDF structure; smoke-test with a known fixture |
+
+---
+
+## Planned additions
+
+| Area | Issue |
+|------|-------|
+| Property-based tests for chunker, PageRank, and token-budget packing | #24 |
+| Fuzzing the parser and secret scanner | #23 |
