@@ -1,7 +1,7 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
-use tempfile::tempdir;
 use std::fs;
+use tempfile::tempdir;
 
 #[test]
 fn test_help_output() {
@@ -9,7 +9,9 @@ fn test_help_output() {
     cmd.arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Usage: spelunk [OPTIONS] <COMMAND>"))
+        .stdout(predicate::str::contains(
+            "Usage: spelunk [OPTIONS] <COMMAND>",
+        ))
         .stdout(predicate::str::contains("Commands:"));
 }
 
@@ -28,7 +30,9 @@ fn test_invalid_command() {
     cmd.arg("nonexistent-command")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("error: unrecognized subcommand 'nonexistent-command'"));
+        .stderr(predicate::str::contains(
+            "error: unrecognized subcommand 'nonexistent-command'",
+        ));
 }
 
 #[test]
@@ -56,39 +60,44 @@ fn test_status_empty_project() {
         .arg("status")
         .assert()
         .success()
-        .stdout(predicate::str::contains("No index found for the current directory"));
+        .stdout(predicate::str::contains(
+            "No index found for the current directory",
+        ));
 }
 
-use wiremock::{MockServer, Mock, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_index_and_status() {
     let mock_server = MockServer::start().await;
-    
+
     // Mock for index (1 file -> 1 chunk -> 1 request)
     Mock::given(method("POST"))
         .and(path("/v1/embeddings"))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_json(serde_json::json!({
-                "data": [{ "embedding": vec![0.1; 768], "index": 0 }],
-                "model": "test-model",
-                "object": "list",
-                "usage": { "prompt_tokens": 10, "total_tokens": 10 }
-            })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{ "embedding": vec![0.1; 768], "index": 0 }],
+            "model": "test-model",
+            "object": "list",
+            "usage": { "prompt_tokens": 10, "total_tokens": 10 }
+        })))
         .mount(&mock_server)
         .await;
 
     let temp = tempdir().unwrap();
     let project_dir = temp.path().join("my-project");
     fs::create_dir(&project_dir).unwrap();
-    fs::write(project_dir.join("main.rs"), "fn main() { println!(\"hello\"); }").unwrap();
+    fs::write(
+        project_dir.join("main.rs"),
+        "fn main() { println!(\"hello\"); }",
+    )
+    .unwrap();
 
     let config_path = temp.path().join("config.toml");
     let db_path = temp.path().join("test_index.db");
-    
+
     fs::write(&config_path, format!(
-        "db_path = {:?}\nlmstudio_base_url = {:?}\nembedding_model = \"test-model\"\nllm_model = \"test-chat-model\"\n",
+        "db_path = {:?}\napi_base_url = {:?}\nembedding_model = \"test-model\"\nllm_model = \"test-chat-model\"\n",
         db_path, mock_server.uri()
     )).unwrap();
 
