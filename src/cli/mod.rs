@@ -51,6 +51,8 @@ pub enum Command {
     Plan(PlanArgs),
     /// Manage spec files: link human-authored docs to the code they govern
     Spec(SpecArgs),
+    /// Manage and inspect cross-project links
+    Links(LinksArgs),
 }
 
 #[derive(Args, Debug)]
@@ -122,6 +124,10 @@ pub struct SearchArgs {
     /// Skip the lightweight staleness probe (suppress stale-index warning)
     #[arg(long)]
     pub no_stale_check: bool,
+
+    /// Search only the primary project index, skipping all linked project DBs
+    #[arg(long)]
+    pub local_only: bool,
 }
 
 #[derive(Args, Debug)]
@@ -500,6 +506,31 @@ pub struct SpecListArgs {
 
 #[derive(Args, Debug)]
 pub struct SpecCheckArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+// ── Links ─────────────────────────────────────────────────────────────────────
+
+/// Manage and inspect cross-project links.
+/// Use `spelunk link <path>` / `spelunk unlink <path>` to add or remove links.
+#[derive(Args, Debug)]
+pub struct LinksArgs {
+    #[command(subcommand)]
+    pub command: LinksCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum LinksCommand {
+    /// List all linked projects with their status
+    List(LinksListArgs),
+    /// Check all linked project indexes are fresh (exit 1 if any are stale or missing)
+    Check,
+}
+
+#[derive(Args, Debug)]
+pub struct LinksListArgs {
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     pub format: String,

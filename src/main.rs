@@ -63,5 +63,6 @@ async fn main() -> Result<()> {
         Command::Hooks(args) => cli::cmd::hooks(args),
         Command::Plan(args) => cli::cmd::plan(args, cfg).await,
         Command::Spec(args) => cli::cmd::spec(args, cfg),
+        Command::Links(args) => cli::cmd::links(args, cfg).await,
     }
 }

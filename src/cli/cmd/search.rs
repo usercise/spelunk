@@ -5,13 +5,20 @@ use super::ui::{print_results_text, spinner};
 use crate::{
     config::{Config, resolve_db},
     embeddings::{EmbeddingBackend as _, vec_to_blob},
-    registry::Registry,
+    registry::{Project, Registry},
     search::SearchResult,
     storage::Database,
 };
 
 pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
-    let (db_path, dep_dbs) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
+    let (db_path, dep_projects) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
+
+    // Apply --local-only: discard linked deps.
+    let dep_projects = if args.local_only {
+        vec![]
+    } else {
+        dep_projects
+    };
 
     if !args.no_stale_check {
         maybe_warn_stale(&db_path);
@@ -50,10 +57,16 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
 
         sp.set_message("Searching…");
         let res = if mode == "hybrid" {
-            search_all_dbs_hybrid(&db_path, &dep_dbs, &args.query, &query_vec, fetch_limit)?
+            search_all_dbs_hybrid(
+                &db_path,
+                &dep_projects,
+                &args.query,
+                &query_vec,
+                fetch_limit,
+            )?
         } else {
             // semantic
-            search_all_dbs(&db_path, &dep_dbs, &query_blob, fetch_limit)?
+            search_all_dbs(&db_path, &dep_projects, &query_blob, fetch_limit)?
         };
         sp.finish_and_clear();
         res
@@ -163,12 +176,12 @@ pub(crate) fn maybe_warn_stale(db_path: &std::path::Path) {
     }
 }
 
-/// Resolve the primary DB path and any dep DB paths via the registry.
+/// Resolve the primary DB path and any dep projects via the registry.
 /// Falls back to `resolve_db` if the registry can't find a project.
 pub(crate) fn resolve_project_and_deps(
     explicit_db: Option<&std::path::PathBuf>,
     cfg: &Config,
-) -> Result<(std::path::PathBuf, Vec<std::path::PathBuf>)> {
+) -> Result<(std::path::PathBuf, Vec<Project>)> {
     // Explicit --db skips registry entirely.
     if let Some(p) = explicit_db {
         if !p.exists() {
@@ -190,8 +203,7 @@ pub(crate) fn resolve_project_and_deps(
             .get_deps(project.id)
             .unwrap_or_default()
             .into_iter()
-            .map(|d| d.db_path)
-            .filter(|p| p.exists())
+            .filter(|d| d.db_path.exists())
             .collect();
         return Ok((project.db_path, deps));
     }
@@ -207,10 +219,10 @@ pub(crate) fn resolve_project_and_deps(
     Ok((db_path, vec![]))
 }
 
-/// Search a primary DB and any dep DBs, merge results by distance, return top `limit`.
+/// Search a primary DB and any dep projects, merge results by distance, return top `limit`.
 pub(crate) fn search_all_dbs(
     primary_db_path: &std::path::Path,
-    dep_db_paths: &[std::path::PathBuf],
+    dep_projects: &[Project],
     query_blob: &[u8],
     limit: usize,
 ) -> Result<Vec<SearchResult>> {
@@ -219,13 +231,24 @@ pub(crate) fn search_all_dbs(
     let fetch = (limit * 2).max(limit + 10);
     let mut all = primary_db.search_similar(query_blob, fetch)?;
 
-    for dep_path in dep_db_paths {
-        match Database::open(dep_path) {
+    for dep in dep_projects {
+        match Database::open(&dep.db_path) {
             Ok(dep_db) => match dep_db.search_similar(query_blob, fetch) {
-                Ok(mut dep_results) => all.append(&mut dep_results),
-                Err(e) => tracing::warn!("search failed on dep {}: {e}", dep_path.display()),
+                Ok(mut dep_results) => {
+                    let name = dep
+                        .root_path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned());
+                    let root = dep.root_path.to_string_lossy().into_owned();
+                    for r in &mut dep_results {
+                        r.project_name = name.clone();
+                        r.project_path = Some(root.clone());
+                    }
+                    all.append(&mut dep_results);
+                }
+                Err(e) => tracing::warn!("search failed on dep {}: {e}", dep.db_path.display()),
             },
-            Err(e) => tracing::warn!("could not open dep DB {}: {e}", dep_path.display()),
+            Err(e) => tracing::warn!("could not open dep DB {}: {e}", dep.db_path.display()),
         }
     }
 
@@ -257,13 +280,13 @@ pub(crate) fn search_all_dbs(
     Ok(all)
 }
 
-/// Hybrid search across a primary DB and any dep DBs.
+/// Hybrid search across a primary DB and any dep projects.
 /// Each DB is searched independently with `search_hybrid`; results are merged
 /// by deduplicating on (file_path, start_line, end_line) and re-sorting by
 /// ascending `distance` (lower = better RRF score).
 pub(crate) fn search_all_dbs_hybrid(
     primary_db_path: &std::path::Path,
-    dep_db_paths: &[std::path::PathBuf],
+    dep_projects: &[Project],
     query: &str,
     embedding: &[f32],
     limit: usize,
@@ -274,13 +297,26 @@ pub(crate) fn search_all_dbs_hybrid(
         .search_hybrid(query, embedding, fetch)
         .unwrap_or_default();
 
-    for dep_path in dep_db_paths {
-        match Database::open(dep_path) {
+    for dep in dep_projects {
+        match Database::open(&dep.db_path) {
             Ok(dep_db) => match dep_db.search_hybrid(query, embedding, fetch) {
-                Ok(mut dep_results) => all.append(&mut dep_results),
-                Err(e) => tracing::warn!("hybrid search failed on dep {}: {e}", dep_path.display()),
+                Ok(mut dep_results) => {
+                    let name = dep
+                        .root_path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned());
+                    let root = dep.root_path.to_string_lossy().into_owned();
+                    for r in &mut dep_results {
+                        r.project_name = name.clone();
+                        r.project_path = Some(root.clone());
+                    }
+                    all.append(&mut dep_results);
+                }
+                Err(e) => {
+                    tracing::warn!("hybrid search failed on dep {}: {e}", dep.db_path.display())
+                }
             },
-            Err(e) => tracing::warn!("could not open dep DB {}: {e}", dep_path.display()),
+            Err(e) => tracing::warn!("could not open dep DB {}: {e}", dep.db_path.display()),
         }
     }
 

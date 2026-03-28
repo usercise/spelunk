@@ -28,4 +28,10 @@ pub struct SearchResult {
     /// Estimated token count for this chunk's content (chars/4 heuristic).
     #[serde(default)]
     pub token_count: usize,
+    /// Name of the linked project this result came from (None = primary project).
+    #[serde(default)]
+    pub project_name: Option<String>,
+    /// Root path of the linked project this result came from (None = primary project).
+    #[serde(default)]
+    pub project_path: Option<String>,
 }
