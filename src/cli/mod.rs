@@ -60,7 +60,7 @@ pub struct IndexArgs {
     #[arg(short, long)]
     pub db: Option<PathBuf>,
 
-    /// Embedding batch size
+    /// Max concurrent embedding requests (default: 32)
     #[arg(long, default_value = "32")]
     pub batch_size: usize,
 
