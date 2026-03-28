@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 use super::super::{LinksArgs, LinksCommand};
+use super::helpers::project_display_name;
 use crate::{config::Config, registry::Registry, storage::Database};
 
 pub async fn links(args: LinksArgs, _cfg: Config) -> Result<()> {
@@ -38,11 +39,7 @@ async fn links_list(format: String) -> Result<()> {
     let mut infos: Vec<LinkedProjectInfo> = Vec::new();
 
     for dep in &deps {
-        let name = dep
-            .root_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| dep.root_path.to_string_lossy().into_owned());
+        let name = project_display_name(&dep.root_path);
 
         let db_exists = dep.db_path.exists();
 
@@ -141,11 +138,7 @@ async fn links_check() -> Result<()> {
     let mut problems: Vec<String> = Vec::new();
 
     for dep in &deps {
-        let name = dep
-            .root_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| dep.root_path.to_string_lossy().into_owned());
+        let name = project_display_name(&dep.root_path);
 
         if !dep.db_path.exists() {
             all_ok = false;

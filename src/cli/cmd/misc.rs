@@ -1,11 +1,9 @@
 use anyhow::Result;
 
 use super::super::ChunksArgs;
+use super::helpers::open_project_db;
 use super::ui::print_chunks_text;
-use crate::{
-    config::{Config, resolve_db},
-    storage::Database,
-};
+use crate::config::Config;
 
 pub fn languages() -> Result<()> {
     let langs = crate::indexer::parser::SUPPORTED_LANGUAGES;
@@ -17,15 +15,7 @@ pub fn languages() -> Result<()> {
 }
 
 pub fn chunks(args: ChunksArgs, cfg: Config) -> Result<()> {
-    let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
-    if !db_path.exists() {
-        anyhow::bail!(
-            "No index found (checked current directory and parents).\n\
-             Run `spelunk index <path>` inside your project first."
-        );
-    }
-
-    let db = Database::open(&db_path)?;
+    let (_db_path, db) = open_project_db(args.db.as_deref(), &cfg.db_path)?;
     let results = db.chunks_for_file(&args.path)?;
 
     if results.is_empty() {

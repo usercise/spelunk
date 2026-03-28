@@ -1,26 +1,16 @@
 use anyhow::Result;
 
 use super::super::GraphArgs;
+use super::helpers::open_project_db;
 use super::search::maybe_warn_stale;
-use crate::{
-    config::{Config, resolve_db},
-    storage::Database,
-};
+use crate::config::Config;
 
 pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
-    let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
-    if !db_path.exists() {
-        anyhow::bail!(
-            "No index found (checked current directory and parents).\n\
-             Run `spelunk index <path>` inside your project first."
-        );
-    }
+    let (db_path, db) = open_project_db(args.db.as_deref(), &cfg.db_path)?;
 
     if !args.no_stale_check {
         maybe_warn_stale(&db_path);
     }
-
-    let db = Database::open(&db_path)?;
     let symbol = &args.symbol;
 
     // Decide whether the query looks like a file path or a symbol name.
