@@ -241,6 +241,8 @@ impl Database {
                 from_graph: false,
                 governing_specs: vec![],
                 token_count: row.get::<_, i64>(9)? as usize,
+                project_name: None,
+                project_path: None,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -358,6 +360,8 @@ impl Database {
                 from_graph: false,
                 governing_specs: vec![],
                 token_count: row.get::<_, i64>(9)? as usize,
+                project_name: None,
+                project_path: None,
             })
         })?;
 
@@ -405,6 +409,8 @@ impl Database {
                 from_graph: false,
                 governing_specs: vec![],
                 token_count: 0,
+                project_name: None,
+                project_path: None,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -630,6 +636,8 @@ impl Database {
                 from_graph: false,
                 governing_specs: vec![],
                 token_count: row.get::<_, i64>(8)? as usize,
+                project_name: None,
+                project_path: None,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

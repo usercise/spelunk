@@ -51,9 +51,17 @@ pub(crate) fn print_results_text(results: &[crate::search::SearchResult]) {
             format!("  dist: {:.4}", r.distance)
         };
 
+        // Prefix with project name for results from linked projects.
+        let project_prefix = if let Some(ref pname) = r.project_name {
+            format!("\x1b[36m[{pname}]\x1b[0m ")
+        } else {
+            String::new()
+        };
+
         println!(
-            "{:2}. \x1b[1m{}\x1b[0m  \x1b[2m{}:{}-{}\x1b[0m  \x1b[33m[{}: {}]\x1b[0m{}",
+            "{:2}. {}\x1b[1m{}\x1b[0m  \x1b[2m{}:{}-{}\x1b[0m  \x1b[33m[{}: {}]\x1b[0m{}",
             display_idx,
+            project_prefix,
             r.file_path,
             r.language,
             r.start_line,
