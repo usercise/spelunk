@@ -1,0 +1,102 @@
+use anyhow::Result;
+
+use super::super::GraphArgs;
+use crate::{
+    config::{Config, resolve_db},
+    storage::Database,
+};
+
+pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
+    let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No index found (checked current directory and parents).\n\
+             Run `spelunk index <path>` inside your project first."
+        );
+    }
+
+    let db = Database::open(&db_path)?;
+    let symbol = &args.symbol;
+
+    // Decide whether the query looks like a file path or a symbol name.
+    let mut edges = if symbol.contains('/')
+        || symbol.contains('\\')
+        || symbol.ends_with(".rs")
+        || symbol.ends_with(".py")
+        || symbol.ends_with(".go")
+        || symbol.ends_with(".java")
+        || symbol.ends_with(".ts")
+        || symbol.ends_with(".js")
+    {
+        db.edges_for_file(symbol)?
+    } else {
+        db.edges_for_symbol(symbol)?
+    };
+
+    // Optional kind filter
+    if let Some(kind) = &args.kind {
+        edges.retain(|e| e.kind == *kind);
+    }
+
+    if edges.is_empty() {
+        println!("No graph edges found for '{symbol}'.");
+        return Ok(());
+    }
+
+    match crate::utils::effective_format(&args.format) {
+        "json" => println!("{}", serde_json::to_string_pretty(&edges)?),
+        _ => print_edges(&edges, symbol),
+    }
+
+    Ok(())
+}
+
+fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
+    // Group into outgoing (source) and incoming (target) edges.
+    let outgoing: Vec<_> = edges
+        .iter()
+        .filter(|e| e.source_name.as_deref() == Some(query) || e.source_file == query)
+        .collect();
+    let incoming: Vec<_> = edges.iter().filter(|e| e.target_name == query).collect();
+    let other: Vec<_> = edges
+        .iter()
+        .filter(|e| {
+            e.source_name.as_deref() != Some(query)
+                && e.source_file != query
+                && e.target_name != query
+        })
+        .collect();
+
+    if !outgoing.is_empty() {
+        println!("\x1b[1mOutgoing from '{query}':\x1b[0m");
+        for e in &outgoing {
+            let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
+            println!(
+                "  \x1b[33m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
+                e.kind, e.target_name, loc, e.line
+            );
+        }
+        println!();
+    }
+    if !incoming.is_empty() {
+        println!("\x1b[1mIncoming to '{query}':\x1b[0m");
+        for e in &incoming {
+            let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
+            println!(
+                "  \x1b[36m{}\x1b[0m  {}  \x1b[2m({}:{})\x1b[0m",
+                e.kind, e.source_file, loc, e.line
+            );
+        }
+        println!();
+    }
+    if !other.is_empty() {
+        println!("\x1b[1mRelated edges:\x1b[0m");
+        for e in &other {
+            let loc = e.source_name.as_deref().unwrap_or(&e.source_file);
+            println!(
+                "  {} -- \x1b[33m{}\x1b[0m --> {}  \x1b[2m({}:{})\x1b[0m",
+                loc, e.kind, e.target_name, e.source_file, e.line
+            );
+        }
+    }
+}

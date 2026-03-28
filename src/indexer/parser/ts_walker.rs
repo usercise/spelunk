@@ -1,110 +1,7 @@
-use super::chunker::{Chunk, ChunkKind, sliding_window};
+use super::super::chunker::{Chunk, ChunkKind};
 use anyhow::{Result, bail};
 
-/// All languages recognised by the indexer (tree-sitter, text, and document formats).
-pub const SUPPORTED_LANGUAGES: &[&str] = &[
-    "rust",
-    "python",
-    "javascript",
-    "jsx",
-    "typescript",
-    "tsx",
-    "go",
-    "java",
-    "c",
-    "cpp",
-    "json",
-    "html",
-    "css",
-    "hcl",
-    "sql",
-    "proto",
-    // text formats (sliding-window / heading-based, no tree-sitter)
-    "markdown",
-    "text",
-    // structured text (custom parsers, no tree-sitter)
-    "notebook",
-    // binary document formats (docparser, no tree-sitter)
-    "docx",
-    "spreadsheet",
-];
-
-/// Detect language from file extension.
-pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
-    match path.extension()?.to_str()? {
-        "rs" => Some("rust"),
-        "py" => Some("python"),
-        "js" | "mjs" | "cjs" => Some("javascript"),
-        "jsx" => Some("jsx"),
-        "ts" | "mts" => Some("typescript"),
-        "tsx" => Some("tsx"),
-        "go" => Some("go"),
-        "java" => Some("java"),
-        "c" | "h" => Some("c"),
-        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some("cpp"),
-        "json" => Some("json"),
-        "html" | "htm" => Some("html"),
-        "css" => Some("css"),
-        "tf" | "hcl" => Some("hcl"),
-        "sql" | "sequel" => Some("sql"),
-        "proto" => Some("proto"),
-        _ => None,
-    }
-}
-
-pub(crate) fn ts_language_pub(name: &str) -> Result<tree_sitter::Language> {
-    ts_language(name)
-}
-
-/// Detect text-format languages (markdown, plain text, notebooks) from file path.
-/// These are handled without tree-sitter.
-pub fn detect_text_language(path: &std::path::Path) -> Option<&'static str> {
-    // Check extension first
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        return match ext.to_lowercase().as_str() {
-            "md" | "mdx" | "markdown" => Some("markdown"),
-            // R Markdown / Quarto documents are markdown with fenced code blocks.
-            "rmd" | "qmd" => Some("markdown"),
-            "txt" | "rst" | "adoc" | "asciidoc" => Some("text"),
-            // Jupyter notebooks: custom JSON-based parser.
-            "ipynb" => Some("notebook"),
-            _ => None,
-        };
-    }
-    // Extensionless files: README, CHANGELOG, etc.
-    let name = path.file_name()?.to_str()?.to_uppercase();
-    match name.as_str() {
-        "README" | "CHANGELOG" | "CHANGES" | "CONTRIBUTING" | "NOTICE" | "AUTHORS" | "HISTORY" => {
-            Some("text")
-        }
-        _ => None,
-    }
-}
-
-/// Detect binary document formats (DOCX, spreadsheets) from file extension.
-/// These are handled by `docparser` — they cannot be read with `read_to_string`.
-pub fn detect_doc_language(path: &std::path::Path) -> Option<&'static str> {
-    match path.extension()?.to_str()?.to_lowercase().as_str() {
-        "docx" => Some("docx"),
-        "xlsx" | "xls" | "ods" => Some("spreadsheet"),
-        _ => None,
-    }
-}
-
-/// Return true if the file appears to be binary (contains null bytes in the
-/// first 512 bytes). Used to skip compiled or binary assets.
-pub fn is_binary_file(path: &std::path::Path) -> bool {
-    use std::io::Read;
-    if let Ok(mut f) = std::fs::File::open(path) {
-        let mut buf = [0u8; 512];
-        if let Ok(n) = f.read(&mut buf) {
-            return buf[..n].contains(&0u8);
-        }
-    }
-    false
-}
-
-fn ts_language(name: &str) -> Result<tree_sitter::Language> {
+pub(super) fn ts_language(name: &str) -> Result<tree_sitter::Language> {
     // Grammar crates 0.23+ expose a `LANGUAGE: LanguageFn` constant via the
     // stable `tree-sitter-language` ABI crate; `.into()` converts to Language.
     Ok(match name {
@@ -132,16 +29,20 @@ fn ts_language(name: &str) -> Result<tree_sitter::Language> {
 // ---------------------------------------------------------------------------
 
 /// Describes a node type that should become a chunk.
-struct NodeSpec {
+pub(super) struct NodeSpec {
     /// tree-sitter node kind string
-    kind: &'static str,
+    pub kind: &'static str,
     /// The chunk kind to assign
-    chunk_kind: ChunkKind,
+    pub chunk_kind: ChunkKind,
     /// Field name to use for the symbol name (e.g. "name")
-    name_field: Option<&'static str>,
+    pub name_field: Option<&'static str>,
 }
 
-fn s(kind: &'static str, chunk_kind: ChunkKind, name_field: Option<&'static str>) -> NodeSpec {
+pub(super) fn s(
+    kind: &'static str,
+    chunk_kind: ChunkKind,
+    name_field: Option<&'static str>,
+) -> NodeSpec {
     NodeSpec {
         kind,
         chunk_kind,
@@ -149,7 +50,7 @@ fn s(kind: &'static str, chunk_kind: ChunkKind, name_field: Option<&'static str>
     }
 }
 
-fn node_specs(language: &str) -> Vec<NodeSpec> {
+pub(super) fn node_specs(language: &str) -> Vec<NodeSpec> {
     use ChunkKind::*;
     match language {
         "rust" => vec![
@@ -240,64 +141,7 @@ fn node_specs(language: &str) -> Vec<NodeSpec> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-pub struct SourceParser;
-
-impl SourceParser {
-    /// Parse `source` and return semantic chunks.
-    /// Falls back to sliding-window if parsing fails or yields nothing.
-    pub fn parse(source: &str, file_path: &str, language: &str) -> Result<Vec<Chunk>> {
-        // Text formats bypass tree-sitter entirely.
-        if language == "markdown" {
-            return Ok(parse_markdown(source, file_path));
-        }
-        if language == "text" {
-            return Ok(sliding_window(source, file_path, language, 120, 15));
-        }
-        if language == "notebook" {
-            return Ok(parse_notebook(source, file_path));
-        }
-
-        let ts_lang = ts_language(language)?;
-        let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&ts_lang)?;
-
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("tree-sitter produced no parse tree for {file_path}"))?;
-
-        let bytes = source.as_bytes();
-        let specs = node_specs(language);
-        let mut chunks = Vec::new();
-
-        walk_node(
-            tree.root_node(),
-            bytes,
-            file_path,
-            language,
-            &specs,
-            None,
-            &mut chunks,
-        );
-
-        if chunks.is_empty() {
-            tracing::debug!("{file_path}: no semantic nodes found, using sliding window");
-            // 120-line window fits comfortably in EmbeddingGemma's 2048-token budget.
-            return Ok(sliding_window(source, file_path, language, 120, 15));
-        }
-
-        Ok(chunks)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tree walker
-// ---------------------------------------------------------------------------
-
-fn walk_node(
+pub(super) fn walk_node(
     node: tree_sitter::Node<'_>,
     src: &[u8],
     file_path: &str,
@@ -371,7 +215,7 @@ fn walk_node(
 }
 
 /// Language-aware name extraction for a chunk node.
-fn extract_name(
+pub(super) fn extract_name(
     node: &tree_sitter::Node<'_>,
     src: &[u8],
     language: &str,
@@ -472,7 +316,7 @@ fn c_function_name<'a>(node: &tree_sitter::Node<'a>, src: &'a [u8]) -> Option<St
     find_identifier(decl, src)
 }
 
-fn find_identifier(node: tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+pub(super) fn find_identifier(node: tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     if node.kind() == "identifier" || node.kind() == "field_identifier" {
         return node.utf8_text(src).ok().map(str::to_owned);
     }
@@ -538,185 +382,9 @@ fn sql_object_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     None
 }
 
-// ---------------------------------------------------------------------------
-// Jupyter notebook chunker
-// ---------------------------------------------------------------------------
-
-/// Parse a `.ipynb` notebook into per-cell chunks.
-///
-/// Code cells become `Verbatim` chunks tagged with the kernel language.
-/// Markdown/raw cells become `Section` chunks.  Falls back to sliding-window
-/// if the JSON is malformed.
-fn parse_notebook(source: &str, file_path: &str) -> Vec<Chunk> {
-    #[derive(serde::Deserialize)]
-    struct Notebook {
-        cells: Vec<Cell>,
-        #[serde(default)]
-        metadata: NotebookMeta,
-    }
-    #[derive(serde::Deserialize, Default)]
-    struct NotebookMeta {
-        #[serde(default)]
-        kernelspec: Kernelspec,
-    }
-    #[derive(serde::Deserialize, Default)]
-    struct Kernelspec {
-        #[serde(default)]
-        language: String,
-    }
-    #[derive(serde::Deserialize)]
-    struct Cell {
-        cell_type: String,
-        source: CellSource,
-    }
-    /// The `source` field is either a JSON string or an array of strings.
-    #[derive(serde::Deserialize)]
-    #[serde(untagged)]
-    enum CellSource {
-        Lines(Vec<String>),
-        Blob(String),
-    }
-    impl CellSource {
-        fn text(&self) -> String {
-            match self {
-                Self::Lines(v) => v.join(""),
-                Self::Blob(s) => s.clone(),
-            }
-        }
-    }
-
-    let nb: Notebook = match serde_json::from_str(source) {
-        Ok(n) => n,
-        Err(e) => {
-            tracing::warn!("failed to parse notebook {file_path}: {e}");
-            return sliding_window(source, file_path, "notebook", 120, 15);
-        }
-    };
-
-    let kernel_lang = if nb.metadata.kernelspec.language.is_empty() {
-        "python".to_owned()
-    } else {
-        nb.metadata.kernelspec.language.clone()
-    };
-
-    let mut chunks = Vec::new();
-    let mut line = 1usize;
-
-    for (idx, cell) in nb.cells.iter().enumerate() {
-        let text = cell.source.text();
-        if text.trim().is_empty() {
-            continue;
-        }
-        let line_count = text.lines().count().max(1);
-        let (kind, lang) = match cell.cell_type.as_str() {
-            "markdown" | "raw" => (ChunkKind::Section, "markdown"),
-            _ => (ChunkKind::Verbatim, kernel_lang.as_str()),
-        };
-        chunks.push(Chunk {
-            file_path: file_path.to_owned(),
-            language: lang.to_owned(),
-            kind,
-            name: Some(format!("cell {}", idx + 1)),
-            start_line: line,
-            end_line: line + line_count - 1,
-            content: text,
-            docstring: None,
-            parent_scope: None,
-        });
-        line += line_count;
-    }
-
-    if chunks.is_empty() {
-        return sliding_window(source, file_path, "notebook", 120, 15);
-    }
-    chunks
-}
-
-// ---------------------------------------------------------------------------
-// Markdown chunker (heading-based)
-// ---------------------------------------------------------------------------
-
-/// Split a Markdown document into per-section chunks.
-/// Each ATX heading (`#`, `##`, …) starts a new chunk that includes the
-/// heading line and all content until the next same-or-higher-level heading.
-/// If the file has no headings the whole document is split by sliding window.
-fn parse_markdown(source: &str, file_path: &str) -> Vec<Chunk> {
-    let lines: Vec<&str> = source.lines().collect();
-    let mut chunks: Vec<Chunk> = Vec::new();
-    // (start_line_idx, heading_text)
-    let mut section: Option<(usize, String)> = None;
-    let mut preamble: Vec<usize> = Vec::new(); // line indices before first heading
-
-    let flush = |start: usize,
-                 title: Option<String>,
-                 end: usize,
-                 lines: &[&str],
-                 chunks: &mut Vec<Chunk>| {
-        let content = lines[start..end].join("\n");
-        if content.trim().is_empty() {
-            return;
-        }
-        chunks.push(Chunk {
-            file_path: file_path.to_owned(),
-            language: "markdown".to_owned(),
-            kind: ChunkKind::Section,
-            name: title,
-            start_line: start + 1,
-            end_line: end,
-            content,
-            docstring: None,
-            parent_scope: None,
-        });
-    };
-
-    for (i, line) in lines.iter().enumerate() {
-        if let Some(heading_text) = atx_heading(line) {
-            if let Some((start, title)) = section.take() {
-                flush(start, Some(title), i, &lines, &mut chunks);
-            } else if !preamble.is_empty() {
-                // Flush preamble (content before the first heading)
-                let start = *preamble.first().unwrap();
-                flush(start, None, i, &lines, &mut chunks);
-                preamble.clear();
-            }
-            section = Some((i, heading_text));
-        } else if section.is_none() {
-            preamble.push(i);
-        }
-    }
-
-    // Flush the last section / remaining preamble
-    if let Some((start, title)) = section {
-        flush(start, Some(title), lines.len(), &lines, &mut chunks);
-    } else if !preamble.is_empty() {
-        let start = *preamble.first().unwrap();
-        flush(start, None, lines.len(), &lines, &mut chunks);
-    }
-
-    if chunks.is_empty() {
-        return sliding_window(source, file_path, "markdown", 120, 15);
-    }
-    chunks
-}
-
-/// Extract the text of an ATX heading line (`# Foo` → `"Foo"`).
-/// Returns None for non-heading lines or fenced-code-block lines.
-fn atx_heading(line: &str) -> Option<String> {
-    let stripped = line.trim_start_matches('#');
-    let hashes = line.len() - stripped.len();
-    if hashes == 0 || hashes > 6 {
-        return None;
-    }
-    // Must be followed by a space (or end of line for empty heading)
-    if !stripped.is_empty() && !stripped.starts_with(' ') {
-        return None;
-    }
-    Some(stripped.trim().to_owned())
-}
-
 /// Return the text of the comment node that immediately precedes `node`
 /// (skipping whitespace), if any.
-fn preceding_comment(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+pub(super) fn preceding_comment(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     let mut prev = node.prev_sibling()?;
     // skip over whitespace / newline tokens
     while prev.kind() == "\n"
