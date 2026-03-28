@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 
 use super::super::SearchArgs;
+use super::helpers::project_display_name;
 use super::ui::{print_results_text, spinner};
 use crate::{
     config::{Config, resolve_db},
@@ -219,6 +220,36 @@ pub(crate) fn resolve_project_and_deps(
     Ok((db_path, vec![]))
 }
 
+/// Annotate results with governing specs from the primary DB, and set
+/// `project_name` / `project_path` on dep results.
+fn annotate_dep_results(
+    results: &mut [SearchResult],
+    project_name: Option<String>,
+    project_path: String,
+) {
+    for r in results.iter_mut() {
+        r.project_name = project_name.clone();
+        r.project_path = Some(project_path.clone());
+    }
+}
+
+/// Populate `governing_specs` on each result using the primary DB.
+fn annotate_specs(all: &mut [SearchResult], primary_db_path: &std::path::Path) {
+    if let Ok(primary_db) = Database::open(primary_db_path) {
+        let file_paths: Vec<String> = all.iter().map(|r| r.file_path.clone()).collect();
+        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths)
+            && !all_specs.is_empty()
+        {
+            for result in all.iter_mut() {
+                if let Ok(per) = primary_db.specs_for_files(std::slice::from_ref(&result.file_path))
+                {
+                    result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
+                }
+            }
+        }
+    }
+}
+
 /// Search a primary DB and any dep projects, merge results by distance, return top `limit`.
 pub(crate) fn search_all_dbs(
     primary_db_path: &std::path::Path,
@@ -235,15 +266,9 @@ pub(crate) fn search_all_dbs(
         match Database::open(&dep.db_path) {
             Ok(dep_db) => match dep_db.search_similar(query_blob, fetch) {
                 Ok(mut dep_results) => {
-                    let name = dep
-                        .root_path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned());
+                    let name = project_display_name(&dep.root_path);
                     let root = dep.root_path.to_string_lossy().into_owned();
-                    for r in &mut dep_results {
-                        r.project_name = name.clone();
-                        r.project_path = Some(root.clone());
-                    }
+                    annotate_dep_results(&mut dep_results, Some(name), root);
                     all.append(&mut dep_results);
                 }
                 Err(e) => tracing::warn!("search failed on dep {}: {e}", dep.db_path.display()),
@@ -262,20 +287,7 @@ pub(crate) fn search_all_dbs(
     all.retain(|r| seen.insert((r.file_path.clone(), r.start_line, r.end_line)));
     all.truncate(limit);
 
-    // Annotate results with governing specs from the primary DB.
-    if let Ok(primary_db) = Database::open(primary_db_path) {
-        let file_paths: Vec<String> = all.iter().map(|r| r.file_path.clone()).collect();
-        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths)
-            && !all_specs.is_empty()
-        {
-            for result in &mut all {
-                if let Ok(per) = primary_db.specs_for_files(std::slice::from_ref(&result.file_path))
-                {
-                    result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
-                }
-            }
-        }
-    }
+    annotate_specs(&mut all, primary_db_path);
 
     Ok(all)
 }
@@ -301,15 +313,9 @@ pub(crate) fn search_all_dbs_hybrid(
         match Database::open(&dep.db_path) {
             Ok(dep_db) => match dep_db.search_hybrid(query, embedding, fetch) {
                 Ok(mut dep_results) => {
-                    let name = dep
-                        .root_path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned());
+                    let name = project_display_name(&dep.root_path);
                     let root = dep.root_path.to_string_lossy().into_owned();
-                    for r in &mut dep_results {
-                        r.project_name = name.clone();
-                        r.project_path = Some(root.clone());
-                    }
+                    annotate_dep_results(&mut dep_results, Some(name), root);
                     all.append(&mut dep_results);
                 }
                 Err(e) => {
@@ -330,20 +336,7 @@ pub(crate) fn search_all_dbs_hybrid(
     all.retain(|r| seen.insert((r.file_path.clone(), r.start_line, r.end_line)));
     all.truncate(limit);
 
-    // Annotate results with governing specs from the primary DB.
-    if let Ok(primary_db) = Database::open(primary_db_path) {
-        let file_paths: Vec<String> = all.iter().map(|r| r.file_path.clone()).collect();
-        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths)
-            && !all_specs.is_empty()
-        {
-            for result in &mut all {
-                if let Ok(per) = primary_db.specs_for_files(std::slice::from_ref(&result.file_path))
-                {
-                    result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
-                }
-            }
-        }
-    }
+    annotate_specs(&mut all, primary_db_path);
 
     Ok(all)
 }

@@ -2,11 +2,11 @@ use anyhow::{Context, Result};
 use std::io::Write;
 
 use super::super::AskArgs;
+use super::helpers::{embed_query, load_llm};
 use super::search::{maybe_warn_stale, resolve_project_and_deps, search_all_dbs};
 use super::ui::spinner;
 use crate::{
     config::{Config, resolve_db},
-    embeddings::{EmbeddingBackend as _, vec_to_blob},
     storage::{Database, open_memory_backend},
 };
 
@@ -27,9 +27,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
 
     sp.set_message("Searching for relevant context…");
-    let query_text = format!("task: question answering | query: {}", args.question);
-    let vecs = embedder.embed(&[&query_text]).await?;
-    let query_blob = vec_to_blob(vecs.first().context("no embedding")?);
+    let query_blob = embed_query(&embedder, "question answering", &args.question).await?;
 
     let mut results = search_all_dbs(
         &db_path,
@@ -230,14 +228,7 @@ If the answer cannot be determined from the provided context, say so clearly rat
     ];
 
     // ── Step 4: load LLM + stream answer ─────────────────────────────────────
-    let llm_model_name = cfg.llm_model.as_deref().unwrap_or("<not configured>");
-    let sp2 = spinner(format!("Loading LLM ({llm_model_name})…"));
-
-    let llm = crate::backends::ActiveLlm::load(&cfg)
-        .await
-        .with_context(|| format!("loading LLM '{llm_model_name}'"))?;
-
-    sp2.finish_and_clear();
+    let llm = load_llm(&cfg).await?;
     println!();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(128);

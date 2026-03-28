@@ -4,6 +4,7 @@ use super::super::{
     MemoryAddArgs, MemoryArchiveArgs, MemoryArgs, MemoryCommand, MemoryHarvestArgs, MemoryListArgs,
     MemoryPushArgs, MemorySearchArgs, MemoryShowArgs, MemorySupersededArgs,
 };
+use super::helpers::embed_query;
 use super::status::format_age;
 use super::ui::spinner;
 use crate::{
@@ -208,15 +209,13 @@ async fn memory_search(
     mem_path: &std::path::Path,
     cfg: &Config,
 ) -> Result<()> {
-    let query_text = format!("task: question answering | query: {}", args.query);
     let sp = spinner("Embedding query…");
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
         .await
         .context("loading embedding model")?;
-    let vecs = embedder.embed(&[&query_text]).await?;
+    let blob = embed_query(&embedder, "question answering", &args.query).await?;
     sp.finish_and_clear();
 
-    let blob = vec_to_blob(vecs.first().context("no embedding returned")?);
     let backend = open_memory_backend(cfg, mem_path)?;
     let notes = backend.search(&blob, args.limit).await?;
 

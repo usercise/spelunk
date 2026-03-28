@@ -1,6 +1,7 @@
 mod ask;
 mod check;
 mod graph;
+pub mod helpers;
 mod hooks;
 mod index;
 mod init;

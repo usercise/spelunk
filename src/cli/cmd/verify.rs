@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 
 use super::super::VerifyArgs;
+use super::helpers::load_embedder;
 use super::search::resolve_project_and_deps;
 use super::ui::spinner;
 use crate::{
@@ -24,10 +25,8 @@ pub async fn verify(args: VerifyArgs, cfg: Config) -> Result<()> {
     }
 
     // Build embedder and re-embed each chunk's current content.
+    let embedder = load_embedder(&cfg).await?;
     let sp = spinner(format!("Verifying {target}…"));
-    let embedder = crate::backends::ActiveEmbedder::load(&cfg)
-        .await
-        .context("loading embedder")?;
 
     let mut results: Vec<serde_json::Value> = Vec::new();
 
