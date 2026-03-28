@@ -474,8 +474,15 @@ async fn memory_harvest(
     use crate::llm::LlmBackend;
 
     // ── Step 1: collect commits via git log ───────────────────────────────────
+    // --branch passes the branch name directly to `git log <branch>` which
+    // traverses the full history. --git-range uses git's A..B range syntax.
+    let (git_ref, range_label) = match &args.branch {
+        Some(branch) => (branch.clone(), format!("full history of '{branch}'")),
+        None => (args.git_range.clone(), format!("'{}'", args.git_range)),
+    };
+
     let git_out = std::process::Command::new("git")
-        .args(["log", &args.git_range, "--format=%H%x00%s%x00%b%x00---"])
+        .args(["log", &git_ref, "--format=%H%x00%s%x00%b%x00---"])
         .output()
         .context("running git log (is git installed and are we in a git repo?)")?;
 
@@ -502,7 +509,7 @@ async fn memory_harvest(
         .collect();
 
     if commits.is_empty() {
-        println!("No commits found in range '{}'.", args.git_range);
+        println!("No commits found in {range_label}.");
         return Ok(());
     }
 
@@ -524,7 +531,7 @@ async fn memory_harvest(
     let num_batches = total.div_ceil(batch_size);
     println!(
         "Analysing {} new commit(s) in '{}' ({} batch(es) of up to {})…",
-        total, args.git_range, num_batches, batch_size
+        total, range_label, num_batches, batch_size
     );
 
     // ── Step 3: load LLM + embedder once, then process commits in batches ────

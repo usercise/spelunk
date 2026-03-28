@@ -362,9 +362,15 @@ pub struct MemoryShowArgs {
 
 #[derive(Args, Debug)]
 pub struct MemoryHarvestArgs {
-    /// Git revision range to analyse (default: HEAD~10..HEAD)
-    #[arg(long, default_value = "HEAD~10..HEAD")]
+    /// Git revision range to analyse, e.g. `HEAD~10..HEAD` or `v0.1.0..HEAD`.
+    /// Mutually exclusive with --branch.
+    #[arg(long, default_value = "HEAD~10..HEAD", conflicts_with = "branch")]
     pub git_range: String,
+
+    /// Harvest the entire commit history of a branch, e.g. `main` or `master`.
+    /// Mutually exclusive with --git-range.
+    #[arg(long, conflicts_with = "git_range")]
+    pub branch: Option<String>,
 
     /// Number of commits to send to the LLM in each request.
     /// Reduce this if you hit context-window limits (default: 20).
