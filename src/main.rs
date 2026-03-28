@@ -46,6 +46,7 @@ async fn main() -> Result<()> {
     let cfg = config::Config::load(cli.config.as_deref())?;
 
     match cli.command {
+        Command::Init(args) => cli::cmd::init(args, cfg).await,
         Command::Index(args) => cli::cmd::index(args, cfg).await,
         Command::Search(args) => cli::cmd::search(args, cfg).await,
         Command::Ask(args) => cli::cmd::ask(args, cfg).await,
