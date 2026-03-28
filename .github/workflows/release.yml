@@ -3,39 +3,43 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  publish:
-    name: Build & Release (${{ matrix.target }})
+  build:
+    name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: ca-linux-x86_64
+            cross: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: ca-macos-x86_64
+            cross: false
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: ca-macos-arm64
+            cross: false
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: Install stable toolchain
+      - name: Install Rust stable
         run: |
-          rustup update stable
-          rustup default stable
+          rustup toolchain install stable --no-self-update
           rustup target add ${{ matrix.target }}
 
-      - name: Cache
+      - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
           path: |
@@ -46,38 +50,111 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-${{ matrix.target }}-
 
-      - name: Build release
+      - name: Install cross (Linux aarch64 only)
+        if: matrix.cross
+        run: cargo install cross --locked
+
+      - name: Build release binaries (native)
+        if: "!matrix.cross"
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package artifact
+      - name: Build release binaries (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Strip binaries (native Linux/macOS x86_64)
+        if: "!matrix.cross && matrix.target != 'aarch64-apple-darwin'"
+        run: |
+          strip target/${{ matrix.target }}/release/spelunk
+          strip target/${{ matrix.target }}/release/spelunk-server
+
+      - name: Package tarball
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release
-          tar -czf ../../../${{ matrix.artifact_name }}.tar.gz ca
-          cd ../../../
+          VERSION="${{ github.ref_name }}"
+          TARGET="${{ matrix.target }}"
+          ARCHIVE="spelunk-${VERSION}-${TARGET}.tar.gz"
+          tar -czf "${ARCHIVE}" \
+            -C "target/${TARGET}/release" \
+            spelunk spelunk-server
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.tar.gz
+          name: spelunk-${{ github.ref_name }}-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
 
-  create-release:
+  universal-macos:
+    name: Build (universal-apple-darwin)
+    needs: build
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spelunk-${{ github.ref_name }}-x86_64-apple-darwin
+          path: x86_64
+
+      - name: Download aarch64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spelunk-${{ github.ref_name }}-aarch64-apple-darwin
+          path: aarch64
+
+      - name: Extract both tarballs
+        run: |
+          tar -xzf x86_64/spelunk-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz -C x86_64
+          tar -xzf aarch64/spelunk-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz -C aarch64
+
+      - name: Create universal binaries with lipo
+        run: |
+          mkdir -p universal
+          lipo -create -output universal/spelunk \
+            x86_64/spelunk aarch64/spelunk
+          lipo -create -output universal/spelunk-server \
+            x86_64/spelunk-server aarch64/spelunk-server
+
+      - name: Package universal tarball
+        run: |
+          VERSION="${{ github.ref_name }}"
+          ARCHIVE="spelunk-${VERSION}-universal-apple-darwin.tar.gz"
+          tar -czf "${ARCHIVE}" -C universal spelunk spelunk-server
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spelunk-${{ github.ref_name }}-universal-apple-darwin
+          path: ${{ env.ARCHIVE }}
+
+  release:
     name: Create GitHub Release
-    needs: publish
+    needs: [build, universal-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5 # Needed for gh CLI to have context if necessary
-
-      - name: Download release artifacts
-        uses: actions/download-artifact@v5
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
-      - name: Create Release
+      - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create ${{ github.ref_name }} artifacts/**/*.tar.gz --generate-notes
+          PRERELEASE=""
+          if echo "${{ github.ref_name }}" | grep -qE '\-(rc|beta|alpha)'; then
+            PRERELEASE="--prerelease"
+          fi
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            $PRERELEASE \
+            artifacts/*.tar.gz
