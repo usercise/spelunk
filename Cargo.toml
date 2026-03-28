@@ -3,9 +3,12 @@ name = "spelunk"
 version = "0.1.0"
 edition = "2024"
 default-run = "spelunk"
-description = "Local code intelligence via RAG — indexed with tree-sitter, stored in SQLite"
+description = "Local context engine for AI coding agents — tree-sitter AST chunking, semantic search, code graph"
 license = "MIT"
 repository = "https://github.com/usercise/spelunk"
+homepage = "https://github.com/usercise/spelunk"
+keywords = ["code-search", "semantic-search", "tree-sitter", "ai-agents", "embeddings"]
+categories = ["command-line-utilities", "development-tools", "text-processing"]
 
 [lib]
 name = "spelunk"
