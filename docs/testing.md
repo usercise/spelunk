@@ -47,8 +47,8 @@ External HTTP is mocked with `wiremock`. No real LM Studio or server needed.
 
 | Area | What to test |
 |------|-------------|
-| `src/embeddings/lmstudio.rs` | Successful embed (verify `<eos>` appended, correct request shape); batch handling; 500 / timeout error handling |
-| `src/llm/lmstudio.rs` | SSE stream parsing; complete message assembly; error mid-stream |
+| `src/embeddings/openai_compat.rs` | Successful embed (verify `<eos>` appended, correct request shape); batch handling; 500 / timeout error handling |
+| `src/llm/openai_compat.rs` | SSE stream parsing; complete message assembly; error mid-stream |
 | `src/storage/remote.rs` | `add` / `search` / `list` / `get` / `archive` / `supersede`; auth header sent; 404 on missing note |
 | `src/server/mod.rs` | Auth middleware: valid token passes, invalid token → 401, no key configured → passes |
 
@@ -63,7 +63,7 @@ to drive the router in-process without binding a port.
 
 ### End-to-end tests (optional, not in CI by default)
 
-Require LM Studio running at `http://127.0.0.1:1234`. Gate behind a
+Require an OpenAI-compatible server running at `http://127.0.0.1:1234`. Gate behind a
 `#[cfg(feature = "e2e")]` feature flag or a `RUN_E2E=1` env var guard so they
 never run in CI unless explicitly enabled.
 
@@ -79,7 +79,7 @@ never run in CI unless explicitly enabled.
 ```toml
 [dev-dependencies]
 tempfile        = "3"      # temp dirs/files for DB isolation
-wiremock        = "0.6"    # mock HTTP server for LM Studio + remote memory
+wiremock        = "0.6"    # mock HTTP server for OpenAI-compatible API + remote memory
 tokio-test      = "0.4"    # async test helpers
 serial_test     = "3"      # serialize tests that share global state (sqlite-vec extension)
 pretty_assertions = "1"    # coloured diffs on assertion failures
@@ -175,7 +175,7 @@ Start with the cheapest, highest-confidence tests and work outward:
 | Area | Reason |
 |------|--------|
 | Interactive `$EDITOR` (memory add without --body) | Requires a TTY; test manually |
-| Real LM Studio quality | Model output is non-deterministic; use E2E heuristics at best |
+| Real inference server output quality | Model output is non-deterministic; use E2E heuristics at best |
 | sqlite-vec KNN ranking precision | Depends on embedding geometry; covered by integration smoke tests |
 | CLI binary output / argument parsing | clap handles most of this; add `assert_cmd` tests only if custom validation is added |
 | Concurrent SQLite writes under load | sqlite WAL handles this; benchmark separately if a bottleneck |

@@ -16,12 +16,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 Rust 1.80 or later is required (spelunk uses the 2024 edition).
 
-### LM Studio
+### Inference server
 
-spelunk calls the LM Studio local server for embeddings and chat. Download
-[LM Studio](https://lmstudio.ai/) and load an embedding model and a chat model
-before running any commands. See [Getting Started](getting-started.md#2-set-up-lm-studio)
-for model recommendations.
+spelunk calls any OpenAI-compatible inference server for embeddings and chat.
+[LM Studio](https://lmstudio.ai/) is the recommended option for local use —
+download it and load an embedding model before running any commands.
+See [Getting Started](getting-started.md#2-set-up-an-inference-server)
+for model recommendations and alternative servers (Ollama, vLLM).
 
 ## Build
 

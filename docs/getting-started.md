@@ -34,14 +34,18 @@ spelunk --version
 
 > Building from source? See [Building](building.md).
 
-## 2. Set up LM Studio
+## 2. Set up an inference server
 
-spelunk runs inference locally via [LM Studio](https://lmstudio.ai/). Download it and load two models:
+spelunk works with any **OpenAI-compatible** inference server. The easiest options:
+
+- **[LM Studio](https://lmstudio.ai/)** — desktop app for macOS/Windows/Linux; enable the local server (default port `1234`)
+- **[Ollama](https://ollama.com/)** — `ollama serve` (default port `11434`)
+- **vLLM / any OpenAI proxy** — point `api_base_url` at your endpoint
+
+Load two models in your server of choice:
 
 1. **Embedding model** — recommended: `google/embeddinggemma-300m-qat` (fast, 300M params, low VRAM)
-2. **Chat model** — any instruction-tuned model; `google/gemma-3-4b-it` is a good starting point on 8 GB RAM
-
-Start the LM Studio local server (the toggle in the top toolbar, default port `1234`). spelunk will connect automatically.
+2. **Chat model** — any instruction-tuned model; `google/gemma-3-4b-it` is a good starting point on 8 GB RAM (optional — only needed for `memory harvest` and `plan create`)
 
 ## 3. Configuration
 
@@ -50,10 +54,12 @@ Start the LM Studio local server (the toggle in the top toolbar, default port `1
 ```toml
 # ~/.config/spelunk/config.toml
 
-# LM Studio server address
-lmstudio_base_url = "http://127.0.0.1:1234"
+# Base URL for your OpenAI-compatible server
+# LM Studio default:  http://127.0.0.1:1234
+# Ollama default:     http://127.0.0.1:11434
+api_base_url = "http://127.0.0.1:1234"
 
-# Must match the "API Identifier" shown in LM Studio for each model
+# Must match the model's API identifier on your server
 embedding_model = "text-embedding-embeddinggemma-300m-qat"
 
 # Optional: set a chat model to enable `memory harvest` and `plan create`
