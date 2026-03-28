@@ -473,8 +473,15 @@ async fn memory_harvest(
     use crate::llm::LlmBackend;
 
     // ── Step 1: collect commits via git log ───────────────────────────────────
+    // --branch passes the branch name directly to `git log <branch>` which
+    // traverses the full history. --git-range uses git's A..B range syntax.
+    let (git_ref, range_label) = match &args.branch {
+        Some(branch) => (branch.clone(), format!("full history of '{branch}'")),
+        None => (args.git_range.clone(), format!("'{}'", args.git_range)),
+    };
+
     let git_out = std::process::Command::new("git")
-        .args(["log", &args.git_range, "--format=%H%x00%s%x00%b%x00---"])
+        .args(["log", &git_ref, "--format=%H%x00%s%x00%b%x00---"])
         .output()
         .context("running git log (is git installed and are we in a git repo?)")?;
 
@@ -501,7 +508,7 @@ async fn memory_harvest(
         .collect();
 
     if commits.is_empty() {
-        println!("No commits found in range '{}'.", args.git_range);
+        println!("No commits found in {range_label}.");
         return Ok(());
     }
 
@@ -518,41 +525,17 @@ async fn memory_harvest(
         return Ok(());
     }
 
+    let batch_size = args.batch_size.max(1);
+    let total = new_commits.len();
+    let num_batches = total.div_ceil(batch_size);
     println!(
-        "Analysing {} new commit(s) in '{}'…",
-        new_commits.len(),
-        args.git_range
+        "Analysing {} new commit(s) in '{}' ({} batch(es) of up to {})…",
+        total, range_label, num_batches, batch_size
     );
 
-    // ── Step 3: ask LLM to classify the commits ───────────────────────────────
-    let commit_list = new_commits
-        .iter()
-        .map(|(sha, subject, body)| {
-            if body.is_empty() {
-                format!("COMMIT {sha}\n{subject}")
-            } else {
-                format!("COMMIT {sha}\n{subject}\n\n{body}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n---\n\n");
-
+    // ── Step 3: load LLM + embedder once, then process commits in batches ────
     let system = "You help build a project memory store from git history. \
         Respond ONLY with valid JSON matching the provided schema. No other text.";
-
-    let user = format!(
-        "Review these git commit messages. Identify commits that represent:\n\
-         - \"decision\": A significant architectural or design choice and reasoning\n\
-         - \"context\": Background about requirements, constraints, or project goals\n\
-         - \"requirement\": A hard constraint the codebase must satisfy\n\
-         - \"note\": A surprising or non-obvious discovery\n\n\
-         Skip routine commits (version bumps, typo fixes, dependency updates \
-         unless they reveal a constraint, formatting).\n\n\
-         For each significant commit write: sha (first 8 chars), kind, title \
-         (one sentence, past tense for decisions), body (include why, \
-         what alternatives were considered), tags (2-4 keywords).\n\n\
-         Commits:\n{commit_list}"
-    );
 
     let schema = serde_json::json!({
         "name": "harvest_result",
@@ -587,85 +570,126 @@ async fn memory_harvest(
         .context("loading LLM")?;
     sp.finish_and_clear();
 
-    let messages = vec![
-        crate::llm::Message::system(system),
-        crate::llm::Message::user(user),
-    ];
-
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(256);
-    let generate = llm.generate(&messages, 2048, tx, Some(schema));
-    let collect = async move {
-        let mut buf = String::new();
-        while let Some(t) = rx.recv().await {
-            buf.push_str(&t);
-        }
-        buf
-    };
-    let (_, raw_json) =
-        tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
-    let raw_json = crate::utils::strip_ansi(&raw_json);
-
-    // ── Step 4: parse entries, embed, store ───────────────────────────────────
-    let parsed: serde_json::Value = serde_json::from_str(&raw_json)
-        .with_context(|| format!("parsing LLM harvest response:\n{raw_json}"))?;
-
-    let entries = parsed["entries"]
-        .as_array()
-        .map(|a| a.as_slice())
-        .unwrap_or(&[]);
-
-    if entries.is_empty() {
-        println!("No significant commits found in this range.");
-        return Ok(());
-    }
-
-    println!("Embedding {} entries…", entries.len());
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
         .await
         .context("loading embedding model")?;
 
     let mut stored = 0usize;
-    for entry in entries {
-        let sha = entry["sha"].as_str().unwrap_or("").to_string();
-        let kind = entry["kind"].as_str().unwrap_or("note");
-        let title = entry["title"].as_str().unwrap_or("").to_string();
-        let body = entry["body"].as_str().unwrap_or("").to_string();
-        let tags_val = entry["tags"].as_array();
 
-        let mut tags: Vec<String> = tags_val
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
-        // Store the full SHA as a tag for dedup on future harvests.
-        // Find the full SHA from our commit list.
-        let full_sha = new_commits
+    // ── Step 4: process each batch ────────────────────────────────────────────
+    for (batch_idx, batch) in new_commits.chunks(batch_size).enumerate() {
+        if num_batches > 1 {
+            println!(
+                "\nBatch {}/{} ({} commits)…",
+                batch_idx + 1,
+                num_batches,
+                batch.len()
+            );
+        }
+
+        let commit_list = batch
             .iter()
-            .find(|(s, _, _)| s.starts_with(&sha))
-            .map(|(s, _, _)| s.clone())
-            .unwrap_or(sha.clone());
-        tags.push(format!("git:{full_sha}"));
-
-        let embed_text = format!("title: {title} | text: {body}");
-        let vecs = embedder.embed(&[&embed_text]).await?;
-        let embedding = vecs.first().map(|v| vec_to_blob(v));
-
-        let note_id = backend
-            .add(NoteInput {
-                kind: kind.to_string(),
-                title: title.clone(),
-                body: body.clone(),
-                tags: tags.clone(),
-                linked_files: vec![],
-                embedding,
+            .map(|(sha, subject, body)| {
+                if body.is_empty() {
+                    format!("COMMIT {sha}\n{subject}")
+                } else {
+                    format!("COMMIT {sha}\n{subject}\n\n{body}")
+                }
             })
-            .await?;
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n");
 
-        println!("  + [{kind}] #{note_id}: {title}");
-        stored += 1;
-    }
+        let user = format!(
+            "Review these git commit messages. Identify commits that represent:\n\
+             - \"decision\": A significant architectural or design choice and reasoning\n\
+             - \"context\": Background about requirements, constraints, or project goals\n\
+             - \"requirement\": A hard constraint the codebase must satisfy\n\
+             - \"note\": A surprising or non-obvious discovery\n\n\
+             Skip routine commits (version bumps, typo fixes, dependency updates \
+             unless they reveal a constraint, formatting).\n\n\
+             For each significant commit write: sha (first 8 chars), kind, title \
+             (one sentence, past tense for decisions), body (include why, \
+             what alternatives were considered), tags (2-4 keywords).\n\n\
+             Commits:\n{commit_list}"
+        );
+
+        let messages = vec![
+            crate::llm::Message::system(system),
+            crate::llm::Message::user(user),
+        ];
+
+        // Scale max_tokens with batch size so larger batches get more room.
+        let max_tokens = (batch.len() * 150).clamp(512, 4096);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(256);
+        let generate = llm.generate(&messages, max_tokens, tx, Some(schema.clone()));
+        let collect = async move {
+            let mut buf = String::new();
+            while let Some(t) = rx.recv().await {
+                buf.push_str(&t);
+            }
+            buf
+        };
+        let (_, raw_json) =
+            tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+        let raw_json = crate::utils::strip_ansi(&raw_json);
+
+        let parsed: serde_json::Value = serde_json::from_str(&raw_json).with_context(|| {
+            format!(
+                "parsing LLM harvest response (batch {}):\n{raw_json}",
+                batch_idx + 1
+            )
+        })?;
+
+        let entries = parsed["entries"].as_array().cloned().unwrap_or_default();
+
+        if entries.is_empty() {
+            println!("  No significant commits in this batch.");
+            continue;
+        }
+
+        println!("Embedding {} entries…", entries.len());
+        for entry in &entries {
+            let sha = entry["sha"].as_str().unwrap_or("").to_string();
+            let kind = entry["kind"].as_str().unwrap_or("note");
+            let title = entry["title"].as_str().unwrap_or("").to_string();
+            let body = entry["body"].as_str().unwrap_or("").to_string();
+            let tags_val = entry["tags"].as_array();
+
+            let mut tags: Vec<String> = tags_val
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            // Store the full SHA as a tag for dedup on future harvests.
+            let full_sha = batch
+                .iter()
+                .find(|(s, _, _)| s.starts_with(&sha))
+                .map(|(s, _, _)| s.clone())
+                .unwrap_or(sha.clone());
+            tags.push(format!("git:{full_sha}"));
+
+            let embed_text = format!("title: {title} | text: {body}");
+            let vecs = embedder.embed(&[&embed_text]).await?;
+            let embedding = vecs.first().map(|v| vec_to_blob(v));
+
+            let note_id = backend
+                .add(NoteInput {
+                    kind: kind.to_string(),
+                    title: title.clone(),
+                    body: body.clone(),
+                    tags: tags.clone(),
+                    linked_files: vec![],
+                    embedding,
+                })
+                .await?;
+
+            println!("  + [{kind}] #{note_id}: {title}");
+            stored += 1;
+        }
+    } // end batch loop
 
     let skipped = new_commits.len().saturating_sub(stored);
     println!("\nStored {stored} memory entries. Skipped {skipped} routine commits.");
