@@ -87,6 +87,8 @@ pub async fn init(args: InitArgs, cfg: Config) -> Result<()> {
             batch_size: 32,
             force: false,
             recount: false,
+            no_summaries: true,
+            summary_batch_size: 10,
         };
         super::index::index(index_args, cfg).await?;
 

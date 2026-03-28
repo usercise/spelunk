@@ -188,6 +188,7 @@ pub(super) fn walk_node(
             content,
             docstring,
             parent_scope: parent_scope.map(str::to_owned),
+            summary: None,
         });
 
         // Recurse into children with the updated scope

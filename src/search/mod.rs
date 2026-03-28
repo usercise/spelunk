@@ -34,4 +34,7 @@ pub struct SearchResult {
     /// Root path of the linked project this result came from (None = primary project).
     #[serde(default)]
     pub project_path: Option<String>,
+    /// LLM-generated one-sentence summary of this chunk (None if not yet generated).
+    #[serde(default)]
+    pub summary: Option<String>,
 }

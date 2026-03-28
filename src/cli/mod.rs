@@ -86,6 +86,14 @@ pub struct IndexArgs {
     /// Backfill token_count for all existing chunks and exit (useful for upgrading old indexes)
     #[arg(long)]
     pub recount: bool,
+
+    /// Skip LLM summary generation even when llm_model is configured
+    #[arg(long)]
+    pub no_summaries: bool,
+
+    /// Number of chunks to send to the LLM per summary request (default: 10)
+    #[arg(long, default_value = "10")]
+    pub summary_batch_size: usize,
 }
 
 #[derive(Args, Debug)]
