@@ -30,6 +30,9 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &[
     // binary document formats (docparser, no tree-sitter)
     "docx",
     "spreadsheet",
+    // PDF (optional feature)
+    #[cfg(feature = "pdf")]
+    "pdf",
 ];
 
 /// Detect language from file extension.
@@ -51,6 +54,8 @@ pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
         "tf" | "hcl" => Some("hcl"),
         "sql" | "sequel" => Some("sql"),
         "proto" => Some("proto"),
+        #[cfg(feature = "pdf")]
+        "pdf" => Some("pdf"),
         _ => None,
     }
 }

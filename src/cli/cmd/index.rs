@@ -169,6 +169,76 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
             continue;
         }
 
+        // ── PDF documents (feature-gated) ─────────────────────────────────────
+        #[cfg(feature = "pdf")]
+        if detect_language(path) == Some("pdf") {
+            let bytes = match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("read error for {path_str}: {e}");
+                    parse_bar.inc(1);
+                    continue;
+                }
+            };
+            let hash = format!("{}", blake3::hash(&bytes));
+            if !args.force
+                && let Some(existing) = db.file_hash(&path_str)?
+                && existing == hash
+            {
+                skipped += 1;
+                parse_bar.inc(1);
+                continue;
+            }
+            match crate::indexer::pdf::extract_pdf_text(path) {
+                Ok(pages) => {
+                    let file_id = db.upsert_file(&path_str, Some("pdf"), &hash)?;
+                    db.delete_embeddings_for_file(file_id)?;
+                    db.delete_chunks_for_file(file_id)?;
+                    for (page_num, text) in pages {
+                        if crate::indexer::secrets::contains_secret(&text) {
+                            tracing::warn!(
+                                "skipping PDF page {page_num} in {path_str} (possible secret detected)",
+                            );
+                            continue;
+                        }
+                        let chunk = crate::indexer::Chunk {
+                            file_path: path_str.to_string(),
+                            language: "pdf".to_string(),
+                            kind: crate::indexer::ChunkKind::Section,
+                            name: Some(format!("page {page_num}")),
+                            start_line: page_num as usize,
+                            end_line: page_num as usize,
+                            content: text,
+                            docstring: None,
+                            parent_scope: None,
+                        };
+                        let metadata = serde_json::json!({
+                            "docstring": chunk.docstring,
+                            "parent_scope": chunk.parent_scope,
+                        });
+                        let tc = estimate_tokens(&chunk.content);
+                        let chunk_id = db.insert_chunk(
+                            file_id,
+                            &chunk.kind.to_string(),
+                            chunk.name.as_deref(),
+                            chunk.start_line,
+                            chunk.end_line,
+                            &chunk.content,
+                            Some(&metadata.to_string()),
+                            tc,
+                        )?;
+                        chunk_ids_and_texts.push((chunk_id, chunk.embedding_text()));
+                    }
+                    indexed += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("skipping PDF {}: {e}", path.display());
+                }
+            }
+            parse_bar.inc(1);
+            continue;
+        }
+
         // ── Text / code formats ───────────────────────────────────────────────
         let language = detect_language(path)
             .or_else(|| detect_text_language(path))

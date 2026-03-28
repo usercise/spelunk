@@ -3,6 +3,8 @@ pub mod docparser;
 pub mod graph;
 pub mod pagerank;
 pub mod parser;
+#[cfg(feature = "pdf")]
+pub mod pdf;
 pub mod secrets;
 
 #[allow(unused_imports)]

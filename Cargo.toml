@@ -25,6 +25,7 @@ path = "src/bin/spelunk_server.rs"
 [features]
 default = ["backend-lmstudio"]
 backend-lmstudio = ["dep:futures-util"]
+pdf = ["dep:lopdf"]
 
 [dependencies]
 
@@ -92,6 +93,7 @@ blake3 = "1"
 # Document format parsers
 docx-rs  = "0.4"
 calamine = { version = "0.24", features = ["dates"] }
+lopdf = { version = "0.34", optional = true }
 
 # Filesystem traversal + .gitignore support
 ignore = "0.4"
