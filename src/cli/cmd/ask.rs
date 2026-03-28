@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::io::Write;
 
 use super::super::AskArgs;
-use super::search::{resolve_project_and_deps, search_all_dbs};
+use super::search::{maybe_warn_stale, resolve_project_and_deps, search_all_dbs};
 use super::ui::spinner;
 use crate::{
     config::{Config, resolve_db},
@@ -14,6 +14,10 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     use crate::llm::LlmBackend;
 
     let (db_path, dep_dbs) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
+
+    if !args.no_stale_check {
+        maybe_warn_stale(&db_path);
+    }
 
     // ── Step 1: embed the question + search ──────────────────────────────────
     let sp = spinner("Loading embedding model…");

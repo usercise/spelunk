@@ -93,6 +93,10 @@ pub struct SearchArgs {
     /// Path to the SQLite database (overrides config)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
+
+    /// Skip the lightweight staleness probe (suppress stale-index warning)
+    #[arg(long)]
+    pub no_stale_check: bool,
 }
 
 #[derive(Args, Debug)]
@@ -111,6 +115,10 @@ pub struct AskArgs {
     /// Path to the SQLite database (overrides config)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
+
+    /// Skip the lightweight staleness probe (suppress stale-index warning)
+    #[arg(long)]
+    pub no_stale_check: bool,
 }
 
 #[derive(Args, Debug)]
@@ -129,6 +137,10 @@ pub struct GraphArgs {
     /// Path to the SQLite database (overrides config)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
+
+    /// Skip the lightweight staleness probe (suppress stale-index warning)
+    #[arg(long)]
+    pub no_stale_check: bool,
 }
 
 #[derive(Args, Debug)]
@@ -169,6 +181,14 @@ pub struct CheckArgs {
     /// Path to the SQLite database (overrides auto-detect)
     #[arg(short, long)]
     pub db: Option<PathBuf>,
+
+    /// List the stale file paths (one per line) in addition to the summary
+    #[arg(long)]
+    pub files: bool,
+
+    /// Machine-readable output: `stale=N total=M last_indexed=T`
+    #[arg(long)]
+    pub porcelain: bool,
 }
 
 #[derive(Args, Debug)]
