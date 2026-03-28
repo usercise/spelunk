@@ -2365,12 +2365,13 @@ fn search_all_dbs(
     // Annotate results with governing specs from the primary DB.
     if let Ok(primary_db) = Database::open(primary_db_path) {
         let file_paths: Vec<String> = all.iter().map(|r| r.file_path.clone()).collect();
-        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths) {
-            if !all_specs.is_empty() {
-                for result in &mut all {
-                    if let Ok(per) = primary_db.specs_for_files(&[result.file_path.clone()]) {
-                        result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
-                    }
+        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths)
+            && !all_specs.is_empty()
+        {
+            for result in &mut all {
+                if let Ok(per) = primary_db.specs_for_files(std::slice::from_ref(&result.file_path))
+                {
+                    result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
                 }
             }
         }
