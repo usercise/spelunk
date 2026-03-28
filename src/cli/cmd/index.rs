@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use futures_util::StreamExt as _;
 use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar};
 
@@ -284,18 +285,51 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         ProgressBar::hidden()
     };
 
-    for batch in chunk_ids_and_texts.chunks(batch_size) {
-        let texts: Vec<&str> = batch.iter().map(|(_, t)| t.as_str()).collect();
-        let embeddings = embedder
-            .embed(&texts)
-            .await
-            .context("generating embeddings")?;
+    // Embed each chunk concurrently, keeping up to `concurrency` requests
+    // in-flight at the same time. Each future carries the chunk_id so results
+    // can be stored in the correct order after all tasks finish.
+    let concurrency = batch_size;
 
-        for ((chunk_id, _), embedding) in batch.iter().zip(embeddings.iter()) {
-            let blob = vec_to_blob(embedding);
-            db.insert_embedding(*chunk_id, &blob)?;
+    let results: Vec<(i64, Vec<f32>)> = futures_util::stream::iter(
+        chunk_ids_and_texts
+            .iter()
+            .map(|(chunk_id, text)| (*chunk_id, text.clone())),
+    )
+    .map(|(chunk_id, text)| {
+        let embedder = &embedder;
+        let embed_bar = &embed_bar;
+        async move {
+            // Simple exponential-backoff retry for transient 429 / server errors.
+            let mut delay_ms = 100u64;
+            let mut last_err: anyhow::Error = anyhow::anyhow!("unreachable");
+            for attempt in 0..3u32 {
+                match embedder.embed(&[text.as_str()]).await {
+                    Ok(mut vecs) => {
+                        embed_bar.inc(1);
+                        return Ok::<(i64, Vec<f32>), anyhow::Error>((chunk_id, vecs.remove(0)));
+                    }
+                    Err(e) => {
+                        last_err = e;
+                        if attempt < 2 {
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            delay_ms *= 2;
+                        }
+                    }
+                }
+            }
+            Err(last_err.context("generating embedding (3 attempts failed)"))
         }
-        embed_bar.inc(batch.len() as u64);
+    })
+    .buffer_unordered(concurrency)
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .collect::<Result<Vec<_>>>()?;
+
+    // Write embeddings serially — rusqlite connections are not Send.
+    for (chunk_id, embedding) in results {
+        let blob = vec_to_blob(&embedding);
+        db.insert_embedding(chunk_id, &blob)?;
     }
 
     embed_bar.finish_with_message(format!("{total_chunks} chunks embedded"));
