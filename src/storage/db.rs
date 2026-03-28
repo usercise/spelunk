@@ -457,6 +457,69 @@ impl Database {
     }
 
     // -----------------------------------------------------------------------
+    // Staleness probe
+    // -----------------------------------------------------------------------
+
+    /// Sample up to `n` random files and compare their on-disk blake3 hashes
+    /// against the stored hashes to estimate index staleness.
+    ///
+    /// Designed to be fast (<10 ms for n=20): only a small random sample is
+    /// hashed, not the entire index.
+    pub fn sample_staleness_check(&self, n: usize) -> Result<StalenessReport> {
+        let last_indexed_at: Option<i64> = self
+            .conn
+            .query_row("SELECT MAX(indexed_at) FROM files", [], |r| r.get(0))
+            .ok()
+            .flatten();
+
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, path, hash FROM files ORDER BY RANDOM() LIMIT ?1")?;
+        let rows = stmt.query_map(rusqlite::params![n as i64], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let sampled_rows: Vec<(i64, String, String)> =
+            rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        let sampled = sampled_rows.len();
+
+        let mut stale = 0usize;
+        let mut stale_paths: Vec<String> = Vec::new();
+
+        for (_id, path, stored_hash) in &sampled_rows {
+            let is_stale = match std::fs::read(path) {
+                Ok(bytes) => {
+                    let current = format!("{}", blake3::hash(&bytes));
+                    current != *stored_hash
+                }
+                Err(_) => true, // missing file counts as stale
+            };
+            if is_stale {
+                stale += 1;
+                stale_paths.push(path.clone());
+            }
+        }
+
+        let estimated_stale_pct = if sampled == 0 {
+            0.0
+        } else {
+            stale as f32 / sampled as f32 * 100.0
+        };
+
+        Ok(StalenessReport {
+            sampled,
+            stale,
+            stale_paths,
+            estimated_stale_pct,
+            last_indexed_at,
+        })
+    }
+
+    // -----------------------------------------------------------------------
     // Stats
     // -----------------------------------------------------------------------
 
@@ -764,4 +827,22 @@ pub struct DriftCandidate {
     pub days_behind: i64,
     /// Number of distinct files that call/import symbols from this file.
     pub caller_count: i64,
+}
+
+/// Result of a lightweight random-sample staleness probe.
+#[derive(Debug, serde::Serialize)]
+pub struct StalenessReport {
+    /// Number of files sampled.
+    pub sampled: usize,
+    /// Number of sampled files whose on-disk hash differs from the stored hash
+    /// (or that are missing from disk entirely).
+    pub stale: usize,
+    /// Paths of the stale files in the sample.
+    pub stale_paths: Vec<String>,
+    /// Estimated percentage of files in the full index that are stale,
+    /// extrapolated from the sample (0–100).
+    pub estimated_stale_pct: f32,
+    /// Unix timestamp of the most recently indexed file, or `None` if the
+    /// index is empty.
+    pub last_indexed_at: Option<i64>,
 }

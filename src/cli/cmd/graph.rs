@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use super::super::GraphArgs;
+use super::search::maybe_warn_stale;
 use crate::{
     config::{Config, resolve_db},
     storage::Database,
@@ -13,6 +14,10 @@ pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
             "No index found (checked current directory and parents).\n\
              Run `spelunk index <path>` inside your project first."
         );
+    }
+
+    if !args.no_stale_check {
+        maybe_warn_stale(&db_path);
     }
 
     let db = Database::open(&db_path)?;

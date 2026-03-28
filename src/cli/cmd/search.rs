@@ -13,6 +13,10 @@ use crate::{
 pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     let (db_path, dep_dbs) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
 
+    if !args.no_stale_check {
+        maybe_warn_stale(&db_path);
+    }
+
     let sp = spinner("Loading model…");
 
     let embedder = crate::backends::ActiveEmbedder::load(&cfg)
@@ -66,6 +70,24 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Emit a staleness warning to stderr if the index appears out of date.
+/// Silently skips if the DB doesn't exist or the probe returns an error.
+pub(crate) fn maybe_warn_stale(db_path: &std::path::Path) {
+    if !db_path.exists() {
+        return;
+    }
+    if let Ok(db) = Database::open(db_path)
+        && let Ok(report) = db.sample_staleness_check(20)
+        && report.stale > 0
+    {
+        eprintln!(
+            "warning: index may be stale ({}/{} sampled files changed). \
+             Run `spelunk index .` to refresh.",
+            report.stale, report.sampled
+        );
+    }
 }
 
 /// Resolve the primary DB path and any dep DB paths via the registry.

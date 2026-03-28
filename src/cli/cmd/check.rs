@@ -38,8 +38,22 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
 
     let fmt = crate::utils::effective_format(&args.format);
     let fresh = stale.is_empty();
+    let last_indexed: Option<i64> = db.stats().ok().and_then(|s| s.last_indexed);
 
-    if fmt == "json" {
+    if args.porcelain {
+        let last_ts = last_indexed.unwrap_or(0);
+        println!(
+            "stale={} total={} last_indexed={}",
+            stale.len(),
+            stored.len(),
+            last_ts
+        );
+        if args.files {
+            for p in &stale {
+                println!("{p}");
+            }
+        }
+    } else if fmt == "json" {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
@@ -47,6 +61,7 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
                 "indexed_files": stored.len(),
                 "stale_files": stale.len(),
                 "stale": stale,
+                "last_indexed_at": last_indexed,
             }))?
         );
     } else if fresh {
