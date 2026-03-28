@@ -63,6 +63,10 @@ pub(crate) fn print_results_text(results: &[crate::search::SearchResult]) {
             suffix,
         );
 
+        if !r.governing_specs.is_empty() {
+            println!("    \x1b[2mSpec: {}\x1b[0m", r.governing_specs.join(", "));
+        }
+
         let lines: Vec<&str> = r.content.lines().collect();
         let preview_lines = lines.len().min(6);
         for line in &lines[..preview_lines] {

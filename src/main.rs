@@ -61,5 +61,6 @@ async fn main() -> Result<()> {
         Command::Memory(args) => cli::cmd::memory(args, cfg).await,
         Command::Hooks(args) => cli::cmd::hooks(args),
         Command::Plan(args) => cli::cmd::plan(args, cfg).await,
+        Command::Spec(args) => cli::cmd::spec(args, cfg),
     }
 }

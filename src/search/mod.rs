@@ -20,4 +20,8 @@ pub struct SearchResult {
     /// vector similarity — only set when `--graph` is used with `search`.
     #[serde(default)]
     pub from_graph: bool,
+    /// Spec files that govern the file this result came from (via spec_links).
+    /// Empty when no specs are linked to the result's file path.
+    #[serde(default)]
+    pub governing_specs: Vec<String>,
 }
