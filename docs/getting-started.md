@@ -81,30 +81,71 @@ batch_size = 32
 
 You can also override the database path per-command with `--db <path>`.
 
-## 4. Index your first project
+## 4. Initialise your project
+
+The quickest way to get started is `spelunk init`. Run it from inside your project directory:
+
+```bash
+cd /path/to/your/project
+spelunk init
+```
+
+This single command:
+1. Registers the project in the global spelunk registry
+2. Walks the file tree (respecting `.gitignore`), parses every source file, embeds each chunk, and stores everything in SQLite
+3. Prints a summary with file/chunk counts, the DB path, and suggested next commands
+
+```
+spelunk initialised for my-project
+
+  Index:   142 files, 1 840 chunks
+  DB:      ~/.local/share/spelunk/my-project.db
+  Hook:    not installed — run `spelunk hooks install` to add
+
+Next steps:
+  spelunk search "your query"
+  spelunk ask "how does X work?"
+```
+
+### Optional flags
+
+```bash
+# Also install the post-commit git hook in one step
+spelunk init --hook
+
+# Register without indexing (index later with `spelunk index .`)
+spelunk init --no-index
+```
+
+Running `spelunk init` again is safe — it notices an existing index and won't re-register.
+
+### Manual indexing
+
+If you prefer to manage indexing yourself, you can skip `init` and call `spelunk index` directly:
 
 ```bash
 spelunk index /path/to/your/project
-```
 
-This will:
-1. Walk the file tree, respecting `.gitignore`
-2. Parse supported source files with tree-sitter
-3. Embed each chunk via your embedding model
-4. Store everything in a SQLite database
-
-On subsequent runs, only changed files are re-processed.
-
-```bash
-# Force a full re-index
+# Force a full re-index (ignore change detection)
 spelunk index /path/to/your/project --force
 ```
+
+On subsequent runs, only changed files are re-processed (blake3 hash comparison).
 
 ## 5. Try it out
 
 ```bash
 # Semantic search — finds code by meaning
 spelunk search "error handling in the HTTP layer"
+
+# Hybrid search (semantic + full-text) — the default
+spelunk search "authentication" --mode hybrid
+
+# Pure text search — no embedding model needed
+spelunk search "handleRequest" --mode text
+
+# Fit results within a token budget (useful for agent context windows)
+spelunk search "database layer" --budget 4000
 
 # With call-graph enrichment
 spelunk search "authentication" --graph
@@ -121,11 +162,17 @@ spelunk status
 
 # Check whether the index is up to date (exits 1 if stale)
 spelunk check
+
+# Machine-readable output for scripts
+spelunk check --porcelain
+
+# List which files are stale
+spelunk check --porcelain --files
 ```
 
 ## 7. Set up automatic indexing
 
-Install a git post-commit hook so `spelunk` indexes and harvests memory on every commit:
+Install a git post-commit hook so `spelunk` indexes and harvests memory on every commit (or use `spelunk init --hook` to do this at init time):
 
 ```bash
 spelunk hooks install
