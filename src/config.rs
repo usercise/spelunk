@@ -2,6 +2,19 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Returns `~/.config/spelunk/`.
+///
+/// On all platforms we use `~/.config` rather than the OS-native config dir
+/// (e.g. `~/Library/Application Support` on macOS) so that the path matches
+/// what the CLI documentation and error messages say, and so that config files
+/// work the same way across Linux and macOS.
+fn spelunk_config_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".config")
+        .join("spelunk")
+}
+
 /// Walk up from `start` looking for `.spelunk/index.db`.
 /// Returns the first match found, or `None` if the filesystem root is reached.
 pub fn find_project_db(start: &Path) -> Option<PathBuf> {
@@ -124,16 +137,10 @@ pub struct Config {
 
 impl Config {
     fn default_db_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("spelunk")
-            .join("index.db")
+        spelunk_config_dir().join("index.db")
     }
     fn default_models_dir() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("spelunk")
-            .join("models")
+        spelunk_config_dir().join("models")
     }
     fn default_embedding_model() -> String {
         "text-embedding-embeddinggemma-300m-qat".to_string()
@@ -182,10 +189,7 @@ impl Config {
         // ── 1. Load global personal config ───────────────────────────────────
         let global_path = match path {
             Some(p) => p.to_path_buf(),
-            None => dirs::config_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("spelunk")
-                .join("config.toml"),
+            None => spelunk_config_dir().join("config.toml"),
         };
         let mut cfg: Config = if global_path.exists() {
             let raw = std::fs::read_to_string(&global_path)
