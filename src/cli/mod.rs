@@ -365,6 +365,11 @@ pub struct MemoryHarvestArgs {
     /// Git revision range to analyse (default: HEAD~10..HEAD)
     #[arg(long, default_value = "HEAD~10..HEAD")]
     pub git_range: String,
+
+    /// Number of commits to send to the LLM in each request.
+    /// Reduce this if you hit context-window limits (default: 20).
+    #[arg(long, default_value_t = 20)]
+    pub batch_size: usize,
 }
 
 #[derive(Args, Debug)]
