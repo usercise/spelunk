@@ -58,7 +58,16 @@ fn insert_and_delete_chunks() {
     let db = common::open_test_db();
     let file_id = db.upsert_file("src/foo.rs", Some("rust"), "h").unwrap();
     let chunk_id = db
-        .insert_chunk(file_id, "function", Some("foo"), 1, 10, "fn foo() {}", None, 3)
+        .insert_chunk(
+            file_id,
+            "function",
+            Some("foo"),
+            1,
+            10,
+            "fn foo() {}",
+            None,
+            3,
+        )
         .unwrap();
     assert!(chunk_id > 0);
 
@@ -81,10 +90,28 @@ fn knn_returns_closest_vector_first() {
     // Insert two chunks with distinct embeddings.
     let fid = db.upsert_file("a.rs", Some("rust"), "h").unwrap();
     let cid1 = db
-        .insert_chunk(fid, "function", Some("alpha"), 1, 5, "fn alpha() {}", None, 4)
+        .insert_chunk(
+            fid,
+            "function",
+            Some("alpha"),
+            1,
+            5,
+            "fn alpha() {}",
+            None,
+            4,
+        )
         .unwrap();
     let cid2 = db
-        .insert_chunk(fid, "function", Some("beta"), 6, 10, "fn beta() {}", None, 4)
+        .insert_chunk(
+            fid,
+            "function",
+            Some("beta"),
+            6,
+            10,
+            "fn beta() {}",
+            None,
+            4,
+        )
         .unwrap();
 
     // alpha at position 0, beta at position 1
