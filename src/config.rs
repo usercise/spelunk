@@ -61,9 +61,11 @@ pub fn resolve_db(explicit: Option<&Path>, cfg_default: &Path) -> PathBuf {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Path to the SQLite database file
+    #[serde(default = "Config::default_db_path")]
     pub db_path: PathBuf,
 
     /// Directory where model weights are cached (used by backend-metal)
+    #[serde(default = "Config::default_models_dir")]
     pub models_dir: PathBuf,
 
     /// Model ID for embeddings.
@@ -80,6 +82,7 @@ pub struct Config {
     pub llm_model: Option<String>,
 
     /// Default embedding batch size
+    #[serde(default = "Config::default_batch_size")]
     pub batch_size: usize,
 
     /// Base URL for the OpenAI-compatible API server (e.g. LM Studio, Ollama, vLLM).
@@ -120,11 +123,26 @@ pub struct Config {
 }
 
 impl Config {
+    fn default_db_path() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("spelunk")
+            .join("index.db")
+    }
+    fn default_models_dir() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("spelunk")
+            .join("models")
+    }
     fn default_embedding_model() -> String {
         "text-embedding-embeddinggemma-300m-qat".to_string()
     }
     fn default_api_base_url() -> String {
         "http://127.0.0.1:1234".to_string()
+    }
+    fn default_batch_size() -> usize {
+        32
     }
     fn default_plans_dir() -> PathBuf {
         PathBuf::from("docs/plans")
@@ -136,16 +154,12 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let base = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("spelunk");
-
         Self {
-            db_path: base.join("index.db"),
-            models_dir: base.join("models"),
+            db_path: Self::default_db_path(),
+            models_dir: Self::default_models_dir(),
             embedding_model: Self::default_embedding_model(),
             llm_model: None,
-            batch_size: 32,
+            batch_size: Self::default_batch_size(),
             api_base_url: Self::default_api_base_url(),
             memory_server_url: None,
             memory_server_key: None,
