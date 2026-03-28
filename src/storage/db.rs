@@ -31,6 +31,7 @@ impl Database {
         db.apply_spec_migration()?;
         db.apply_fts_migration()?;
         db.apply_token_count_migration()?;
+        db.apply_graph_rank_migration()?;
         Ok(db)
     }
 
@@ -89,6 +90,16 @@ impl Database {
         let _ = self
             .conn
             .execute_batch(include_str!("../../migrations/008_token_counts.sql"));
+        Ok(())
+    }
+
+    /// Add graph_rank column to chunks table. Idempotent (column has DEFAULT 0.0).
+    pub fn apply_graph_rank_migration(&self) -> Result<()> {
+        // ALTER TABLE ... ADD COLUMN fails if the column already exists,
+        // so we ignore the error (SQLite doesn't support IF NOT EXISTS here).
+        let _ = self
+            .conn
+            .execute_batch(include_str!("../../migrations/009_graph_rank.sql"));
         Ok(())
     }
 
@@ -318,18 +329,25 @@ impl Database {
                      c.content,
                      f.path,
                      f.language,
-                     c.token_count
+                     c.token_count,
+                     c.graph_rank
              FROM knn k
              JOIN chunks c ON c.id = k.chunk_id
              JOIN files  f ON f.id = c.file_id
              ORDER BY k.distance"
         );
 
+        const GRAPH_RANK_ALPHA: f32 = 0.15;
+
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params![query_blob], |row| {
+            let raw_distance: f32 = row.get(1)?;
+            let graph_rank: f32 = row.get(10)?;
+            // Blend: lower distance is better, higher graph_rank is better.
+            let blended = raw_distance * (1.0 - GRAPH_RANK_ALPHA) - graph_rank * GRAPH_RANK_ALPHA;
             Ok(crate::search::SearchResult {
                 chunk_id: row.get(0)?,
-                distance: row.get(1)?,
+                distance: blended,
                 node_type: row.get(2)?,
                 name: row.get(3)?,
                 start_line: row.get::<_, i64>(4)? as usize,
@@ -537,6 +555,53 @@ impl Database {
         let rows = stmt.query_map(params.as_slice(), |r| r.get::<_, i64>(0))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    /// Return all (source_name, target_name) pairs from graph_edges where
+    /// source_name is non-NULL (file-level edges lack a named source).
+    /// Used by PageRank computation after indexing.
+    pub fn graph_edges_all(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT source_name, target_name FROM graph_edges WHERE source_name IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Return all (chunk_id, name) pairs for chunks that have a name.
+    /// Used to map PageRank scores back to chunk IDs.
+    pub fn chunks_with_names(&self) -> Result<Vec<(i64, Option<String>)>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT id, name FROM chunks WHERE name IS NOT NULL")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Update the graph_rank score for a single chunk.
+    pub fn update_graph_rank(&self, chunk_id: i64, score: f32) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chunks SET graph_rank = ?1 WHERE id = ?2",
+            rusqlite::params![score, chunk_id],
+        )?;
+        Ok(())
+    }
+
+    /// Batch-update graph_rank scores inside a transaction for performance.
+    pub fn update_graph_ranks(&self, scores: &[(i64, f32)]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        for (chunk_id, score) in scores {
+            tx.execute(
+                "UPDATE chunks SET graph_rank = ?1 WHERE id = ?2",
+                rusqlite::params![score, chunk_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// Return all chunks for a file path (exact match or LIKE suffix).

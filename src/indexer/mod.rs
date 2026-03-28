@@ -1,6 +1,7 @@
 pub mod chunker;
 pub mod docparser;
 pub mod graph;
+pub mod pagerank;
 pub mod parser;
 pub mod secrets;
 
