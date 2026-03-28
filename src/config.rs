@@ -82,9 +82,10 @@ pub struct Config {
     /// Default embedding batch size
     pub batch_size: usize,
 
-    /// Base URL for the LM Studio server (backend-lmstudio only).
-    #[serde(default = "Config::default_lmstudio_base_url")]
-    pub lmstudio_base_url: String,
+    /// Base URL for the OpenAI-compatible API server (e.g. LM Studio, Ollama, vLLM).
+    /// Default: `http://127.0.0.1:1234`
+    #[serde(default = "Config::default_api_base_url", alias = "lmstudio_base_url")]
+    pub api_base_url: String,
 
     // ── Shared memory server (optional) ──────────────────────────────────────
     /// URL of the spelunk-server instance, e.g. `http://spelunk.internal:7777`.
@@ -122,7 +123,7 @@ impl Config {
     fn default_embedding_model() -> String {
         "text-embedding-embeddinggemma-300m-qat".to_string()
     }
-    fn default_lmstudio_base_url() -> String {
+    fn default_api_base_url() -> String {
         "http://127.0.0.1:1234".to_string()
     }
     fn default_plans_dir() -> PathBuf {
@@ -145,7 +146,7 @@ impl Default for Config {
             embedding_model: Self::default_embedding_model(),
             llm_model: None,
             batch_size: 32,
-            lmstudio_base_url: Self::default_lmstudio_base_url(),
+            api_base_url: Self::default_api_base_url(),
             memory_server_url: None,
             memory_server_key: None,
             project_id: None,

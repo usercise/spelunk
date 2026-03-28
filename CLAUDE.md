@@ -44,14 +44,15 @@ Full reference: `SKILL.md` and `docs/agent-guide.md`.
 ## What This Project Is
 
 `spelunk` (`spelunk`) is a Rust CLI that indexes a source tree using
-tree-sitter AST chunking, embeds every chunk via the LM Studio API
-(EmbeddingGemma 300M), and stores vectors in SQLite for semantic search.
+tree-sitter AST chunking, embeds every chunk via any OpenAI-compatible API
+(EmbeddingGemma 300M by default), and stores vectors in SQLite for semantic search.
 
 It is a **context retrieval engine** for AI agents like you. You search with
 spelunk, then reason over the results yourself.
 
-**Requirement**: LM Studio running at `http://127.0.0.1:1234` (configurable)
-with an **embedding model** loaded. A chat model is optional (enables `memory harvest`
+**Requirement**: Any OpenAI-compatible server (LM Studio, Ollama, vLLM, etc.)
+running at `http://127.0.0.1:1234` (configurable via `api_base_url`) with an
+**embedding model** loaded. A chat model is optional (enables `memory harvest`
 and `plan create`).
 
 ---
@@ -70,11 +71,11 @@ src/
 
   embeddings/
     mod.rs         — EmbeddingBackend trait, vec_to_blob/blob_to_vec helpers
-    lmstudio.rs    — LmStudioEmbedder: calls /v1/embeddings
+    openai_compat.rs — OpenAiCompatEmbedder: calls /v1/embeddings
 
   llm/
     mod.rs         — LlmBackend trait, Message struct, Token type
-    lmstudio.rs    — LmStudioLlm: calls /v1/chat/completions (SSE streaming)
+    openai_compat.rs — OpenAiCompatLlm: calls /v1/chat/completions (SSE streaming)
 
   indexer/
     mod.rs         — re-exports Chunk, ChunkKind, SourceParser
@@ -104,8 +105,8 @@ migrations/
 
 ## Inference Backend
 
-The only backend is **LM Studio** (`backend-lmstudio`, the default feature).
-There are no other feature flags. Both `ActiveEmbedder` and `ActiveLlm` are
+The only backend is the **OpenAI-compatible API** client (`backend-lmstudio`
+feature flag, always enabled). Both `ActiveEmbedder` and `ActiveLlm` are
 unconditional re-exports in `src/backends.rs`.
 
 To add a new backend:

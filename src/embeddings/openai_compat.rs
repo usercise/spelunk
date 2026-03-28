@@ -1,8 +1,10 @@
-//! Embedding backend that delegates to an LM Studio server via its
-//! OpenAI-compatible `/v1/embeddings` endpoint.
+//! Embedding backend that delegates to any OpenAI-compatible server via the
+//! standard `/v1/embeddings` endpoint.
 //!
-//! Requires LM Studio running at `lmstudio_base_url` (default: `http://127.0.0.1:1234`)
-//! with an embedding model loaded (e.g. `text-embedding-embeddinggemma-300m-qat`).
+//! Works with LM Studio, Ollama, vLLM, and any other server that exposes the
+//! OpenAI embeddings API at `api_base_url` (default: `http://127.0.0.1:1234`).
+//! An embedding model must be loaded and its API identifier passed as
+//! `embedding_model` in the config (e.g. `text-embedding-embeddinggemma-300m-qat`).
 
 use anyhow::{Context, Result};
 use reqwest::Client;
@@ -10,33 +12,33 @@ use serde::{Deserialize, Serialize};
 
 use crate::embeddings::EmbeddingBackend;
 
-pub struct LmStudioEmbedder {
+pub struct OpenAiCompatEmbedder {
     client: Client,
     base_url: String,
     model: String,
 }
 
-impl LmStudioEmbedder {
+impl OpenAiCompatEmbedder {
     pub async fn load(cfg: &crate::config::Config) -> Result<Self> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(60))
             .build()
-            .context("building HTTP client for LM Studio embedder")?;
+            .context("building HTTP client for OpenAI-compatible embedder")?;
         tracing::info!(
-            "LM Studio embedder: {} model={}",
-            cfg.lmstudio_base_url,
+            "OpenAI-compat embedder: {} model={}",
+            cfg.api_base_url,
             cfg.embedding_model
         );
         Ok(Self {
             client,
-            base_url: cfg.lmstudio_base_url.clone(),
+            base_url: cfg.api_base_url.clone(),
             model: cfg.embedding_model.clone(),
         })
     }
 }
 
 // ---------------------------------------------------------------------------
-// Request / response types
+// Request / response types (OpenAI spec)
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -60,7 +62,7 @@ struct EmbedData {
 // ---------------------------------------------------------------------------
 
 #[async_trait::async_trait]
-impl EmbeddingBackend for LmStudioEmbedder {
+impl EmbeddingBackend for OpenAiCompatEmbedder {
     async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         // Append <eos> to each input so the GGUF tokenizer produces a proper
         // final token. The GGUF for embeddinggemma-300m-qat is missing
@@ -81,22 +83,19 @@ impl EmbeddingBackend for LmStudioEmbedder {
             .await
             .with_context(|| {
                 format!(
-                    "calling LM Studio /v1/embeddings at {}. \
-                     Is LM Studio running with an embedding model loaded?",
+                    "calling /v1/embeddings at {}. \
+                     Is your OpenAI-compatible server running with an embedding model loaded?",
                     self.base_url
                 )
             })?
             .error_for_status()
-            .context("LM Studio embeddings API returned an error")?
+            .context("embeddings API returned an error")?
             .json()
             .await
-            .context("parsing LM Studio embeddings response")?;
+            .context("parsing embeddings response")?;
 
         if resp.data.is_empty() {
-            anyhow::bail!(
-                "LM Studio returned 0 embeddings for {} input(s)",
-                texts.len()
-            );
+            anyhow::bail!("server returned 0 embeddings for {} input(s)", texts.len());
         }
 
         Ok(resp.data.into_iter().map(|d| d.embedding).collect())

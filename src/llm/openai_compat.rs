@@ -1,8 +1,10 @@
-//! LLM backend that delegates to an LM Studio server via its
-//! OpenAI-compatible `/v1/chat/completions` endpoint with SSE streaming.
+//! LLM backend that delegates to any OpenAI-compatible server via the
+//! standard `/v1/chat/completions` endpoint with SSE streaming.
 //!
-//! Requires LM Studio running at `lmstudio_base_url` (default: `http://127.0.0.1:1234`)
-//! with a chat model loaded (e.g. `google/gemma-3n-e4b`).
+//! Works with LM Studio, Ollama, vLLM, and any other server that exposes the
+//! OpenAI chat completions API at `api_base_url` (default: `http://127.0.0.1:1234`).
+//! A chat model must be loaded and its API identifier passed as `llm_model`
+//! in the config (e.g. `google/gemma-3n-e4b`).
 
 use anyhow::{Context, Result};
 use futures_util::StreamExt;
@@ -12,13 +14,13 @@ use tokio::sync::mpsc;
 
 use crate::llm::{LlmBackend, Message, Token};
 
-pub struct LmStudioLlm {
+pub struct OpenAiCompatLlm {
     client: Client,
     base_url: String,
     model: String,
 }
 
-impl LmStudioLlm {
+impl OpenAiCompatLlm {
     pub async fn load(cfg: &crate::config::Config) -> Result<Self> {
         let model = cfg.llm_model.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
@@ -27,23 +29,22 @@ impl LmStudioLlm {
                  to enable commands that require a chat model."
             )
         })?;
-        // No warmup needed — the model is already loaded in LM Studio.
         let client = Client::builder()
             // Allow long responses without timeout during streaming.
             .timeout(std::time::Duration::from_secs(300))
             .build()
-            .context("building HTTP client for LM Studio LLM")?;
-        tracing::info!("LM Studio LLM: {} model={}", cfg.lmstudio_base_url, model);
+            .context("building HTTP client for OpenAI-compatible LLM")?;
+        tracing::info!("OpenAI-compat LLM: {} model={}", cfg.api_base_url, model);
         Ok(Self {
             client,
-            base_url: cfg.lmstudio_base_url.clone(),
+            base_url: cfg.api_base_url.clone(),
             model: model.to_string(),
         })
     }
 }
 
 // ---------------------------------------------------------------------------
-// Request / response types
+// Request / response types (OpenAI spec)
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -83,7 +84,7 @@ struct Delta {
 // ---------------------------------------------------------------------------
 
 #[async_trait::async_trait]
-impl LlmBackend for LmStudioLlm {
+impl LlmBackend for OpenAiCompatLlm {
     async fn generate(
         &self,
         messages: &[Message],
@@ -119,13 +120,13 @@ impl LlmBackend for LmStudioLlm {
             .await
             .with_context(|| {
                 format!(
-                    "calling LM Studio /v1/chat/completions at {}. \
-                     Is LM Studio running with a chat model loaded?",
+                    "calling /v1/chat/completions at {}. \
+                     Is your OpenAI-compatible server running with a chat model loaded?",
                     self.base_url
                 )
             })?
             .error_for_status()
-            .context("LM Studio chat completions API returned an error")?
+            .context("chat completions API returned an error")?
             .bytes_stream();
 
         // Parse SSE stream: lines are "data: {...}" or "data: [DONE]", events

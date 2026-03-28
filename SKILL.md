@@ -13,8 +13,9 @@ over that context yourself.
 ## Prerequisites
 
 - `spelunk` installed and in PATH (`cargo install --path .` or copy the binary)
-- LM Studio running with an **embedding model** loaded (required for all search)
-- Default endpoint: `http://127.0.0.1:1234` (override with `lmstudio_base_url`
+- Any OpenAI-compatible server (LM Studio, Ollama, vLLM, …) running with an
+  **embedding model** loaded (required for all search)
+- Default endpoint: `http://127.0.0.1:1234` (override with `api_base_url`
   in `~/.config/spelunk/config.toml`)
 
 ---

@@ -69,7 +69,7 @@ tree-sitter-hcl = "1.1"
 tree-sitter-proto = "0.4"
 tree-sitter-sequel = "0.3"
 
-# HTTP client — used by LM Studio backend and remote memory backend
+# HTTP client — used by OpenAI-compatible backend and remote memory backend
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = { version = "0.3", optional = true }
 
@@ -105,7 +105,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Temporary files/directories for integration tests
 tempfile = "3"
 
-# HTTP mock server for LM Studio API tests
+# HTTP mock server for OpenAI-compatible API tests
 wiremock = "0.6"
 
 # Cleaner assertion diffs

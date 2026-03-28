@@ -1,2 +1,2 @@
-pub use crate::embeddings::lmstudio::LmStudioEmbedder as ActiveEmbedder;
-pub use crate::llm::lmstudio::LmStudioLlm as ActiveLlm;
+pub use crate::embeddings::openai_compat::OpenAiCompatEmbedder as ActiveEmbedder;
+pub use crate::llm::openai_compat::OpenAiCompatLlm as ActiveLlm;
