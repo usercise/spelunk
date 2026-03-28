@@ -143,5 +143,21 @@ pub(crate) fn search_all_dbs(
     let mut seen = std::collections::HashSet::new();
     all.retain(|r| seen.insert((r.file_path.clone(), r.start_line, r.end_line)));
     all.truncate(limit);
+
+    // Annotate results with governing specs from the primary DB.
+    if let Ok(primary_db) = Database::open(primary_db_path) {
+        let file_paths: Vec<String> = all.iter().map(|r| r.file_path.clone()).collect();
+        if let Ok(all_specs) = primary_db.specs_for_files(&file_paths)
+            && !all_specs.is_empty()
+        {
+            for result in &mut all {
+                if let Ok(per) = primary_db.specs_for_files(std::slice::from_ref(&result.file_path))
+                {
+                    result.governing_specs = per.into_iter().map(|(p, _)| p).collect();
+                }
+            }
+        }
+    }
+
     Ok(all)
 }

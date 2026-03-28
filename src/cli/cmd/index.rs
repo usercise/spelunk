@@ -306,6 +306,27 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         stats.file_count, stats.chunk_count, stats.embedding_count
     );
 
+    // ── Phase 3: auto-discover spec files ────────────────────────────────────
+    let mut specs_found = 0u32;
+    for entry in &files {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        if super::spec::is_spec_file(path) {
+            let path_str = path.to_string_lossy().into_owned();
+            let title = super::spec::extract_spec_title(path).unwrap_or_default();
+            if let Err(e) = db.upsert_spec(&path_str, &title, true) {
+                tracing::warn!("spec registration failed for {path_str}: {e}");
+            } else {
+                specs_found += 1;
+            }
+        }
+    }
+    if specs_found > 0 {
+        eprintln!("Registered {specs_found} spec file(s).");
+    }
+
     // Register / update this project in the global registry.
     if let Ok(reg) = Registry::open() {
         let db_canonical = db_path.canonicalize().unwrap_or(db_path.clone());

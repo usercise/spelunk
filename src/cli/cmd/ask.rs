@@ -81,7 +81,45 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    // ── Step 2b: memory context (decisions / requirements / background) ──────
+    // ── Step 2b: spec context (governing specs for the retrieved files) ──────
+    let spec_context: Option<String> = {
+        let file_paths: Vec<String> = results.iter().map(|r| r.file_path.clone()).collect();
+        if let Ok(primary_db) = Database::open(&db_path)
+            && let Ok(specs) = primary_db.specs_for_files(&file_paths)
+            && !specs.is_empty()
+        {
+            let mut sections: Vec<String> = Vec::new();
+            'spec_loop: for (spec_path, title) in &specs {
+                if sections.len() >= 5 {
+                    break 'spec_loop;
+                }
+                if let Ok(Some(file_id)) = primary_db.file_id_for_path(spec_path)
+                    && let Ok(chunks) = primary_db.chunks_content_for_file_id(file_id)
+                {
+                    let text = chunks
+                        .iter()
+                        .map(|(_, t)| t.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    let display = if title.is_empty() {
+                        spec_path.clone()
+                    } else {
+                        format!("{title} ({spec_path})")
+                    };
+                    sections.push(format!("### Spec: {display}\n{text}"));
+                }
+            }
+            if sections.is_empty() {
+                None
+            } else {
+                Some(sections.join("\n\n"))
+            }
+        } else {
+            None
+        }
+    };
+
+    // ── Step 2c: memory context (decisions / requirements / background) ──────
     let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
     let memory_context: Option<String> = if let Ok(backend) = open_memory_backend(&cfg, &mem_path) {
         match backend.search(&query_blob, 5).await {
@@ -137,14 +175,15 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     const SYSTEM_BASE: &str = "\
 You are an expert software analyst helping a developer understand a codebase.\n\
 \n\
-You have two sources of context:\n\
+You have up to three sources of context:\n\
 - Code context: excerpts from the source code showing HOW the system is built.\n\
   Reference specific file paths and line numbers when they are relevant.\n\
+- Spec context: human-authored design docs and contracts that govern the code.\n\
+  These capture intent, constraints, and API contracts — check for conflicts.\n\
 - Memory context: recorded decisions, requirements, and background explaining\n\
   WHAT was built and WHY those choices were made.\n\
-  Reference these when they explain the reasoning behind the code.\n\
 \n\
-Use both sources together to give accurate, grounded answers. \
+Use all available sources together to give accurate, grounded answers. \
 If the answer cannot be determined from the provided context, say so clearly rather than guessing.";
 
     let use_json = args.json || crate::utils::is_agent_mode();
@@ -165,23 +204,21 @@ If the answer cannot be determined from the provided context, say so clearly rat
         (SYSTEM_BASE, None)
     };
 
-    let user_message = if let Some(mem) = &memory_context {
-        format!(
-            "<code_context>\n{code}\n</code_context>\n\n\
-             <memory_context>\n{mem}\n</memory_context>\n\n\
-             <question>\n{q}\n</question>",
-            code = code_context,
-            mem = mem,
-            q = args.question,
-        )
-    } else {
-        format!(
-            "<code_context>\n{code}\n</code_context>\n\n\
-             <question>\n{q}\n</question>",
-            code = code_context,
-            q = args.question,
-        )
-    };
+    let spec_section = spec_context
+        .as_deref()
+        .map(|s| format!("\n\n<spec_context>\n{s}\n</spec_context>"))
+        .unwrap_or_default();
+    let mem_section = memory_context
+        .as_deref()
+        .map(|m| format!("\n\n<memory_context>\n{m}\n</memory_context>"))
+        .unwrap_or_default();
+    let user_message = format!(
+        "<code_context>\n{code}\n</code_context>{spec}{mem}\n\n<question>\n{q}\n</question>",
+        code = code_context,
+        spec = spec_section,
+        mem = mem_section,
+        q = args.question,
+    );
 
     let messages = vec![
         crate::llm::Message::system(system_prompt),
