@@ -17,6 +17,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Initialise spelunk for the current project
+    Init(InitArgs),
     /// Index a codebase directory
     Index(IndexArgs),
     /// Semantic search over the index
@@ -49,6 +51,17 @@ pub enum Command {
     Plan(PlanArgs),
     /// Manage spec files: link human-authored docs to the code they govern
     Spec(SpecArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct InitArgs {
+    /// Also install the post-commit git hook
+    #[arg(long)]
+    pub hook: bool,
+
+    /// Skip the initial index run
+    #[arg(long)]
+    pub no_index: bool,
 }
 
 #[derive(Args, Debug)]
