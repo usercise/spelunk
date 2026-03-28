@@ -126,6 +126,10 @@ tower = { version = "0.5", features = ["util"] }
 # OpenAPI docs — also used by server handler tests
 utoipa = { version = "5", features = ["axum_extras"] }
 
+# Security audit tool — declared here so Cargo.lock pins the version and the
+# registry cache covers the source, avoiding a full download on every CI run.
+cargo-audit = { version = "0.22", features = ["fix"] }
+
 [profile.release]
 lto = true
 codegen-units = 1
