@@ -30,6 +30,7 @@ impl Database {
         db.apply_graph_migration()?;
         db.apply_spec_migration()?;
         db.apply_fts_migration()?;
+        db.apply_token_count_migration()?;
         Ok(db)
     }
 
@@ -78,6 +79,16 @@ impl Database {
                  WHERE id NOT IN (SELECT rowid FROM chunks_fts);",
             )
             .context("backfilling FTS index")?;
+        Ok(())
+    }
+
+    /// Add token_count column to chunks table. Idempotent (column has DEFAULT 0).
+    pub fn apply_token_count_migration(&self) -> Result<()> {
+        // ALTER TABLE ... ADD COLUMN fails if the column already exists,
+        // so we ignore the error (SQLite doesn't support IF NOT EXISTS here).
+        let _ = self
+            .conn
+            .execute_batch(include_str!("../../migrations/008_token_counts.sql"));
         Ok(())
     }
 
@@ -133,10 +144,11 @@ impl Database {
         end_line: usize,
         content: &str,
         metadata: Option<&str>,
+        token_count: usize,
     ) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO chunks (file_id, node_type, name, start_line, end_line, content, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO chunks (file_id, node_type, name, start_line, end_line, content, metadata, token_count)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 file_id,
                 node_type,
@@ -144,10 +156,32 @@ impl Database {
                 start_line as i64,
                 end_line as i64,
                 content,
-                metadata
+                metadata,
+                token_count as i64,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Backfill token_count for all chunks where it is still 0 (existing indexes).
+    /// Returns the number of rows updated.
+    pub fn backfill_token_counts(&self) -> Result<usize> {
+        // Fetch all chunks with token_count = 0
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT id, content FROM chunks WHERE token_count = 0")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        let pairs: Vec<(i64, String)> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let count = pairs.len();
+        for (id, content) in &pairs {
+            let tc = crate::search::tokens::estimate_tokens(content) as i64;
+            self.conn.execute(
+                "UPDATE chunks SET token_count = ?1 WHERE id = ?2",
+                rusqlite::params![tc, id],
+            )?;
+        }
+        Ok(count)
     }
 
     pub fn delete_chunks_for_file(&self, file_id: i64) -> Result<()> {
@@ -174,7 +208,7 @@ impl Database {
         let sql = format!(
             "SELECT c.id, 0.0, c.node_type, c.name,
                     CAST(c.start_line AS INTEGER), CAST(c.end_line AS INTEGER),
-                    c.content, f.path, f.language
+                    c.content, f.path, f.language, c.token_count
              FROM chunks c
              JOIN files f ON f.id = c.file_id
              WHERE c.id IN ({placeholders})"
@@ -195,6 +229,7 @@ impl Database {
                 language: row.get(8)?,
                 from_graph: false,
                 governing_specs: vec![],
+                token_count: row.get::<_, i64>(9)? as usize,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -282,7 +317,8 @@ impl Database {
                      CAST(c.end_line   AS INTEGER),
                      c.content,
                      f.path,
-                     f.language
+                     f.language,
+                     c.token_count
              FROM knn k
              JOIN chunks c ON c.id = k.chunk_id
              JOIN files  f ON f.id = c.file_id
@@ -303,6 +339,7 @@ impl Database {
                 language: row.get(8)?,
                 from_graph: false,
                 governing_specs: vec![],
+                token_count: row.get::<_, i64>(9)? as usize,
             })
         })?;
 
@@ -349,6 +386,7 @@ impl Database {
                 distance: (-bm25_score) as f32,
                 from_graph: false,
                 governing_specs: vec![],
+                token_count: 0,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -507,7 +545,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT c.id, c.node_type, c.name,
                     CAST(c.start_line AS INTEGER), CAST(c.end_line AS INTEGER),
-                    c.content, f.path, f.language
+                    c.content, f.path, f.language, c.token_count
              FROM chunks c
              JOIN files f ON f.id = c.file_id
              WHERE f.path = ?1 OR f.path LIKE '%' || ?1
@@ -526,6 +564,7 @@ impl Database {
                 language: row.get(7)?,
                 from_graph: false,
                 governing_specs: vec![],
+                token_count: row.get::<_, i64>(8)? as usize,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

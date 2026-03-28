@@ -1,4 +1,5 @@
 pub mod rag;
+pub mod tokens;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,4 +25,7 @@ pub struct SearchResult {
     /// Empty when no specs are linked to the result's file path.
     #[serde(default)]
     pub governing_specs: Vec<String>,
+    /// Estimated token count for this chunk's content (chars/4 heuristic).
+    #[serde(default)]
+    pub token_count: usize,
 }
