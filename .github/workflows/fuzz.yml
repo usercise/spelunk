@@ -1,0 +1,44 @@
+name: Fuzz
+
+on:
+  schedule:
+    # Run weekly on Monday at 09:00 UTC (after the security scan at 08:00).
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  fuzz-parser:
+    name: cargo-fuzz fuzz_parser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        run: |
+          rustup update nightly
+          rustup default nightly
+
+      - name: Cache cargo registry and binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-fuzz-
+
+      - name: Install cargo-fuzz
+        run: cargo-fuzz --version 2>/dev/null || cargo +nightly install cargo-fuzz --locked
+
+      - name: Run fuzzer (60 s)
+        run: cargo +nightly fuzz run fuzz_parser -- -max_total_time=60
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ github.run_id }}
+          path: fuzz/artifacts/fuzz_parser/
