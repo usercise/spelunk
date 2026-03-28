@@ -496,44 +496,36 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     // ── Step 2b: spec context (governing specs for the retrieved files) ─────
     let spec_context: Option<String> = {
         let file_paths: Vec<String> = results.iter().map(|r| r.file_path.clone()).collect();
-        if let Ok(primary_db) = Database::open(&db_path) {
-            if let Ok(specs) = primary_db.specs_for_files(&file_paths) {
-                if specs.is_empty() {
-                    None
-                } else {
-                    // Fetch up to 5 spec file contents from chunks.
-                    let mut sections: Vec<String> = Vec::new();
-                    'spec_loop: for (spec_path, title) in &specs {
-                        if sections.len() >= 5 {
-                            break 'spec_loop;
-                        }
-                        // Fetch chunks for this spec file from the DB.
-                        if let Ok(file_id_row) = primary_db.file_id_for_path(spec_path) {
-                            if let Some(file_id) = file_id_row {
-                                if let Ok(chunks) = primary_db.chunks_content_for_file_id(file_id) {
-                                    let text = chunks
-                                        .iter()
-                                        .map(|(_, t)| t.as_str())
-                                        .collect::<Vec<_>>()
-                                        .join("\n\n");
-                                    let display = if title.is_empty() {
-                                        spec_path.clone()
-                                    } else {
-                                        format!("{title} ({spec_path})")
-                                    };
-                                    sections.push(format!("### Spec: {display}\n{text}"));
-                                }
-                            }
-                        }
-                    }
-                    if sections.is_empty() {
-                        None
-                    } else {
-                        Some(sections.join("\n\n"))
-                    }
+        if let Ok(primary_db) = Database::open(&db_path)
+            && let Ok(specs) = primary_db.specs_for_files(&file_paths)
+            && !specs.is_empty()
+        {
+            // Fetch up to 5 spec file contents from chunks.
+            let mut sections: Vec<String> = Vec::new();
+            'spec_loop: for (spec_path, title) in &specs {
+                if sections.len() >= 5 {
+                    break 'spec_loop;
                 }
-            } else {
+                if let Ok(Some(file_id)) = primary_db.file_id_for_path(spec_path)
+                    && let Ok(chunks) = primary_db.chunks_content_for_file_id(file_id)
+                {
+                    let text = chunks
+                        .iter()
+                        .map(|(_, t)| t.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    let display = if title.is_empty() {
+                        spec_path.clone()
+                    } else {
+                        format!("{title} ({spec_path})")
+                    };
+                    sections.push(format!("### Spec: {display}\n{text}"));
+                }
+            }
+            if sections.is_empty() {
                 None
+            } else {
+                Some(sections.join("\n\n"))
             }
         } else {
             None
