@@ -352,7 +352,22 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         stats.file_count, stats.chunk_count, stats.embedding_count
     );
 
-    // ── Phase 3: auto-discover spec files ────────────────────────────────────
+    // ── Phase 3: compute and store PageRank scores ────────────────────────────
+    eprintln!("Computing graph rank…");
+    let edges = db.graph_edges_all()?;
+    if !edges.is_empty() {
+        let pr_scores = crate::indexer::pagerank::compute_pagerank(&edges, 20, 0.85);
+        let named_chunks = db.chunks_with_names()?;
+        let updates: Vec<(i64, f32)> = named_chunks
+            .into_iter()
+            .filter_map(|(id, name)| name.and_then(|n| pr_scores.get(&n).copied().map(|s| (id, s))))
+            .collect();
+        if !updates.is_empty() {
+            db.update_graph_ranks(&updates)?;
+        }
+    }
+
+    // ── Phase 4: auto-discover spec files ────────────────────────────────────
     let mut specs_found = 0u32;
     for entry in &files {
         let path = entry.path();
