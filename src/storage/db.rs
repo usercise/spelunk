@@ -29,6 +29,7 @@ impl Database {
         db.apply_vector_migration()?;
         db.apply_graph_migration()?;
         db.apply_spec_migration()?;
+        db.apply_fts_migration()?;
         Ok(db)
     }
 
@@ -60,6 +61,23 @@ impl Database {
         self.conn
             .execute_batch(include_str!("../../migrations/006_specs.sql"))
             .context("running spec migration")?;
+        Ok(())
+    }
+
+    /// Create the FTS5 virtual table and sync triggers. Idempotent (`IF NOT EXISTS`).
+    /// Also backfills any existing chunks not yet in the FTS index.
+    pub fn apply_fts_migration(&self) -> Result<()> {
+        self.conn
+            .execute_batch(include_str!("../../migrations/007_fts.sql"))
+            .context("running FTS migration")?;
+        // Backfill existing chunks that predate the FTS table.
+        self.conn
+            .execute_batch(
+                "INSERT INTO chunks_fts(rowid, name, content, node_type)
+                 SELECT id, name, content, node_type FROM chunks
+                 WHERE id NOT IN (SELECT rowid FROM chunks_fts);",
+            )
+            .context("backfilling FTS index")?;
         Ok(())
     }
 
@@ -290,6 +308,108 @@ impl Database {
 
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    /// FTS5 full-text search. Returns results ranked by BM25 (best match first).
+    ///
+    /// BM25 in FTS5 returns negative values (more negative = better match).
+    /// We negate the score so that higher `distance` values indicate better matches,
+    /// consistent with the convention used in `SearchResult`.
+    pub fn search_text(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::search::SearchResult>> {
+        let limit = limit.min(1_000);
+        let mut stmt = self.conn.prepare(
+            "SELECT c.id, c.node_type, c.name,
+                    CAST(c.start_line AS INTEGER), CAST(c.end_line AS INTEGER),
+                    c.content, f.path, f.language,
+                    bm25(chunks_fts) AS score
+             FROM chunks_fts
+             JOIN chunks c ON chunks_fts.rowid = c.id
+             JOIN files  f ON c.file_id = f.id
+             WHERE chunks_fts MATCH ?1
+             ORDER BY score
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![query, limit as i64], |row| {
+            let bm25_score: f64 = row.get(8)?;
+            Ok(crate::search::SearchResult {
+                chunk_id: row.get(0)?,
+                node_type: row.get(1)?,
+                name: row.get(2)?,
+                start_line: row.get::<_, i64>(3)? as usize,
+                end_line: row.get::<_, i64>(4)? as usize,
+                content: row.get(5)?,
+                file_path: row.get(6)?,
+                language: row.get(7)?,
+                // Negate so that more-relevant results have a lower (closer to 0) distance,
+                // matching the ascending-distance convention of vector search.
+                distance: (-bm25_score) as f32,
+                from_graph: false,
+                governing_specs: vec![],
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Hybrid search: fuses FTS5 BM25 ranking with vector KNN via Reciprocal Rank Fusion.
+    ///
+    /// RRF score: `Σ 1 / (k + rank_i)` where `k = 60` and `rank_i` is 1-based rank
+    /// within each result list. Candidates are merged by chunk ID, scores summed,
+    /// and the top `limit` returned in descending RRF score order.
+    pub fn search_hybrid(
+        &self,
+        query: &str,
+        embedding: &[f32],
+        limit: usize,
+    ) -> Result<Vec<crate::search::SearchResult>> {
+        use std::collections::HashMap;
+
+        let candidates = (limit * 3).max(20);
+        let query_blob = crate::embeddings::vec_to_blob(embedding);
+
+        let vec_results = self.search_similar(&query_blob, candidates)?;
+        let text_results = self.search_text(query, candidates).unwrap_or_default();
+
+        const K: f64 = 60.0;
+
+        // Map chunk_id -> RRF score accumulator and the SearchResult to return.
+        let mut scores: HashMap<i64, f64> = HashMap::new();
+        let mut by_id: HashMap<i64, crate::search::SearchResult> = HashMap::new();
+
+        for (rank, result) in vec_results.into_iter().enumerate() {
+            let rrf = 1.0 / (K + (rank + 1) as f64);
+            *scores.entry(result.chunk_id).or_insert(0.0) += rrf;
+            by_id.entry(result.chunk_id).or_insert(result);
+        }
+
+        for (rank, result) in text_results.into_iter().enumerate() {
+            let rrf = 1.0 / (K + (rank + 1) as f64);
+            *scores.entry(result.chunk_id).or_insert(0.0) += rrf;
+            by_id.entry(result.chunk_id).or_insert(result);
+        }
+
+        // Sort by descending RRF score, take top `limit`.
+        let mut ranked: Vec<(i64, f64)> = scores.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.truncate(limit);
+
+        let results = ranked
+            .into_iter()
+            .filter_map(|(id, rrf_score)| {
+                by_id.remove(&id).map(|mut r| {
+                    // Store the inverted RRF score as `distance` so that callers
+                    // can still sort ascending (lower = better).
+                    r.distance = (1.0 / rrf_score) as f32;
+                    r
+                })
+            })
+            .collect();
+
+        Ok(results)
     }
 
     // -----------------------------------------------------------------------
