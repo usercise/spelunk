@@ -209,6 +209,9 @@ async fn memory_search(
     mem_path: &std::path::Path,
     cfg: &Config,
 ) -> Result<()> {
+    let index_db_path = crate::config::resolve_db(None, &cfg.db_path);
+    crate::storage::record_usage_at(&index_db_path, "memory search");
+
     let sp = spinner("Embedding query…");
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
         .await

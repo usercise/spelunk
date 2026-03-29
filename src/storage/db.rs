@@ -33,6 +33,7 @@ impl Database {
         db.apply_token_count_migration()?;
         db.apply_graph_rank_migration()?;
         db.apply_summary_migration()?;
+        db.apply_usage_migration()?;
         Ok(db)
     }
 
@@ -112,6 +113,46 @@ impl Database {
             .conn
             .execute_batch(include_str!("../../migrations/010_summaries.sql"));
         Ok(())
+    }
+
+    /// Create the usage table. Idempotent (`IF NOT EXISTS`).
+    pub fn apply_usage_migration(&self) -> Result<()> {
+        self.conn
+            .execute_batch(include_str!("../../migrations/011_usage.sql"))
+            .context("running usage migration")?;
+        Ok(())
+    }
+
+    /// Record a command invocation. Fire-and-forget: errors are silently discarded.
+    pub fn record_usage(&self, command: &str) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let _ = self.conn.execute(
+            "INSERT INTO usage (command, called_at) VALUES (?1, ?2)",
+            rusqlite::params![command, now],
+        );
+    }
+
+    /// Return `(command, count)` rows for the last 7 days, ordered by count descending.
+    pub fn usage_last_7_days(&self) -> Result<Vec<(String, i64)>> {
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+            - 7 * 24 * 3600;
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT command, COUNT(*) FROM usage \
+             WHERE called_at > ?1 \
+             GROUP BY command \
+             ORDER BY COUNT(*) DESC",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![cutoff], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("querying usage stats")
     }
 
     /// Update the LLM-generated summary for a single chunk.
@@ -1126,4 +1167,21 @@ pub struct StalenessReport {
     /// Unix timestamp of the most recently indexed file, or `None` if the
     /// index is empty.
     pub last_indexed_at: Option<i64>,
+}
+
+/// Record a command invocation at `db_path` without requiring a `Database` handle.
+/// Opens a raw connection (bypasses full migration stack) and inserts into the
+/// `usage` table. Completely fire-and-forget — all errors are silently discarded.
+pub fn record_usage_at(db_path: &Path, command: &str) {
+    let Ok(conn) = Connection::open(db_path) else {
+        return;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let _ = conn.execute(
+        "INSERT INTO usage (command, called_at) VALUES (?1, ?2)",
+        rusqlite::params![command, now],
+    );
 }

@@ -17,11 +17,14 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
         let db = Database::open(&db_path)?;
         let stats = db.stats()?;
         let drift = db.drift_candidates(30, 10).unwrap_or_default();
+        let usage = db.usage_last_7_days().unwrap_or_default();
         let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
         let memory_count = match open_memory_backend(&cfg, &mem_path).ok() {
             Some(b) => b.count().await.unwrap_or(0),
             None => 0,
         };
+        let usage_map: std::collections::HashMap<&str, i64> =
+            usage.iter().map(|(c, n)| (c.as_str(), *n)).collect();
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
@@ -31,6 +34,11 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
                 "last_indexed_unix": stats.last_indexed,
                 "memory_entry_count": memory_count,
                 "drift_candidates": drift,
+                "usage_7d": {
+                    "search": usage_map.get("search").copied().unwrap_or(0),
+                    "explore": usage_map.get("explore").copied().unwrap_or(0),
+                    "memory_search": usage_map.get("memory search").copied().unwrap_or(0),
+                }
             }))?
         );
         return Ok(());
@@ -172,6 +180,24 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
         println!(
             "  \x1b[2mRun `spelunk search \"<topic>\"` to check if these are still relevant.\x1b[0m"
         );
+    }
+
+    // Usage summary (last 7 days)
+    let usage = db.usage_last_7_days().unwrap_or_default();
+    let total: i64 = usage.iter().map(|(_, n)| n).sum();
+    if total > 0 {
+        const COMMANDS: &[&str] = &["search", "explore", "memory search"];
+        println!("\nUsage (last 7 days)");
+        for cmd in COMMANDS {
+            let count = usage
+                .iter()
+                .find(|(c, _)| c == cmd)
+                .map(|(_, n)| *n)
+                .unwrap_or(0);
+            if count > 0 {
+                println!("  {:<16}  {} calls", cmd, count);
+            }
+        }
     }
 
     Ok(())

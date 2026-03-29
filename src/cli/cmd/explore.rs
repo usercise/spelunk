@@ -19,6 +19,7 @@ pub async fn explore(args: ExploreArgs, cfg: Config) -> Result<()> {
 
     let (db_path, _db) = open_project_db(args.db.as_deref(), &cfg.db_path)?;
     maybe_warn_stale(&db_path);
+    crate::storage::record_usage_at(&db_path, "explore");
 
     let sp = spinner("Loading models…");
     let embedder = crate::backends::ActiveEmbedder::load(&cfg).await?;
