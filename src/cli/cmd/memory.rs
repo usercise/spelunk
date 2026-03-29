@@ -579,27 +579,50 @@ async fn memory_harvest(
 
     let mut stored = 0usize;
 
-    // ── Step 4: process each batch ────────────────────────────────────────────
-    for (batch_idx, batch) in new_commits.chunks(batch_size).enumerate() {
-        if num_batches > 1 {
-            println!(
-                "\nBatch {}/{} ({} commits)…",
-                batch_idx + 1,
-                num_batches,
-                batch.len()
-            );
-        }
+    // Rough token estimator: ~3 chars per token for mixed code+prose.
+    let estimate_tokens = |s: &str| s.len() / 3;
+    let context_length = cfg.llm_context_length;
+    // Reserve tokens for the output: 400 per commit (title + body + tags), min 256.
+    let output_budget = |n: usize| (n * 400).clamp(256, context_length / 2);
 
-        // Truncate each commit body so a single large commit message can't
-        // blow the context window regardless of batch size.
-        const MAX_BODY_CHARS: usize = 400;
+    // ── Step 4: process each batch ────────────────────────────────────────────
+    // Work queue: each entry is a Vec of commits to process together.
+    // If a batch's prompt would overflow the context window it is split in half
+    // and both halves pushed back to the front of the queue. A single commit
+    // that is still too large has its body truncated further.
+    let mut work: std::collections::VecDeque<Vec<(String, String, String)>> = new_commits
+        .chunks(batch_size)
+        .map(|c| {
+            c.iter()
+                .map(|(a, b, c)| (a.clone(), b.clone(), c.clone()))
+                .collect()
+        })
+        .collect();
+
+    let mut batch_num = 0usize;
+
+    while let Some(batch) = work.pop_front() {
+        batch_num += 1;
+
+        // Build commit list, truncating bodies. For a single-commit batch that
+        // still overflows, we shrink MAX_BODY_CHARS proportionally.
+        let max_body = if batch.len() == 1 {
+            // Leave half the context for output; the rest minus prompt overhead is
+            // available for the commit body.
+            let overhead = estimate_tokens(system) + 600; // ~600 chars of static prompt
+            let available_chars = context_length.saturating_sub(overhead) * 3;
+            available_chars.clamp(120, 400)
+        } else {
+            400
+        };
+
         let commit_list = batch
             .iter()
             .map(|(sha, subject, body)| {
                 if body.is_empty() {
                     format!("COMMIT {sha}\n{subject}")
                 } else {
-                    let boundary = body.floor_char_boundary(MAX_BODY_CHARS);
+                    let boundary = body.floor_char_boundary(max_body);
                     let trimmed_body = &body[..boundary];
                     format!("COMMIT {sha}\n{subject}\n\n{trimmed_body}")
                 }
@@ -621,13 +644,36 @@ async fn memory_harvest(
              Commits:\n{commit_list}"
         );
 
+        let input_tokens = estimate_tokens(system) + estimate_tokens(&user);
+        let out_budget = output_budget(batch.len());
+
+        // If the prompt is too large and the batch has more than one commit,
+        // split in half and retry — both halves go to the front of the queue.
+        if input_tokens + out_budget > context_length && batch.len() > 1 {
+            println!(
+                "\n  Batch {} too large (~{} input + {} output > {} token context), splitting…",
+                batch_num, input_tokens, out_budget, context_length
+            );
+            batch_num -= 1; // don't count the unsent attempt
+            let mid = batch.len() / 2;
+            work.push_front(batch[mid..].to_vec());
+            work.push_front(batch[..mid].to_vec());
+            continue;
+        }
+
+        let max_tokens = context_length
+            .saturating_sub(input_tokens)
+            .min(out_budget)
+            .max(128);
+
+        if num_batches > 1 || work.front().is_some() {
+            println!("\nBatch {} ({} commits)…", batch_num, batch.len());
+        }
+
         let messages = vec![
             crate::llm::Message::system(system),
             crate::llm::Message::user(user),
         ];
-
-        // Scale max_tokens with batch size so larger batches get more room.
-        let max_tokens = (batch.len() * 150).clamp(512, 4096);
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(256);
         let generate = llm.generate(&messages, max_tokens, tx, Some(schema.clone()));
@@ -643,10 +689,7 @@ async fn memory_harvest(
         let raw_json = crate::utils::strip_ansi(&raw_json);
 
         let parsed: serde_json::Value = serde_json::from_str(&raw_json).with_context(|| {
-            format!(
-                "parsing LLM harvest response (batch {}):\n{raw_json}",
-                batch_idx + 1
-            )
+            format!("parsing LLM harvest response (batch {batch_num}):\n{raw_json}")
         })?;
 
         let entries = parsed["entries"].as_array().cloned().unwrap_or_default();
@@ -697,7 +740,7 @@ async fn memory_harvest(
             println!("  + [{kind}] #{note_id}: {title}");
             stored += 1;
         }
-    } // end batch loop
+    } // end work queue
 
     let skipped = new_commits.len().saturating_sub(stored);
     println!("\nStored {stored} memory entries. Skipped {skipped} routine commits.");

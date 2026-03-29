@@ -133,6 +133,13 @@ pub struct Config {
     /// Default: `docs/specs`
     #[serde(default = "Config::default_specs_dir")]
     pub specs_dir: PathBuf,
+
+    /// Context-window size (tokens) of the LLM used for `memory harvest` and `ask`.
+    /// spelunk uses this to split harvest batches that would overflow the model's window.
+    /// Set to match the `n_ctx` / context-length of the model you have loaded.
+    /// Default: 8192
+    #[serde(default = "Config::default_llm_context_length")]
+    pub llm_context_length: usize,
 }
 
 impl Config {
@@ -157,6 +164,9 @@ impl Config {
     fn default_specs_dir() -> PathBuf {
         PathBuf::from("docs/specs")
     }
+    fn default_llm_context_length() -> usize {
+        8192
+    }
 }
 
 impl Default for Config {
@@ -173,6 +183,7 @@ impl Default for Config {
             project_id: None,
             plans_dir: Self::default_plans_dir(),
             specs_dir: Self::default_specs_dir(),
+            llm_context_length: Self::default_llm_context_length(),
         }
     }
 }
