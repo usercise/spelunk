@@ -80,6 +80,7 @@ pub(super) fn parse_notebook(source: &str, file_path: &str) -> Vec<Chunk> {
             content: text,
             docstring: None,
             parent_scope: None,
+            summary: None,
         });
         line += line_count;
     }
@@ -120,6 +121,7 @@ pub(super) fn parse_markdown(source: &str, file_path: &str) -> Vec<Chunk> {
             content,
             docstring: None,
             parent_scope: None,
+            summary: None,
         });
     };
 

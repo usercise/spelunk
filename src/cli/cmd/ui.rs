@@ -71,6 +71,12 @@ pub(crate) fn print_results_text(results: &[crate::search::SearchResult]) {
             suffix,
         );
 
+        if let Some(ref summary) = r.summary
+            && !summary.is_empty()
+        {
+            println!("  Summary: {summary}");
+        }
+
         if !r.governing_specs.is_empty() {
             println!("    \x1b[2mSpec: {}\x1b[0m", r.governing_specs.join(", "));
         }

@@ -50,19 +50,27 @@ pub struct Chunk {
     pub docstring: Option<String>,
     /// Enclosing scope (e.g. `impl MyStruct` for a method).
     pub parent_scope: Option<String>,
+    /// LLM-generated one-sentence summary (set after indexing, not during parsing).
+    pub summary: Option<String>,
 }
 
 impl Chunk {
     /// The text that gets passed to the embedding model.
     /// Uses EmbeddingGemma's recommended document retrieval format:
     /// `title: {title | "none"} | text: {content}`
+    ///
+    /// When a summary is present, it is prepended:
+    /// `title: {title} | summary: {summary} | text: {content}`
     pub fn embedding_text(&self) -> String {
         let title = self.name.as_deref().unwrap_or("none");
         let body = match &self.docstring {
             Some(doc) => format!("{doc}\n{}", self.content),
             None => self.content.clone(),
         };
-        format!("title: {title} | text: {body}")
+        match &self.summary {
+            Some(summary) => format!("title: {title} | summary: {summary} | text: {body}"),
+            None => format!("title: {title} | text: {body}"),
+        }
     }
 }
 
@@ -92,6 +100,7 @@ pub fn sliding_window(
             content: lines[start..end].join("\n"),
             docstring: None,
             parent_scope: None,
+            summary: None,
         });
         if end == lines.len() {
             break;

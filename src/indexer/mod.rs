@@ -6,6 +6,7 @@ pub mod parser;
 #[cfg(feature = "pdf")]
 pub mod pdf;
 pub mod secrets;
+pub mod summariser;
 
 #[allow(unused_imports)]
 pub use chunker::{Chunk, ChunkKind, sliding_window};

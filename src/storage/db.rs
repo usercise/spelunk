@@ -32,6 +32,7 @@ impl Database {
         db.apply_fts_migration()?;
         db.apply_token_count_migration()?;
         db.apply_graph_rank_migration()?;
+        db.apply_summary_migration()?;
         Ok(db)
     }
 
@@ -101,6 +102,50 @@ impl Database {
             .conn
             .execute_batch(include_str!("../../migrations/009_graph_rank.sql"));
         Ok(())
+    }
+
+    /// Add summary column to chunks table. Idempotent (ALTER TABLE ignored if column exists).
+    pub fn apply_summary_migration(&self) -> Result<()> {
+        // ALTER TABLE ... ADD COLUMN fails if the column already exists,
+        // so we ignore the error (SQLite doesn't support IF NOT EXISTS here).
+        let _ = self
+            .conn
+            .execute_batch(include_str!("../../migrations/010_summaries.sql"));
+        Ok(())
+    }
+
+    /// Update the LLM-generated summary for a single chunk.
+    pub fn update_chunk_summary(&self, chunk_id: i64, summary: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chunks SET summary = ?1 WHERE id = ?2",
+            rusqlite::params![summary, chunk_id],
+        )?;
+        Ok(())
+    }
+
+    /// Fetch chunks that have no summary yet, up to `limit` rows.
+    /// Returns `(id, name, kind, content)`.
+    pub fn chunks_without_summaries(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<(i64, String, String, String)>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, COALESCE(name, ''), node_type, content
+             FROM chunks
+             WHERE summary IS NULL
+             ORDER BY id
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     // -----------------------------------------------------------------------
@@ -243,6 +288,7 @@ impl Database {
                 token_count: row.get::<_, i64>(9)? as usize,
                 project_name: None,
                 project_path: None,
+                summary: None,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -362,6 +408,7 @@ impl Database {
                 token_count: row.get::<_, i64>(9)? as usize,
                 project_name: None,
                 project_path: None,
+                summary: None,
             })
         })?;
 
@@ -411,6 +458,7 @@ impl Database {
                 token_count: 0,
                 project_name: None,
                 project_path: None,
+                summary: None,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -638,6 +686,7 @@ impl Database {
                 token_count: row.get::<_, i64>(8)? as usize,
                 project_name: None,
                 project_path: None,
+                summary: None,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
