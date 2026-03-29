@@ -53,6 +53,31 @@ spelunk search "authentication middleware" --graph
 
 ---
 
+## spelunk explore
+
+Agentic search: the LLM iteratively calls spelunk's own tools (search, graph, read) to answer an open-ended question about the codebase. Requires `llm_model` to be set in config.
+
+```
+spelunk explore "<question>" [options]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--max-steps <n>` | 10 | Stop after this many tool calls |
+| `--verbose` | false | Print each tool call and result preview to stderr |
+| `--json` | false | Structured JSON output: `{answer, sources, steps}` |
+| `-d, --db <path>` | auto | Override database path |
+
+**Example:**
+
+```bash
+spelunk explore "how does incremental indexing work?"
+spelunk explore "what guards the context window in the LLM pipeline?" --verbose
+AGENT=true spelunk explore "where is authentication enforced?" --json
+```
+
+---
+
 ## spelunk status
 
 Show indexing statistics for the current project (or all projects).

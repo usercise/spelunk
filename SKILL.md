@@ -53,6 +53,19 @@ a content preview. Use `--format json` for programmatic access.
 results yourself — the same way `spelunk ask` does internally, but you are the
 reasoning engine.
 
+### Explore — agentic deep search
+
+```bash
+spelunk explore "<question>"                 # iterative tool-use loop, prints answer
+spelunk explore "<question>" --verbose       # show tool calls on stderr
+spelunk explore "<question>" --max-steps 5   # limit iterations
+spelunk explore "<question>" --json          # {answer, sources, steps}
+```
+
+Use `explore` when a single `search` call is unlikely to be enough — for example when the answer requires tracing through several files or understanding why something was built a certain way. The LLM calls `search`, `graph`, `read_chunk`, and `read_file` iteratively until it can answer confidently.
+
+Requires `llm_model` to be set in config. For fast, targeted lookups, prefer `search`.
+
 ### Chunks — inspect what was indexed
 
 ```bash
