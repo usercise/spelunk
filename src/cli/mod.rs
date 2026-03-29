@@ -381,8 +381,8 @@ pub struct MemoryHarvestArgs {
     pub branch: Option<String>,
 
     /// Number of commits to send to the LLM in each request.
-    /// Reduce this if you hit context-window limits (default: 20).
-    #[arg(long, default_value_t = 20)]
+    /// Smaller values are more stable; larger values risk hitting context-window limits.
+    #[arg(long, default_value_t = 3)]
     pub batch_size: usize,
 }
 
