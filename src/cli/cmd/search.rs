@@ -13,6 +13,7 @@ use crate::{
 
 pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     let (db_path, dep_projects) = resolve_project_and_deps(args.db.as_ref(), &cfg)?;
+    crate::storage::record_usage_at(&db_path, "search");
 
     // Apply --local-only: discard linked deps.
     let dep_projects = if args.local_only {
