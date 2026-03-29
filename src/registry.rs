@@ -288,7 +288,19 @@ impl Registry {
         let projects = self.all_projects()?;
         let mut removed = Vec::new();
         for p in projects {
-            if !p.root_path.exists() {
+            let is_gone = !p.root_path.exists();
+            let is_remnant = !is_gone && spelunk_only_remnant(&p.root_path);
+
+            if is_gone || is_remnant {
+                if is_remnant {
+                    // Remove the leftover .spelunk dir (worktree was cleaned but
+                    // .spelunk was skipped because it is in .gitignore).
+                    let spelunk_dir = p.root_path.join(".spelunk");
+                    std::fs::remove_dir_all(&spelunk_dir)
+                        .with_context(|| format!("removing {}", spelunk_dir.display()))?;
+                    // Root dir is now empty — remove it too.
+                    let _ = std::fs::remove_dir(&p.root_path);
+                }
                 self.conn
                     .execute("DELETE FROM projects WHERE id = ?1", params![p.id])
                     .context("deleting stale project from registry")?;
@@ -296,6 +308,19 @@ impl Registry {
             }
         }
         Ok(removed)
+    }
+}
+
+/// Returns true if `path` exists but contains only a `.spelunk` subdirectory —
+/// i.e. it is a git worktree remnant where everything tracked was removed but
+/// the gitignored `.spelunk` folder was left behind.
+fn spelunk_only_remnant(path: &std::path::Path) -> bool {
+    let Ok(mut entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+    match (entries.next(), entries.next()) {
+        (Some(Ok(entry)), None) => entry.file_name() == ".spelunk",
+        _ => false,
     }
 }
 
