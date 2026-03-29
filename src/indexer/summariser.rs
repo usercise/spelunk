@@ -27,8 +27,10 @@ pub async fn summarise_batch(
         body.push_str(&format!("===CHUNK {id}===\n"));
         body.push_str(&format!("name: {name}\nkind: {kind}\n"));
         // Truncate very long chunks to avoid blowing the context window.
+        // Use floor_char_boundary so we never split a multi-byte codepoint.
         let trimmed = if content.len() > 1500 {
-            &content[..1500]
+            let boundary = content.floor_char_boundary(1500);
+            &content[..boundary]
         } else {
             content.as_str()
         };
