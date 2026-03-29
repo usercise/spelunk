@@ -587,13 +587,18 @@ async fn memory_harvest(
             );
         }
 
+        // Truncate each commit body so a single large commit message can't
+        // blow the context window regardless of batch size.
+        const MAX_BODY_CHARS: usize = 400;
         let commit_list = batch
             .iter()
             .map(|(sha, subject, body)| {
                 if body.is_empty() {
                     format!("COMMIT {sha}\n{subject}")
                 } else {
-                    format!("COMMIT {sha}\n{subject}\n\n{body}")
+                    let boundary = body.floor_char_boundary(MAX_BODY_CHARS);
+                    let trimmed_body = &body[..boundary];
+                    format!("COMMIT {sha}\n{subject}\n\n{trimmed_body}")
                 }
             })
             .collect::<Vec<_>>()
