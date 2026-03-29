@@ -123,7 +123,7 @@ fn walk(
     collect(&node, src, file_path, language, eff, out, seen);
 
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             walk(child, src, file_path, language, eff, out, seen);
         }
     }

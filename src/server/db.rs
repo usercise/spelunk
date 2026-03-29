@@ -102,7 +102,7 @@ impl ServerDb {
             if p.embedding_dim == 0 {
                 self.conn.execute(
                     "UPDATE projects SET embedding_dim = ?1 WHERE id = ?2",
-                    rusqlite::params![incoming_dim, p.id],
+                    rusqlite::params![incoming_dim as i64, p.id],
                 )?;
                 p.embedding_dim = incoming_dim;
             }
@@ -111,7 +111,7 @@ impl ServerDb {
             // Auto-create.
             self.conn.execute(
                 "INSERT INTO projects (slug, embedding_dim) VALUES (?1, ?2)",
-                rusqlite::params![slug, incoming_dim],
+                rusqlite::params![slug, incoming_dim as i64],
             )?;
             let id = self.conn.last_insert_rowid();
             Ok(Project {
