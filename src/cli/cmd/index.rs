@@ -30,7 +30,27 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         .db
         .clone()
         .unwrap_or_else(|| args.path.join(".spelunk").join("index.db"));
-    let db = Database::open(&db_path)?;
+    let db = match Database::open(&db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            if args.force && db_path.exists() {
+                tracing::warn!("corrupt index detected, deleting and rebuilding: {e}");
+                std::fs::remove_file(&db_path)
+                    .with_context(|| format!("removing corrupt index at {}", db_path.display()))?;
+                Database::open(&db_path)?
+            } else {
+                return Err(e).with_context(|| {
+                    format!(
+                        "failed to open index at {}\n\
+                         The database may be corrupt. Run with --force to delete it and rebuild from scratch:\n\
+                         \n  spelunk index {} --force\n",
+                        db_path.display(),
+                        args.path.display(),
+                    )
+                });
+            }
+        }
+    };
 
     // --recount: backfill token_count for existing chunks, then exit.
     if args.recount {
