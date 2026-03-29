@@ -156,7 +156,7 @@ pub(super) fn walk_node(
         // Structural nodes always have named children; keyword leaves do not.
         if node.named_child_count() == 0 {
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i) {
+                if let Some(child) = node.child(i as u32) {
                     walk_node(child, src, file_path, language, specs, parent_scope, out);
                 }
             }
@@ -193,7 +193,7 @@ pub(super) fn walk_node(
 
         // Recurse into children with the updated scope
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 walk_node(
                     child,
                     src,
@@ -208,7 +208,7 @@ pub(super) fn walk_node(
     } else {
         // Not a target node — recurse with same parent scope
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 walk_node(child, src, file_path, language, specs, parent_scope, out);
             }
         }
@@ -253,7 +253,7 @@ pub(super) fn extract_name(
 /// at-rules, to use as the chunk name.
 fn css_chunk_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             if child.kind() == "selectors" {
                 return child.utf8_text(src).ok().map(|s| s.trim().to_owned());
             }
@@ -271,13 +271,13 @@ fn css_chunk_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
 /// (`attribute_name`, `attribute_value`) rather than named fields.
 fn html_chunk_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     for i in 0..node.child_count() {
-        if let Some(start_tag) = node.child(i) {
+        if let Some(start_tag) = node.child(i as u32) {
             if start_tag.kind() != "start_tag" {
                 continue;
             }
             let mut tag_name: Option<String> = None;
             for j in 0..start_tag.child_count() {
-                let child = match start_tag.child(j) {
+                let child = match start_tag.child(j as u32) {
                     Some(c) => c,
                     None => continue,
                 };
@@ -288,7 +288,7 @@ fn html_chunk_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
                     let mut name = "";
                     let mut value = "";
                     for k in 0..child.child_count() {
-                        if let Some(attr_child) = child.child(k) {
+                        if let Some(attr_child) = child.child(k as u32) {
                             match attr_child.kind() {
                                 "attribute_name" => name = attr_child.utf8_text(src).unwrap_or(""),
                                 "attribute_value" | "quoted_attribute_value" => {
@@ -322,7 +322,7 @@ pub(super) fn find_identifier(node: tree_sitter::Node<'_>, src: &[u8]) -> Option
         return node.utf8_text(src).ok().map(str::to_owned);
     }
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i)
+        if let Some(child) = node.child(i as u32)
             && let Some(name) = find_identifier(child, src)
         {
             return Some(name);
@@ -336,7 +336,7 @@ pub(super) fn find_identifier(node: tree_sitter::Node<'_>, src: &[u8]) -> Option
 fn hcl_block_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
+        if let Some(child) = node.child(i as u32) {
             match child.kind() {
                 "identifier" => {
                     if let Ok(t) = child.utf8_text(src) {
@@ -362,7 +362,7 @@ fn hcl_block_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
 /// Return the text of the first `*_name` child node (used for proto grammars).
 fn proto_named_child(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i)
+        if let Some(child) = node.child(i as u32)
             && child.kind().ends_with("_name")
         {
             return child.utf8_text(src).ok().map(str::to_owned);
@@ -374,7 +374,7 @@ fn proto_named_child(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String>
 /// Return the text of the first `object_reference` child (used for SQL DDL nodes).
 fn sql_object_name(node: &tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
     for i in 0..node.child_count() {
-        if let Some(child) = node.child(i)
+        if let Some(child) = node.child(i as u32)
             && child.kind() == "object_reference"
         {
             return child.utf8_text(src).ok().map(str::to_owned);

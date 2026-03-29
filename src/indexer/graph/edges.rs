@@ -71,7 +71,7 @@ pub(super) fn python_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(Str
     match node.kind() {
         "import_statement" => {
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i)
+                if let Some(child) = node.child(i as u32)
                     && matches!(child.kind(), "dotted_name" | "aliased_import")
                 {
                     let name_node = if child.kind() == "aliased_import" {
@@ -203,7 +203,7 @@ pub(super) fn java_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(Strin
     match node.kind() {
         "import_declaration" => {
             for i in 0..node.child_count() {
-                if let Some(child) = node.child(i)
+                if let Some(child) = node.child(i as u32)
                     && matches!(child.kind(), "scoped_identifier" | "identifier")
                 {
                     if let Ok(text) = child.utf8_text(src) {
@@ -283,7 +283,7 @@ pub(super) fn html_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(Strin
         let mut attr_value = "";
 
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i) {
+            if let Some(child) = node.child(i as u32) {
                 match child.kind() {
                     "attribute_name" => {
                         attr_name = child.utf8_text(src).unwrap_or("");
@@ -311,7 +311,7 @@ pub(super) fn css_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String
     // @import "file.css" or @import url("file.css")
     if node.kind() == "import_statement" {
         for i in 0..node.child_count() {
-            if let Some(child) = node.child(i)
+            if let Some(child) = node.child(i as u32)
                 && matches!(child.kind(), "string_value" | "call_expression")
             {
                 if let Ok(text) = child.utf8_text(src) {

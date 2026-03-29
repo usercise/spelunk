@@ -51,13 +51,13 @@ toml = "0.8"
 dirs = "5"
 
 # SQLite
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 
 # Vector extension for SQLite
 sqlite-vec = "0.1"
 
 # Tree-sitter core + language grammars
-tree-sitter = "0.25"
+tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
 tree-sitter-python = "0.25"
 tree-sitter-javascript = "0.25"
@@ -92,8 +92,8 @@ blake3 = "1"
 
 # Document format parsers
 docx-rs  = "0.4"
-calamine = { version = "0.24", features = ["dates"] }
-lopdf = { version = "0.34", optional = true }
+calamine = { version = "0.34", features = ["dates"] }
+lopdf = { version = "0.40", optional = true }
 
 # Filesystem traversal + .gitignore support
 ignore = "0.4"
