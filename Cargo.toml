@@ -74,7 +74,7 @@ tree-sitter-proto = "0.4"
 tree-sitter-sequel = "0.3"
 
 # HTTP client — used by OpenAI-compatible backend and remote memory backend
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 futures-util = { version = "0.3", optional = true }
 
 # HTTP server — used by spelunk-server binary
