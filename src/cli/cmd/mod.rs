@@ -1,5 +1,6 @@
 mod ask;
 mod check;
+mod explore;
 mod graph;
 pub mod helpers;
 mod hooks;
@@ -18,6 +19,7 @@ mod verify;
 
 pub use ask::ask;
 pub use check::check;
+pub use explore::explore;
 pub use graph::graph;
 pub use hooks::hooks;
 pub use index::index;

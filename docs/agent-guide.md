@@ -79,6 +79,18 @@ AGENT=true spelunk graph handle_request
 AGENT=true spelunk search "request lifecycle middleware" --limit 20 --format json
 ```
 
+For open-ended questions that require tracing through several files, use `spelunk explore` instead. It runs the same search/graph/read tools in an LLM-driven loop and returns a synthesised answer:
+
+```bash
+# Let spelunk drive the search loop; get a final answer + sources
+AGENT=true spelunk explore "how does incremental indexing decide which files to skip?"
+
+# Limit steps if you want a fast, shallow answer
+AGENT=true spelunk explore "where is the embedding model loaded?" --max-steps 3
+```
+
+`explore` is slower than `search` (multiple LLM calls) — use `search` for targeted lookups and `explore` for questions that need synthesis across multiple code paths.
+
 ## Creating plans
 
 Before a significant change, generate a plan:

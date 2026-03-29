@@ -37,9 +37,10 @@ async fn main() -> Result<()> {
         .map(|c| c.llm_model.is_some())
         .unwrap_or(false);
 
-    // Hide `ask` from help when no chat model is configured.
+    // Hide `ask` and `explore` from help when no chat model is configured.
     let matches = Cli::command()
         .mut_subcommand("ask", |c| c.hide(!llm_configured))
+        .mut_subcommand("explore", |c| c.hide(!llm_configured))
         .get_matches();
     let cli = Cli::from_arg_matches(&matches)?;
 
@@ -63,6 +64,7 @@ async fn main() -> Result<()> {
         Command::Hooks(args) => cli::cmd::hooks(args),
         Command::Plan(args) => cli::cmd::plan(args, cfg).await,
         Command::Spec(args) => cli::cmd::spec(args, cfg),
+        Command::Explore(args) => cli::cmd::explore(args, cfg).await,
         Command::Links(args) => cli::cmd::links(args, cfg).await,
     }
 }
