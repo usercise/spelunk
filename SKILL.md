@@ -269,6 +269,49 @@ spelunk memory search "<topic>" --format json | jq '.[].body'
 
 ---
 
+## Git worktree support
+
+spelunk shares one index across all git worktrees of the same repository.
+SQLite WAL mode allows multiple processes to read and write the same
+database safely — reads are never blocked, and concurrent writes are
+serialised automatically by the file lock.
+
+**How it works:**
+
+When you run `spelunk index .` inside a git worktree that has no `.spelunk`
+folder yet, spelunk detects the worktree (`.git` is a file, not a directory),
+locates the main worktree's `.spelunk` folder, and creates a symlink:
+
+```
+<worktree>/.spelunk  →  <main-worktree>/.spelunk
+```
+
+All subsequent commands in the worktree — search, memory, graph — resolve
+through the symlink and operate on the same shared index and memory store.
+
+**Workflow:**
+
+```bash
+# 1. Index the main worktree first (creates .spelunk/index.db)
+git worktree add ../my-feature my-feature-branch
+cd ../my-feature
+
+# 2. Run any spelunk command — symlink is created automatically on first index
+spelunk index .
+# → Created .spelunk symlink → /path/to/main/.spelunk (shared worktree index)
+
+# 3. All commands now work normally from the worktree
+spelunk search "authentication flow"
+spelunk memory list
+```
+
+**Cleanup:**
+
+`spelunk autoclean` removes registry entries for worktrees whose directories
+have been deleted (including those that only have a leftover `.spelunk` symlink).
+
+---
+
 ## Multi-project search
 
 ```bash
