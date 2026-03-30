@@ -52,6 +52,22 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         }
     };
 
+    // ── Registry update ───────────────────────────────────────────────────────
+    // Keep the global registry in sync with the current location. This ensures
+    // that moving a project and running `spelunk index .` from the new location
+    // is enough to re-register it — no manual `spelunk init` required.
+    // root_canonical is not yet computed here; derive it from args.path.
+    {
+        let root_now = args
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| args.path.clone());
+        let db_now = db_path.canonicalize().unwrap_or_else(|_| db_path.clone());
+        if let Ok(reg) = Registry::open() {
+            let _ = reg.register(&root_now, &db_now);
+        }
+    }
+
     // --recount: backfill token_count for existing chunks, then exit.
     if args.recount {
         let updated = db.backfill_token_counts()?;
@@ -89,9 +105,9 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         "!.netrc",
         "!.npmrc",
     ];
-    let mut walk = WalkBuilder::new(&args.path);
+    let mut walk = WalkBuilder::new(&root_canonical);
     walk.standard_filters(true);
-    let mut ob = ignore::overrides::OverrideBuilder::new(&args.path);
+    let mut ob = ignore::overrides::OverrideBuilder::new(&root_canonical);
     for pat in &sensitive_patterns {
         ob.add(pat).ok();
     }
@@ -112,7 +128,10 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         .collect();
 
     if files.is_empty() {
-        println!("No supported source files found in {}", args.path.display());
+        println!(
+            "No supported source files found in {}",
+            root_canonical.display()
+        );
         return Ok(());
     }
 
@@ -132,7 +151,10 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
     for entry in &files {
         let path = entry.path();
-        let path_str = path.to_string_lossy();
+        // Store paths relative to the project root so the index is portable
+        // (moving the folder doesn't invalidate every hash lookup).
+        let rel = path.strip_prefix(&root_canonical).unwrap_or(path);
+        let path_str = rel.to_string_lossy();
         parse_bar.set_message(short_path(&path_str));
 
         // ── Binary document formats (DOCX, XLSX, …) ──────────────────────────
@@ -344,12 +366,19 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
 
     // ── Stale file cleanup ────────────────────────────────────────────────────
     // Remove index records for files that no longer exist under the project root.
-    let root_str = args.path.to_string_lossy().to_string();
+    // Paths in the DB are root-relative, so visited uses the same relative form.
     let visited: std::collections::HashSet<String> = files
         .iter()
-        .map(|e| e.path().to_string_lossy().to_string())
+        .map(|e| {
+            let p = e.path();
+            p.strip_prefix(&root_canonical)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string()
+        })
         .collect();
-    let all_indexed = db.file_paths_under(&root_str)?;
+    // Pass "" so file_paths_under returns all files in this DB (paths are relative).
+    let all_indexed = db.file_paths_under("")?;
     let mut removed = 0u64;
     for (id, path) in all_indexed {
         if !visited.contains(&path) {
