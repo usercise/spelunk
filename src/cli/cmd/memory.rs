@@ -528,6 +528,23 @@ async fn memory_harvest(
         return Ok(());
     }
 
+    // Pre-filter: drop obviously routine commits before sending to the LLM.
+    let (new_commits, pre_filtered): (Vec<_>, Vec<_>) = new_commits
+        .into_iter()
+        .partition(|(_, subject, _)| !is_routine_subject(subject));
+
+    if !pre_filtered.is_empty() {
+        println!(
+            "Pre-filtered {} routine commit(s) (formatting, merges, etc.).",
+            pre_filtered.len()
+        );
+    }
+
+    if new_commits.is_empty() {
+        println!("No commits worth analysing in {range_label}.");
+        return Ok(());
+    }
+
     let batch_size = args.batch_size.max(1);
     let total = new_commits.len();
     let num_batches = total.div_ceil(batch_size);
@@ -578,6 +595,9 @@ async fn memory_harvest(
         .context("loading embedding model")?;
 
     let mut stored = 0usize;
+    let mut dedup_skipped = 0usize;
+    // Cosine distance below this threshold → treat as a near-duplicate.
+    const DEDUP_THRESHOLD: f64 = 0.15;
 
     // Rough token estimator: ~3 chars per token for mixed code+prose.
     let estimate_tokens = |s: &str| s.len() / 3;
@@ -636,8 +656,15 @@ async fn memory_harvest(
              - \"context\": Background about requirements, constraints, or project goals\n\
              - \"requirement\": A hard constraint the codebase must satisfy\n\
              - \"note\": A surprising or non-obvious discovery\n\n\
-             Skip routine commits (version bumps, typo fixes, dependency updates \
-             unless they reveal a constraint, formatting).\n\n\
+             SKIP — return NO entry for:\n\
+             - Formatting/linting: \"ran prettier\", \"cargo fmt\", \"apply eslint\", \
+               \"gofmt\", \"fix whitespace\", \"code style\", \"apply linting\"\n\
+             - Version/release: \"bump version\", \"release v1.2.3\", \"update changelog\"\n\
+             - Merge commits: subjects starting with \"Merge branch\" or \"Merge pull request\"\n\
+             - Trivial fixes: typos, comment wording, variable renames with no design significance\n\
+             - Dependency bumps that reveal no architectural constraint\n\n\
+             Only create an entry if the commit reveals WHY something was designed a certain way, \
+             establishes a hard constraint, or captures non-obvious knowledge a future developer needs.\n\n\
              For each significant commit write: sha (first 8 chars), kind, title \
              (one sentence, past tense for decisions), body (include why, \
              what alternatives were considered), tags (2-4 keywords).\n\n\
@@ -724,7 +751,26 @@ async fn memory_harvest(
 
             let embed_text = format!("title: {title} | text: {body}");
             let vecs = embedder.embed(&[&embed_text]).await?;
-            let embedding = vecs.first().map(|v| vec_to_blob(v));
+            let Some(vec) = vecs.into_iter().next() else {
+                continue;
+            };
+            let blob = vec_to_blob(&vec);
+
+            // Skip if a near-duplicate already exists in the memory store.
+            let neighbors = backend.search(&blob, 1).await?;
+            if let Some(top) = neighbors.first()
+                && top.distance.unwrap_or(1.0) < DEDUP_THRESHOLD
+            {
+                println!(
+                    "  [dedup] '{}' too similar to #{} '{}' (dist={:.3})",
+                    title,
+                    top.id,
+                    top.title,
+                    top.distance.unwrap_or(0.0)
+                );
+                dedup_skipped += 1;
+                continue;
+            }
 
             let note_id = backend
                 .add(NoteInput {
@@ -733,7 +779,7 @@ async fn memory_harvest(
                     body: body.clone(),
                     tags: tags.clone(),
                     linked_files: vec![],
-                    embedding,
+                    embedding: Some(blob),
                 })
                 .await?;
 
@@ -742,7 +788,62 @@ async fn memory_harvest(
         }
     } // end work queue
 
-    let skipped = new_commits.len().saturating_sub(stored);
-    println!("\nStored {stored} memory entries. Skipped {skipped} routine commits.");
+    let llm_skipped = new_commits.len().saturating_sub(stored + dedup_skipped);
+    println!(
+        "\nStored {stored} memory entries. Skipped {} routine (pre-filter), {} by LLM, {} near-duplicate.",
+        pre_filtered.len(),
+        llm_skipped,
+        dedup_skipped
+    );
     Ok(())
+}
+
+/// Returns true for commit subjects that are obviously routine and not worth
+/// sending to the LLM: formatting runs, merges, version bumps, etc.
+fn is_routine_subject(subject: &str) -> bool {
+    let s = subject.trim().to_lowercase();
+
+    // Formatting / linting tools
+    let fmt_tools = [
+        "prettier",
+        "eslint",
+        "gofmt",
+        "cargo fmt",
+        "rustfmt",
+        "black",
+        "isort",
+        "rubocop",
+        "stylelint",
+        "clang-format",
+        "yapf",
+        "autopep8",
+        "swiftformat",
+        "ktlint",
+    ];
+    if fmt_tools.iter().any(|t| s.contains(t)) {
+        return true;
+    }
+
+    // Common routine subject patterns
+    let patterns = [
+        "format code",
+        "formatting",
+        "fix whitespace",
+        "whitespace",
+        "trailing whitespace",
+        "lint fix",
+        "ran linter",
+        "apply linting",
+        "merge branch ",
+        "merge pull request",
+        "merge remote-tracking",
+        "bump version",
+        "version bump",
+        "release v",
+        "chore: release",
+        "update changelog",
+        "update lock",
+        "cargo.lock",
+    ];
+    patterns.iter().any(|p| s.contains(p))
 }
