@@ -39,11 +39,17 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Clippy (rich-formats)
+        run: cargo clippy --all-targets --features rich-formats -- -D warnings
+
       - name: Check
         run: cargo check --all-targets
 
       - name: Build
         run: cargo build --all-targets
+
+      - name: Build (rich-formats)
+        run: cargo build --all-targets --features rich-formats
 
   test:
     name: Test

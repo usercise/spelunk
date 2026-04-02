@@ -4,6 +4,8 @@
 //! tree-sitter pipeline entirely.  Each parser extracts plain text and returns
 //! chunks suitable for embedding.
 
+#![cfg(feature = "rich-formats")]
+
 use super::chunker::{Chunk, ChunkKind, sliding_window};
 
 // ---------------------------------------------------------------------------

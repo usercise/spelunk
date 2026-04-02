@@ -5,11 +5,12 @@ use indicatif::{MultiProgress, ProgressBar};
 
 use super::super::IndexArgs;
 use super::ui::{is_tty, progress_style, short_path};
+#[cfg(feature = "rich-formats")]
+use crate::indexer::docparser::parse_doc;
 use crate::{
     config::Config,
     embeddings::{EmbeddingBackend as _, vec_to_blob},
     indexer::{
-        docparser::parse_doc,
         graph::EdgeExtractor,
         parser::{
             SourceParser, detect_doc_language, detect_language, detect_text_language,
@@ -84,6 +85,72 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         .path
         .canonicalize()
         .unwrap_or_else(|_| args.path.clone());
+
+    // ── Background-phases mode ────────────────────────────────────────────────
+    // When spawned as a background process (--_background-phases), skip phases
+    // 1 & 2 (walk, parse, embed) which are already done, and run only phases
+    // 3–5 plus the final registry update.
+    if args.background_phases {
+        // Phase 3: PageRank
+        eprintln!("Computing graph rank…");
+        let edges = db.graph_edges_all()?;
+        if !edges.is_empty() {
+            let pr_scores = crate::indexer::pagerank::compute_pagerank(&edges, 20, 0.85);
+            let named_chunks = db.chunks_with_names()?;
+            let updates: Vec<(i64, f32)> = named_chunks
+                .into_iter()
+                .filter_map(|(id, name)| {
+                    name.and_then(|n| pr_scores.get(&n).copied().map(|s| (id, s)))
+                })
+                .collect();
+            if !updates.is_empty() {
+                db.update_graph_ranks(&updates)?;
+            }
+        }
+
+        // Phase 4: spec discovery
+        let files_bg: Vec<_> = {
+            let mut walk_bg = WalkBuilder::new(&root_canonical);
+            walk_bg.standard_filters(true);
+            walk_bg
+                .build()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+                .collect()
+        };
+        let mut specs_found = 0u32;
+        for entry in &files_bg {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            if super::spec::is_spec_file(path, &cfg.specs_dir) {
+                let path_str = path.to_string_lossy().into_owned();
+                let title = super::spec::extract_spec_title(path).unwrap_or_default();
+                if let Err(e) = db.upsert_spec(&path_str, &title, true) {
+                    tracing::warn!("spec registration failed for {path_str}: {e}");
+                } else {
+                    specs_found += 1;
+                }
+            }
+        }
+        if specs_found > 0 {
+            eprintln!("Registered {specs_found} spec file(s).");
+        }
+
+        // Phase 5: LLM summaries
+        generate_summaries(&args, &cfg, &db).await?;
+
+        // Registry update
+        if let Ok(reg) = Registry::open() {
+            let db_canonical = db_path.canonicalize().unwrap_or(db_path.clone());
+            if let Err(e) = reg.register(&root_canonical, &db_canonical) {
+                tracing::warn!("registry update failed: {e}");
+            }
+        }
+
+        return Ok(());
+    }
 
     // ── Collect source files ─────────────────────────────────────────────────
     // WalkBuilder respects .gitignore, .ignore, and global gitignore rules.
@@ -161,8 +228,10 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         let path_str = rel.to_string_lossy();
         parse_bar.set_message(short_path(&path_str));
 
-        // ── Binary document formats (DOCX, XLSX, …) ──────────────────────────
+        // ── Binary document formats (DOCX, XLSX, PDF, …) ─────────────────────
         // These cannot be read with read_to_string and have no call graph.
+        // Only available when the `rich-formats` feature is enabled.
+        #[cfg(feature = "rich-formats")]
         if let Some(doc_lang) = detect_doc_language(path) {
             let bytes = match std::fs::read(path) {
                 Ok(b) => b,
@@ -216,7 +285,7 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         }
 
         // ── PDF documents (feature-gated) ─────────────────────────────────────
-        #[cfg(feature = "pdf")]
+        #[cfg(feature = "rich-formats")]
         if detect_language(path) == Some("pdf") {
             let bytes = match std::fs::read(path) {
                 Ok(b) => b,
@@ -475,6 +544,29 @@ pub async fn index(args: IndexArgs, cfg: Config) -> Result<()> {
         "\nIndex: {} files, {} chunks, {} embeddings",
         stats.file_count, stats.chunk_count, stats.embedding_count
     );
+
+    // ── Background spawn for phases 3–5 ──────────────────────────────────────
+    // When more than 100 files were newly indexed, detach phases 3-5 into a
+    // background process so the user regains the prompt immediately.
+    if indexed > 100 {
+        eprintln!("Spawning background job for graph rank, spec discovery, and summaries\u{2026}");
+        let mut cmd = std::process::Command::new(std::env::current_exe()?);
+        cmd.arg("index");
+        cmd.arg(&args.path);
+        cmd.arg("--_background-phases");
+        if let Some(db_arg) = &args.db {
+            cmd.args(["--db", &db_arg.to_string_lossy()]);
+        }
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        if let Err(e) = cmd.spawn() {
+            tracing::warn!("failed to spawn background indexer: {e}");
+            // Fall through and run phases 3-5 inline as fallback.
+        } else {
+            return Ok(());
+        }
+    }
 
     // ── Phase 3: compute and store PageRank scores ────────────────────────────
     eprintln!("Computing graph rank…");
