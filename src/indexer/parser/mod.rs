@@ -28,10 +28,12 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &[
     // structured text (custom parsers, no tree-sitter)
     "notebook",
     // binary document formats (docparser, no tree-sitter)
+    #[cfg(feature = "rich-formats")]
     "docx",
+    #[cfg(feature = "rich-formats")]
     "spreadsheet",
-    // PDF (optional feature)
-    #[cfg(feature = "pdf")]
+    // PDF (rich-formats feature)
+    #[cfg(feature = "rich-formats")]
     "pdf",
 ];
 
@@ -54,7 +56,7 @@ pub fn detect_language(path: &std::path::Path) -> Option<&'static str> {
         "tf" | "hcl" => Some("hcl"),
         "sql" | "sequel" => Some("sql"),
         "proto" => Some("proto"),
-        #[cfg(feature = "pdf")]
+        #[cfg(feature = "rich-formats")]
         "pdf" => Some("pdf"),
         _ => None,
     }
@@ -91,12 +93,16 @@ pub fn detect_text_language(path: &std::path::Path) -> Option<&'static str> {
 
 /// Detect binary document formats (DOCX, spreadsheets) from file extension.
 /// These are handled by `docparser` — they cannot be read with `read_to_string`.
+/// Only returns `Some` when the `rich-formats` feature is enabled.
 pub fn detect_doc_language(path: &std::path::Path) -> Option<&'static str> {
+    #[cfg(feature = "rich-formats")]
     match path.extension()?.to_str()?.to_lowercase().as_str() {
-        "docx" => Some("docx"),
-        "xlsx" | "xls" | "ods" => Some("spreadsheet"),
-        _ => None,
+        "docx" => return Some("docx"),
+        "xlsx" | "xls" | "ods" => return Some("spreadsheet"),
+        _ => {}
     }
+    let _ = path;
+    None
 }
 
 /// Return true if the file appears to be binary (contains null bytes in the

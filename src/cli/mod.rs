@@ -96,6 +96,11 @@ pub struct IndexArgs {
     /// Number of chunks to send to the LLM per summary request (default: 10)
     #[arg(long, default_value = "10")]
     pub summary_batch_size: usize,
+
+    /// Internal: run only phases 3-5 (graph rank, spec discovery, summaries).
+    /// Used by the background process spawned after a large foreground index.
+    #[arg(long = "_background-phases", hide = true, default_value_t = false)]
+    pub background_phases: bool,
 }
 
 #[derive(Args, Debug)]

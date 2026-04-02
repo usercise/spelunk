@@ -1,7 +1,7 @@
 /// Extract plain text from a PDF file, page by page.
 /// Returns a Vec of (page_number, text) pairs.
 /// Pages with no extractable text are skipped.
-#[cfg(feature = "pdf")]
+#[cfg(feature = "rich-formats")]
 pub fn extract_pdf_text(path: &std::path::Path) -> anyhow::Result<Vec<(u32, String)>> {
     use lopdf::Document;
     let doc = Document::load(path)?;
