@@ -10,7 +10,7 @@ spuriously invalidate itself.
 
 | File | Benchmark | Model |
 |------|-----------|-------|
-| `crosscodeeval-gemma-4-e2b-it-baseline.json` | CrossCodeEval | gemma-4-e2b-it |
+| `repobench-gemma-4-e2b-it-baseline.json` | RepoBench-Python (cross_file_first) | gemma-4-e2b-it |
 | `swebench-local-gemma-4-e2b-it-baseline.json` | SWE-bench (local) | gemma-4-e2b-it |
 
 ## When to regenerate
@@ -28,12 +28,12 @@ The run scripts warn automatically when this hash no longer matches HEAD.
 ## Regenerating
 
 ```bash
-# CrossCodeEval baseline (400 samples, python + typescript)
+# RepoBench baseline (400 samples, cross_file_first split)
 bash bench/gemma/crosscodeeval/run.sh --condition baseline --samples 400
 # Review the output, then:
-cp bench/results/crosscodeeval-baseline-<timestamp>.json baselines/crosscodeeval-gemma-4-e2b-it-baseline.json
-git add baselines/crosscodeeval-gemma-4-e2b-it-baseline.json
-git commit -m "bench: update CrossCodeEval baseline"
+cp bench/results/repobench-baseline-<timestamp>.json baselines/repobench-gemma-4-e2b-it-baseline.json
+git add baselines/repobench-gemma-4-e2b-it-baseline.json
+git commit -m "bench: update RepoBench baseline"
 
 # SWE-bench local baseline (50 tasks)
 bash bench/gemma/swebench_local/run.sh --condition baseline --tasks 50

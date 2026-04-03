@@ -35,9 +35,9 @@ Baseline results (no-spelunk condition) live in `baselines/` at the repo root an
 
 ---
 
-## CrossCodeEval
+## RepoBench (cross-file completion)
 
-Measures whether `spelunk_search` helps complete lines that require symbols from other files. Each task presents a code file truncated at a completion point; the ground truth requires cross-file understanding.
+Measures whether `spelunk_search` helps complete lines that require symbols from other files. Uses [RepoBench-Python](https://huggingface.co/datasets/tianyang/repobench_python_v1.1), `cross_file_first` split — the completion point requires a symbol introduced in another file, making it the most relevant split for measuring spelunk's retrieval benefit.
 
 ```bash
 # Spelunk condition — compares against committed baseline automatically
@@ -47,7 +47,7 @@ bash bench/gemma/crosscodeeval/run.sh --condition spelunk --repo-path /path/to/i
 bash bench/gemma/crosscodeeval/run.sh --condition baseline --samples 400
 ```
 
-**Options:** `--languages python,typescript` · `--samples 200` · `--model gemma-4-e2b-it` · `--api-base-url http://127.0.0.1:1234/v1`
+**Options:** `--split cross_file_first|cross_file_random|in_file` · `--samples 200` · `--model gemma-4-e2b-it` · `--api-base-url http://127.0.0.1:1234/v1`
 
 **Metrics:** `exact_match`, `edit_similarity`, `identifier_recall`
 

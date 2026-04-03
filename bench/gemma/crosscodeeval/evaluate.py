@@ -206,8 +206,15 @@ def scaffold_hash() -> str:
         return "unknown"
 
 
-def evaluate_language(
-    language: str,
+DATASET = "tianyang/repobench_python_v1.1"
+# cross_file_first: completion requires a symbol introduced in another file that
+# appears first in the cross-file context — the hardest and most relevant split
+# for measuring spelunk's retrieval benefit.
+VALID_SPLITS = ("cross_file_first", "cross_file_random", "in_file")
+
+
+def evaluate_split(
+    split: str,
     samples: int,
     condition: str,
     client: OpenAI,
@@ -215,8 +222,8 @@ def evaluate_language(
     repo_path: Path | None,
 ) -> tuple[list, list, list, list, list, list]:
     """Returns (exact_matches, edit_sims, id_recalls, input_tokens, output_tokens, wall_times)."""
-    print(f"Loading CrossCodeEval ({language})...")
-    dataset = load_dataset("microsoft/CrossCodeEval", language, split="test")
+    print(f"Loading RepoBench-Python ({split})...")
+    dataset = load_dataset(DATASET, split=split)
 
     n = min(samples, len(dataset))
     indices = np.random.choice(len(dataset), size=n, replace=False).tolist()
@@ -225,9 +232,11 @@ def evaluate_language(
     exact_matches, edit_sims, id_recalls = [], [], []
     input_tokens_list, output_tokens_list, wall_times = [], [], []
 
-    for item in tqdm(sampled, desc=f"{language} ({condition})", unit="task"):
-        prompt = item.get("prompt", "")
-        truth = (item.get("ground_truth") or "").strip()
+    for item in tqdm(sampled, desc=f"{split} ({condition})", unit="task"):
+        # RepoBench fields: cropped_code = prompt up to completion point,
+        # next_line = the line to predict.
+        prompt = item.get("cropped_code", "")
+        truth = (item.get("next_line") or "").strip()
 
         if not prompt or not truth:
             continue
@@ -254,14 +263,20 @@ def evaluate_language(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate Gemma on CrossCodeEval.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate Gemma on RepoBench-Python cross-file completion."
+    )
     parser.add_argument("--condition", choices=["baseline", "spelunk"], required=True)
     parser.add_argument(
         "--repo-path",
         default=None,
         help="Path to an indexed repo (required for --condition spelunk).",
     )
-    parser.add_argument("--languages", default="python,typescript")
+    parser.add_argument(
+        "--split",
+        default="cross_file_first",
+        help=f"Dataset split to use. One of: {', '.join(VALID_SPLITS)} (default: cross_file_first).",
+    )
     parser.add_argument("--samples", type=int, default=200)
     parser.add_argument("--model", default="gemma-4-e2b-it")
     parser.add_argument("--api-base-url", default="http://127.0.0.1:1234/v1")
@@ -270,6 +285,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    if args.split not in VALID_SPLITS:
+        parser.error(f"--split must be one of: {', '.join(VALID_SPLITS)}")
     if args.condition == "spelunk" and not args.repo_path:
         parser.error("--repo-path is required for --condition spelunk")
 
@@ -279,33 +296,31 @@ def main() -> None:
 
     np.random.seed(args.seed)
     client = OpenAI(base_url=args.api_base_url, api_key="local")
-    languages = [l.strip() for l in args.languages.split(",") if l.strip()]
 
     all_exact, all_edit, all_id_recall = [], [], []
     all_inp_tok, all_out_tok, all_wall = [], [], []
 
-    for lang in languages:
-        exact, edit, id_rec, inp_tok, out_tok, wall = evaluate_language(
-            lang, args.samples, args.condition, client, args.model, repo_path
-        )
-        all_exact.extend(exact)
-        all_edit.extend(edit)
-        all_id_recall.extend(id_rec)
-        all_inp_tok.extend(inp_tok)
-        all_out_tok.extend(out_tok)
-        all_wall.extend(wall)
+    exact, edit, id_rec, inp_tok, out_tok, wall = evaluate_split(
+        args.split, args.samples, args.condition, client, args.model, repo_path
+    )
+    all_exact.extend(exact)
+    all_edit.extend(edit)
+    all_id_recall.extend(id_rec)
+    all_inp_tok.extend(inp_tok)
+    all_out_tok.extend(out_tok)
+    all_wall.extend(wall)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     output = {
         "run_id": timestamp,
-        "benchmark": "crosscodeeval",
+        "benchmark": "repobench",
         "condition": args.condition,
         "model": args.model,
         "model_source": "local",
         "api_base_url": args.api_base_url,
         "spelunk_version": get_spelunk_version(),
         "scaffold_hash": args.scaffold_hash or scaffold_hash(),
-        "languages": languages,
+        "split": args.split,
         "samples": len(all_exact),
         "exact_match": round(float(np.mean(all_exact)), 4) if all_exact else 0.0,
         "edit_similarity": round(float(np.mean(all_edit)), 4) if all_edit else 0.0,
