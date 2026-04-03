@@ -24,7 +24,7 @@ Baseline results (no-spelunk condition) live in `baselines/` at the repo root an
 ## Prerequisites
 
 ```bash
-pip install -r bench/requirements.txt
+uv pip install -r bench/requirements.txt
 ```
 
 **For Gemma benchmarks (primary):**
