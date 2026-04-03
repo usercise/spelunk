@@ -127,7 +127,8 @@ for i in "${!ALL_TASKS[@]}"; do
     ISSUE_FILE="${REPO_PATH}/ISSUE.txt"
     ISSUE_TEXT="$(cat "$ISSUE_FILE" 2>/dev/null || echo "See task ${TASK_ID} in the SWE-bench dataset.")"
 
-    RESULT="$(python3 "$AGENT_SCRIPT" \
+    RESULT="$(uv run --with-requirements "${BENCH_DIR}/requirements.txt" \
+        python3 "$AGENT_SCRIPT" \
         --task-id "$TASK_ID" \
         --repo-path "$REPO_PATH" \
         --issue "$ISSUE_TEXT" \
