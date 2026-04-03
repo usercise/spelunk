@@ -106,7 +106,7 @@ python3 "${SCRIPT_DIR}/evaluate.py" \
     --api-base-url "$API_BASE_URL" \
     --scaffold-hash "$SCAFFOLD_HASH" \
     --out "$OUT_FILE" \
-    "${EXTRA_ARGS[@]}"
+    ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 
 # If spelunk condition and baseline exists, print comparison
 if [[ "$CONDITION" == "spelunk" && -f "${BASELINES_DIR}/crosscodeeval-gemma-4-e2b-it-baseline.json" ]]; then
