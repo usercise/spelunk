@@ -19,7 +19,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BENCH_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+BENCH_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${BENCH_DIR}/.." && pwd)"
 BASELINES_DIR="${REPO_ROOT}/baselines"
 
@@ -95,10 +95,12 @@ echo "Languages:    ${LANGUAGES}"
 echo "Samples:      ${SAMPLES} per language"
 echo "Model:        ${MODEL}"
 echo "API base:     ${API_BASE_URL}"
+echo "Bench base:   ${BENCH_DIR}"
 echo "Output:       ${OUT_FILE}"
 echo ""
 
-python3 "${SCRIPT_DIR}/evaluate.py" \
+uv run --with-requirements "${BENCH_DIR}/requirements.txt" \
+    python3 "${SCRIPT_DIR}/evaluate.py" \
     --condition "$CONDITION" \
     --languages "$LANGUAGES" \
     --samples "$SAMPLES" \
@@ -112,6 +114,7 @@ python3 "${SCRIPT_DIR}/evaluate.py" \
 if [[ "$CONDITION" == "spelunk" && -f "${BASELINES_DIR}/crosscodeeval-gemma-4-e2b-it-baseline.json" ]]; then
     echo ""
     echo "=== Comparison vs committed baseline ==="
+    uv run --with-requirements "${BENCH_DIR}/requirements.txt" \
     python3 "${BENCH_DIR}/report.py" \
         "${BASELINES_DIR}/crosscodeeval-gemma-4-e2b-it-baseline.json" \
         "$OUT_FILE"

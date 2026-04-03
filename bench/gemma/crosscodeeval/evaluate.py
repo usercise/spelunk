@@ -216,7 +216,7 @@ def evaluate_language(
 ) -> tuple[list, list, list, list, list, list]:
     """Returns (exact_matches, edit_sims, id_recalls, input_tokens, output_tokens, wall_times)."""
     print(f"Loading CrossCodeEval ({language})...")
-    dataset = load_dataset("microsoft/CrossCodeEval", language, split="test", trust_remote_code=True)
+    dataset = load_dataset("microsoft/CrossCodeEval", language, split="test")
 
     n = min(samples, len(dataset))
     indices = np.random.choice(len(dataset), size=n, replace=False).tolist()
