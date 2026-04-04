@@ -374,6 +374,10 @@ pub struct MemoryListArgs {
     #[arg(short, long)]
     pub kind: Option<String>,
 
+    /// Filter by commit SHA (exact or prefix match against source_ref)
+    #[arg(long)]
+    pub source_ref: Option<String>,
+
     /// Number of entries to show
     #[arg(short, long, default_value = "20")]
     pub limit: usize,

@@ -46,6 +46,7 @@ struct AddNoteRequest {
     tags: Vec<String>,
     linked_files: Vec<String>,
     embedding: Option<Vec<f32>>,
+    source_ref: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -65,6 +66,8 @@ struct NoteResponse {
     status: String,
     superseded_by: Option<i64>,
     #[serde(default)]
+    source_ref: Option<String>,
+    #[serde(default)]
     distance: Option<f64>,
 }
 
@@ -80,6 +83,7 @@ impl From<NoteResponse> for Note {
             created_at: r.created_at,
             status: r.status,
             superseded_by: r.superseded_by,
+            source_ref: r.source_ref,
             distance: r.distance,
         }
     }
@@ -119,6 +123,7 @@ impl MemoryBackend for RemoteMemoryBackend {
             tags: input.tags,
             linked_files: input.linked_files,
             embedding,
+            source_ref: input.source_ref,
         };
         let resp = self
             .authed(self.client.post(self.url("memory")))
@@ -242,6 +247,30 @@ impl MemoryBackend for RemoteMemoryBackend {
         Ok(resp.changed)
     }
 
+    async fn list_by_source_ref(
+        &self,
+        source_ref_prefix: &str,
+        limit: usize,
+        include_archived: bool,
+    ) -> Result<Vec<Note>> {
+        let req = self.client.get(self.url("memory")).query(&[
+            ("limit", limit.to_string().as_str()),
+            ("archived", if include_archived { "true" } else { "false" }),
+            ("source_ref", source_ref_prefix),
+        ]);
+        let resp = self
+            .authed(req)
+            .send()
+            .await
+            .context("GET /memory (source_ref filter)")?
+            .error_for_status()
+            .context("server returned error for GET /memory")?
+            .json::<Vec<NoteResponse>>()
+            .await
+            .context("parsing list response")?;
+        Ok(resp.into_iter().map(Into::into).collect())
+    }
+
     async fn harvested_shas(&self) -> Result<HashSet<String>> {
         let resp = self
             .authed(self.client.get(self.url("memory/harvested-shas")))
@@ -254,5 +283,12 @@ impl MemoryBackend for RemoteMemoryBackend {
             .await
             .context("parsing harvested-shas response")?;
         Ok(resp.into_iter().collect())
+    }
+
+    async fn has_source_ref(&self, sha: &str) -> Result<bool> {
+        // Reuse the list endpoint with the full SHA as prefix; if any results come back,
+        // this commit has been harvested.
+        let notes = self.list_by_source_ref(sha, 1, true).await?;
+        Ok(!notes.is_empty())
     }
 }
