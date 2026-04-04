@@ -22,6 +22,9 @@ pub struct Note {
     /// Semantic distance — only populated by search(), None otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distance: Option<f64>,
+    /// Fused relevance score — only populated by hybrid search, None otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
 }
 
 impl MemoryStore {
@@ -53,6 +56,10 @@ impl MemoryStore {
                 Err(e) => return Err(e).context("running memory lifecycle migration"),
             }
         }
+        // Migration 012: FTS5 full-text index for memory notes.
+        self.conn
+            .execute_batch(include_str!("../../migrations/012_memory_fts.sql"))
+            .context("running memory FTS migration")?;
         Ok(())
     }
 
@@ -104,6 +111,84 @@ impl MemoryStore {
             .query_map(rusqlite::params![query_blob], row_to_note_with_distance)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(notes)
+    }
+
+    /// BM25 full-text search over notes (title, body, tags).
+    /// Returns active notes ordered by descending relevance.
+    pub fn search_text(&self, query: &str, limit: usize) -> Result<Vec<Note>> {
+        let limit = limit.min(1_000);
+        let sql = format!(
+            "SELECT n.id, n.kind, n.title, n.body, n.tags, n.linked_files,
+                    n.created_at, n.status, n.superseded_by,
+                    bm25(memory_fts) AS bm25_score
+             FROM memory_fts
+             JOIN notes n ON memory_fts.rowid = n.id
+             WHERE memory_fts MATCH ?1
+               AND n.status = 'active'
+             ORDER BY bm25_score
+             LIMIT {limit}"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let notes = stmt
+            .query_map(rusqlite::params![query], |row| {
+                let bm25_score: f64 = row.get(9)?;
+                let mut note = row_to_note(row)?;
+                // Negate so that higher relevance → lower distance (ascending convention).
+                note.distance = Some(-bm25_score);
+                Ok(note)
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(notes)
+    }
+
+    /// Hybrid search: fuses FTS5 BM25 ranking with vector KNN via Reciprocal Rank Fusion.
+    ///
+    /// RRF score: `Σ 1 / (k + rank_i)` where `k = 60` (standard default).
+    /// Candidates from both lists are merged by note ID, scores summed, then the top
+    /// `limit` are returned in descending RRF score order.
+    pub fn search_hybrid(&self, query_blob: &[u8], query: &str, limit: usize) -> Result<Vec<Note>> {
+        use std::collections::HashMap;
+
+        let candidates = (limit * 3).max(20);
+
+        let vec_results = self.search(query_blob, candidates)?;
+        let text_results = self.search_text(query, candidates).unwrap_or_default();
+
+        const K: f64 = 60.0;
+
+        let mut scores: HashMap<i64, f64> = HashMap::new();
+        let mut by_id: HashMap<i64, Note> = HashMap::new();
+
+        for (rank, note) in vec_results.into_iter().enumerate() {
+            let rrf = 1.0 / (K + (rank + 1) as f64);
+            *scores.entry(note.id).or_insert(0.0) += rrf;
+            by_id.entry(note.id).or_insert(note);
+        }
+
+        for (rank, note) in text_results.into_iter().enumerate() {
+            let rrf = 1.0 / (K + (rank + 1) as f64);
+            *scores.entry(note.id).or_insert(0.0) += rrf;
+            by_id.entry(note.id).or_insert(note);
+        }
+
+        // Sort descending by RRF score, take top `limit`.
+        let mut ranked: Vec<(i64, f64)> = scores.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.truncate(limit);
+
+        let results = ranked
+            .into_iter()
+            .filter_map(|(id, rrf_score)| {
+                by_id.remove(&id).map(|mut n| {
+                    n.score = Some(rrf_score);
+                    // Keep distance as inverted RRF so callers can sort ascending.
+                    n.distance = Some(1.0 / rrf_score);
+                    n
+                })
+            })
+            .collect();
+
+        Ok(results)
     }
 
     /// List notes, optionally filtered by kind, newest first.
@@ -232,6 +317,7 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
         status: row.get(7)?,
         superseded_by: row.get(8)?,
         distance: None,
+        score: None,
     })
 }
 
@@ -247,6 +333,7 @@ fn row_to_note_with_distance(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> 
         status: row.get(7)?,
         superseded_by: row.get(8)?,
         distance: Some(row.get(9)?),
+        score: None,
     })
 }
 
