@@ -366,6 +366,10 @@ pub struct MemorySearchArgs {
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     pub format: String,
+
+    /// Search mode: hybrid (default), semantic, text
+    #[arg(long, default_value = "hybrid")]
+    pub mode: String,
 }
 
 #[derive(Args, Debug)]

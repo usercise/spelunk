@@ -212,15 +212,33 @@ async fn memory_search(
     let index_db_path = crate::config::resolve_db(None, &cfg.db_path);
     crate::storage::record_usage_at(&index_db_path, "memory search");
 
-    let sp = spinner("Embedding query…");
-    let embedder = crate::backends::ActiveEmbedder::load(cfg)
-        .await
-        .context("loading embedding model")?;
-    let blob = embed_query(&embedder, "question answering", &args.query).await?;
-    sp.finish_and_clear();
-
+    let mode = args.mode.as_str();
     let backend = open_memory_backend(cfg, mem_path)?;
-    let notes = backend.search(&blob, args.limit).await?;
+
+    let notes = if mode == "text" {
+        // BM25 only — no embedding model required.
+        let sp = spinner("Searching (text)…");
+        let result = backend.search_text(&args.query, args.limit).await?;
+        sp.finish_and_clear();
+        result
+    } else {
+        // semantic or hybrid: need an embedding.
+        let sp = spinner("Embedding query…");
+        let embedder = crate::backends::ActiveEmbedder::load(cfg)
+            .await
+            .context("loading embedding model")?;
+        let blob = embed_query(&embedder, "question answering", &args.query).await?;
+        sp.finish_and_clear();
+
+        if mode == "semantic" {
+            backend.search(&blob, args.limit).await?
+        } else {
+            // hybrid (default)
+            backend
+                .search_hybrid(&blob, &args.query, args.limit)
+                .await?
+        }
+    };
 
     if notes.is_empty() {
         println!("No memory entries found.");
@@ -284,10 +302,13 @@ async fn memory_show(args: MemoryShowArgs, mem_path: &std::path::Path, cfg: &Con
 }
 
 fn print_note_summary(n: &crate::storage::memory::Note) {
-    let dist = n
-        .distance
-        .map(|d| format!("  dist: {d:.4}"))
-        .unwrap_or_default();
+    let dist = if let Some(s) = n.score {
+        format!("  score: {s:.4}")
+    } else {
+        n.distance
+            .map(|d| format!("  dist: {d:.4}"))
+            .unwrap_or_default()
+    };
     let archived_badge = if n.status == "archived" {
         " \x1b[31m[archived]\x1b[0m"
     } else {
