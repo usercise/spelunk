@@ -89,6 +89,7 @@ async fn memory_add(args: MemoryAddArgs, mem_path: &std::path::Path, cfg: &Confi
             tags,
             linked_files: files,
             embedding,
+            source_ref: None,
         })
         .await?;
 
@@ -240,9 +241,15 @@ async fn memory_search(
 
 async fn memory_list(args: MemoryListArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
-    let notes = backend
-        .list(args.kind.as_deref(), args.limit, args.archived)
-        .await?;
+    let notes = if let Some(ref sha_prefix) = args.source_ref {
+        backend
+            .list_by_source_ref(sha_prefix, args.limit, args.archived)
+            .await?
+    } else {
+        backend
+            .list(args.kind.as_deref(), args.limit, args.archived)
+            .await?
+    };
 
     if notes.is_empty() {
         println!("No memory entries found.");
@@ -274,6 +281,17 @@ async fn memory_show(args: MemoryShowArgs, mem_path: &std::path::Path, cfg: &Con
                 }
                 if !n.linked_files.is_empty() {
                     println!("files: {}", n.linked_files.join(", "));
+                }
+                if let Some(ref sha) = n.source_ref {
+                    let short = &sha[..sha.len().min(8)];
+                    // Render as a clickable hint when stdout is a terminal.
+                    if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+                        println!(
+                            "source:  \x1b[36mgit show {sha}\x1b[0m  \x1b[2m(SHA: {short})\x1b[0m"
+                        );
+                    } else {
+                        println!("source:  {sha}");
+                    }
                 }
                 println!();
                 println!("{}", n.body);
@@ -416,6 +434,7 @@ async fn memory_push(args: MemoryPushArgs, mem_path: &std::path::Path, cfg: &Con
                 tags: note.tags.clone(),
                 linked_files: note.linked_files.clone(),
                 embedding: blob,
+                source_ref: note.source_ref.clone(),
             })
             .await;
         match result {
@@ -516,11 +535,12 @@ async fn memory_harvest(
     }
 
     // ── Step 2: skip already-harvested SHAs ──────────────────────────────────
+    // harvested_shas() reads both source_ref (new) and git:<sha> tags (legacy).
     let backend = open_memory_backend(cfg, mem_path)?;
     let known_shas = backend.harvested_shas().await?;
     let new_commits: Vec<_> = commits
         .iter()
-        .filter(|(sha, _, _)| !known_shas.contains(sha))
+        .filter(|(sha, _, _)| !known_shas.contains(sha.as_str()))
         .collect();
 
     if new_commits.is_empty() {
@@ -728,26 +748,32 @@ async fn memory_harvest(
 
         println!("Embedding {} entries…", entries.len());
         for entry in &entries {
-            let sha = entry["sha"].as_str().unwrap_or("").to_string();
+            let sha_short = entry["sha"].as_str().unwrap_or("").to_string();
             let kind = entry["kind"].as_str().unwrap_or("note");
             let title = entry["title"].as_str().unwrap_or("").to_string();
             let body = entry["body"].as_str().unwrap_or("").to_string();
             let tags_val = entry["tags"].as_array();
 
-            let mut tags: Vec<String> = tags_val
+            let tags: Vec<String> = tags_val
                 .map(|a| {
                     a.iter()
                         .filter_map(|v| v.as_str().map(String::from))
                         .collect()
                 })
                 .unwrap_or_default();
-            // Store the full SHA as a tag for dedup on future harvests.
+
+            // Resolve full 40-char SHA from the batch (LLM returns first 8 chars).
             let full_sha = batch
                 .iter()
-                .find(|(s, _, _)| s.starts_with(&sha))
+                .find(|(s, _, _)| s.starts_with(&sha_short))
                 .map(|(s, _, _)| s.clone())
-                .unwrap_or(sha.clone());
-            tags.push(format!("git:{full_sha}"));
+                .unwrap_or(sha_short.clone());
+
+            // Idempotency: skip if we already have an entry with this source_ref.
+            if backend.has_source_ref(&full_sha).await? {
+                println!("  [skip] already harvested {full_sha}");
+                continue;
+            }
 
             let embed_text = format!("title: {title} | text: {body}");
             let vecs = embedder.embed(&[&embed_text]).await?;
@@ -780,10 +806,12 @@ async fn memory_harvest(
                     tags: tags.clone(),
                     linked_files: vec![],
                     embedding: Some(blob),
+                    source_ref: Some(full_sha.clone()),
                 })
                 .await?;
 
-            println!("  + [{kind}] #{note_id}: {title}");
+            let short_sha = &full_sha[..full_sha.len().min(8)];
+            println!("  + [{kind}] #{note_id}: {title}  \x1b[2m({short_sha})\x1b[0m");
             stored += 1;
         }
     } // end work queue
