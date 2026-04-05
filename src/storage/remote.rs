@@ -46,7 +46,10 @@ struct AddNoteRequest {
     tags: Vec<String>,
     linked_files: Vec<String>,
     embedding: Option<Vec<f32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    valid_at: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -68,6 +71,10 @@ struct NoteResponse {
     #[serde(default)]
     source_ref: Option<String>,
     #[serde(default)]
+    valid_at: Option<i64>,
+    #[serde(default)]
+    invalid_at: Option<i64>,
+    #[serde(default)]
     distance: Option<f64>,
 }
 
@@ -84,6 +91,8 @@ impl From<NoteResponse> for Note {
             status: r.status,
             superseded_by: r.superseded_by,
             source_ref: r.source_ref,
+            valid_at: r.valid_at,
+            invalid_at: r.invalid_at,
             distance: r.distance,
             score: None,
         }
@@ -125,6 +134,7 @@ impl MemoryBackend for RemoteMemoryBackend {
             linked_files: input.linked_files,
             embedding,
             source_ref: input.source_ref,
+            valid_at: input.valid_at,
         };
         let resp = self
             .authed(self.client.post(self.url("memory")))

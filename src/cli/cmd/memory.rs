@@ -80,7 +80,24 @@ async fn memory_add(args: MemoryAddArgs, mem_path: &std::path::Path, cfg: &Confi
     sp.finish_and_clear();
     let embedding = vecs.first().map(|v| vec_to_blob(v));
 
+    // Parse optional --valid-at ISO 8601 date to unix epoch.
+    let valid_at: Option<i64> = if let Some(ref s) = args.valid_at {
+        Some(parse_iso8601_to_epoch(s).with_context(|| {
+            format!("parsing --valid-at '{s}': expected ISO 8601 (e.g. 2026-03-15 or 2026-03-15T10:00:00)")
+        })?)
+    } else {
+        None
+    };
+
     let backend = open_memory_backend(cfg, mem_path)?;
+
+    // If --supersedes is specified, verify the old entry exists first.
+    if let Some(old_id) = args.supersedes
+        && backend.get(old_id).await?.is_none()
+    {
+        anyhow::bail!("No memory entry with id {} (--supersedes).", old_id);
+    }
+
     let note_id = backend
         .add(NoteInput {
             kind: args.kind.clone(),
@@ -90,6 +107,8 @@ async fn memory_add(args: MemoryAddArgs, mem_path: &std::path::Path, cfg: &Confi
             linked_files: files,
             embedding,
             source_ref: None,
+            valid_at,
+            supersedes: args.supersedes,
         })
         .await?;
 
@@ -294,6 +313,16 @@ async fn memory_show(args: MemoryShowArgs, mem_path: &std::path::Path, cfg: &Con
             _ => {
                 println!("\x1b[1m#{} [{}] {}\x1b[0m", n.id, n.kind, n.title);
                 println!("\x1b[2m{}\x1b[0m", format_age(n.created_at));
+                // Show valid_at if set; treat None as created_at semantically.
+                let effective_valid_at = n.valid_at.unwrap_or(n.created_at);
+                if n.valid_at.is_some() || effective_valid_at != n.created_at {
+                    println!("valid_at:   {}", format_age(effective_valid_at));
+                } else {
+                    println!("valid_at:   (same as created_at)");
+                }
+                if let Some(inv) = n.invalid_at {
+                    println!("invalid_at: {}", format_age(inv));
+                }
                 if !n.tags.is_empty() {
                     println!("tags: {}", n.tags.join(", "));
                 }
@@ -345,6 +374,10 @@ fn print_note_summary(n: &crate::storage::memory::Note) {
         },
     );
     println!("     \x1b[2m{}\x1b[0m", format_age(n.created_at));
+    // Show valid_at when it's explicitly set (differs semantically from created_at).
+    if let Some(valid_at) = n.valid_at {
+        println!("     \x1b[2mvalid_at: {}\x1b[0m", format_age(valid_at));
+    }
     if !n.tags.is_empty() {
         println!("     tags: {}", n.tags.join(", "));
     }
@@ -456,6 +489,8 @@ async fn memory_push(args: MemoryPushArgs, mem_path: &std::path::Path, cfg: &Con
                 linked_files: note.linked_files.clone(),
                 embedding: blob,
                 source_ref: note.source_ref.clone(),
+                valid_at: note.valid_at,
+                supersedes: None,
             })
             .await;
         match result {
@@ -828,6 +863,8 @@ async fn memory_harvest(
                     linked_files: vec![],
                     embedding: Some(blob),
                     source_ref: Some(full_sha.clone()),
+                    valid_at: None,
+                    supersedes: None,
                 })
                 .await?;
 
@@ -845,6 +882,90 @@ async fn memory_harvest(
         dedup_skipped
     );
     Ok(())
+}
+
+/// Parse an ISO 8601 date or datetime string to a unix epoch (seconds, UTC).
+/// Accepts:
+///   - `2026-03-15`              (date only → 00:00:00 UTC)
+///   - `2026-03-15T10:00:00`     (datetime → UTC)
+///   - `2026-03-15T10:00:00Z`    (datetime with explicit UTC marker)
+fn parse_iso8601_to_epoch(s: &str) -> Result<i64> {
+    // Strip optional trailing 'Z'.
+    let s = s.trim_end_matches('Z');
+
+    // Try "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS"
+    let (date_part, time_part) =
+        if let Some((d, t)) = s.split_once('T').or_else(|| s.split_once(' ')) {
+            (d, Some(t))
+        } else {
+            (s, None)
+        };
+
+    let parse_u32 = |v: &str, label: &str| -> Result<u32> {
+        v.parse::<u32>()
+            .with_context(|| format!("invalid {label} in '{s}'"))
+    };
+
+    let date_parts: Vec<&str> = date_part.split('-').collect();
+    if date_parts.len() != 3 {
+        anyhow::bail!("expected YYYY-MM-DD in '{s}'");
+    }
+    let year = parse_u32(date_parts[0], "year")?;
+    let month = parse_u32(date_parts[1], "month")?;
+    let day = parse_u32(date_parts[2], "day")?;
+
+    let (hour, minute, second) = if let Some(t) = time_part {
+        let parts: Vec<&str> = t.split(':').collect();
+        if parts.len() < 2 {
+            anyhow::bail!("expected HH:MM or HH:MM:SS in '{s}'");
+        }
+        let h = parse_u32(parts[0], "hour")?;
+        let m = parse_u32(parts[1], "minute")?;
+        let sec = if parts.len() >= 3 {
+            parse_u32(parts[2], "second")?
+        } else {
+            0
+        };
+        (h, m, sec)
+    } else {
+        (0, 0, 0)
+    };
+
+    // Validate ranges.
+    if month == 0 || month > 12 {
+        anyhow::bail!("month out of range in '{s}'");
+    }
+    if day == 0 || day > 31 {
+        anyhow::bail!("day out of range in '{s}'");
+    }
+    if hour > 23 || minute > 59 || second > 59 {
+        anyhow::bail!("time out of range in '{s}'");
+    }
+
+    // Compute unix epoch via days-since-epoch formula (handles leap years).
+    // Uses the algorithm from: https://en.wikipedia.org/wiki/Julian_day#Converting_Julian_or_Gregorian_calendar_date_to_Julian_Day_Number
+    let y = year as i64;
+    let m = month as i64;
+    let d = day as i64;
+    // Days from 1970-01-01 using the proleptic Gregorian calendar.
+    let days = days_since_epoch(y, m, d)?;
+    let epoch = days * 86400 + (hour as i64) * 3600 + (minute as i64) * 60 + (second as i64);
+    Ok(epoch)
+}
+
+/// Days elapsed from Unix epoch (1970-01-01) to the given Gregorian date.
+fn days_since_epoch(year: i64, month: i64, day: i64) -> Result<i64> {
+    // Rata Die algorithm: number of days from 0001-01-01.
+    // Adapted from Howard Hinnant's date algorithms (public domain).
+    let y = if month <= 2 { year - 1 } else { year };
+    let m = if month <= 2 { month + 9 } else { month - 3 };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400; // [0, 399]
+    let doy = (153 * m + 2) / 5 + day - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    let rd = era * 146097 + doe;
+    // Subtract days from 0001-01-01 to 1970-01-01 = 719468 days.
+    Ok(rd - 719_468)
 }
 
 /// Returns true for commit subjects that are obviously routine and not worth

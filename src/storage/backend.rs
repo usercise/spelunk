@@ -15,6 +15,12 @@ pub struct NoteInput {
     pub embedding: Option<Vec<u8>>,
     /// Full 40-char git commit SHA for harvested entries; `None` for manual entries.
     pub source_ref: Option<String>,
+    /// Unix epoch timestamp for when this entry became valid.
+    /// None = use created_at (i.e. not explicitly set).
+    pub valid_at: Option<i64>,
+    /// ID of an existing entry that this entry supersedes.
+    /// When set, the old entry's invalid_at is set to now() atomically.
+    pub supersedes: Option<i64>,
 }
 
 /// Abstraction over local SQLite and remote HTTP memory stores.
@@ -76,14 +82,27 @@ impl MemoryBackend for LocalMemoryBackend {
         let store = self.store.lock().await;
         let tags: Vec<&str> = input.tags.iter().map(String::as_str).collect();
         let files: Vec<&str> = input.linked_files.iter().map(String::as_str).collect();
-        let id = store.add_note(
-            &input.kind,
-            &input.title,
-            &input.body,
-            &tags,
-            &files,
-            input.source_ref.as_deref(),
-        )?;
+        let id = if let Some(supersedes_id) = input.supersedes {
+            store.add_note_superseding(
+                &input.kind,
+                &input.title,
+                &input.body,
+                &tags,
+                &files,
+                input.valid_at,
+                supersedes_id,
+            )?
+        } else {
+            store.add_note(
+                &input.kind,
+                &input.title,
+                &input.body,
+                &tags,
+                &files,
+                input.source_ref.as_deref(),
+                input.valid_at,
+            )?
+        };
         if let Some(blob) = &input.embedding {
             store.insert_embedding(id, blob)?;
         }

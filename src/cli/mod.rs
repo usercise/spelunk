@@ -352,6 +352,16 @@ pub struct MemoryAddArgs {
     /// Comma-separated file paths this entry relates to
     #[arg(long)]
     pub files: Option<String>,
+
+    /// When this entry became valid (ISO 8601, e.g. 2026-03-15 or 2026-03-15T10:00:00).
+    /// Defaults to now (created_at) when omitted.
+    #[arg(long, value_name = "DATE")]
+    pub valid_at: Option<String>,
+
+    /// ID of an existing entry that this new entry supersedes.
+    /// The old entry's invalid_at is set to now atomically in the same transaction.
+    #[arg(long, value_name = "ID")]
+    pub supersedes: Option<i64>,
 }
 
 #[derive(Args, Debug)]
