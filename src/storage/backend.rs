@@ -13,6 +13,8 @@ pub struct NoteInput {
     pub linked_files: Vec<String>,
     /// Raw embedding blob (little-endian f32 bytes). `None` = no embedding stored.
     pub embedding: Option<Vec<u8>>,
+    /// Full 40-char git commit SHA for harvested entries; `None` for manual entries.
+    pub source_ref: Option<String>,
 }
 
 /// Abstraction over local SQLite and remote HTTP memory stores.
@@ -36,11 +38,20 @@ pub trait MemoryBackend: Send {
         limit: usize,
         include_archived: bool,
     ) -> Result<Vec<Note>>;
+    /// List entries filtered by source_ref prefix (exact or prefix match).
+    async fn list_by_source_ref(
+        &self,
+        source_ref_prefix: &str,
+        limit: usize,
+        include_archived: bool,
+    ) -> Result<Vec<Note>>;
     async fn get(&self, id: i64) -> Result<Option<Note>>;
     async fn count(&self) -> Result<i64>;
     async fn archive(&self, id: i64) -> Result<bool>;
     async fn supersede(&self, old_id: i64, new_id: i64) -> Result<bool>;
     async fn harvested_shas(&self) -> Result<HashSet<String>>;
+    /// Check whether any entry already has the given full SHA in source_ref.
+    async fn has_source_ref(&self, sha: &str) -> Result<bool>;
 }
 
 // ── Local SQLite backend ──────────────────────────────────────────────────────
@@ -65,7 +76,14 @@ impl MemoryBackend for LocalMemoryBackend {
         let store = self.store.lock().await;
         let tags: Vec<&str> = input.tags.iter().map(String::as_str).collect();
         let files: Vec<&str> = input.linked_files.iter().map(String::as_str).collect();
-        let id = store.add_note(&input.kind, &input.title, &input.body, &tags, &files)?;
+        let id = store.add_note(
+            &input.kind,
+            &input.title,
+            &input.body,
+            &tags,
+            &files,
+            input.source_ref.as_deref(),
+        )?;
         if let Some(blob) = &input.embedding {
             store.insert_embedding(id, blob)?;
         }
@@ -104,6 +122,20 @@ impl MemoryBackend for LocalMemoryBackend {
             .list(kind_filter, limit, include_archived)
     }
 
+    async fn list_by_source_ref(
+        &self,
+        source_ref_prefix: &str,
+        limit: usize,
+        include_archived: bool,
+    ) -> Result<Vec<Note>> {
+        self.store.lock().await.list_filtered(
+            None,
+            Some(source_ref_prefix),
+            limit,
+            include_archived,
+        )
+    }
+
     async fn get(&self, id: i64) -> Result<Option<Note>> {
         self.store.lock().await.get(id)
     }
@@ -122,5 +154,9 @@ impl MemoryBackend for LocalMemoryBackend {
 
     async fn harvested_shas(&self) -> Result<HashSet<String>> {
         self.store.lock().await.harvested_shas()
+    }
+
+    async fn has_source_ref(&self, sha: &str) -> Result<bool> {
+        self.store.lock().await.has_source_ref(sha)
     }
 }
