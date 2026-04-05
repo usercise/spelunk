@@ -21,7 +21,17 @@ pub struct NoteInput {
 #[async_trait]
 pub trait MemoryBackend: Send {
     async fn add(&self, input: NoteInput) -> Result<i64>;
+    /// Semantic (vector KNN) search.
     async fn search(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>>;
+    /// BM25 full-text search (no embedding required).
+    async fn search_text(&self, query: &str, limit: usize) -> Result<Vec<Note>>;
+    /// Hybrid search: semantic + BM25 fused via Reciprocal Rank Fusion.
+    async fn search_hybrid(
+        &self,
+        query_blob: &[u8],
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Note>>;
     async fn list(
         &self,
         kind_filter: Option<&str>,
@@ -82,6 +92,22 @@ impl MemoryBackend for LocalMemoryBackend {
 
     async fn search(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>> {
         self.store.lock().await.search(query_blob, limit)
+    }
+
+    async fn search_text(&self, query: &str, limit: usize) -> Result<Vec<Note>> {
+        self.store.lock().await.search_text(query, limit)
+    }
+
+    async fn search_hybrid(
+        &self,
+        query_blob: &[u8],
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Note>> {
+        self.store
+            .lock()
+            .await
+            .search_hybrid(query_blob, query, limit)
     }
 
     async fn list(

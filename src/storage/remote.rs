@@ -85,6 +85,7 @@ impl From<NoteResponse> for Note {
             superseded_by: r.superseded_by,
             source_ref: r.source_ref,
             distance: r.distance,
+            score: None,
         }
     }
 }
@@ -154,6 +155,25 @@ impl MemoryBackend for RemoteMemoryBackend {
             .await
             .context("parsing search response")?;
         Ok(resp.into_iter().map(Into::into).collect())
+    }
+
+    /// Remote backend: BM25 text search is not supported — falls back to semantic search.
+    async fn search_text(&self, _query: &str, _limit: usize) -> Result<Vec<Note>> {
+        anyhow::bail!(
+            "BM25 text search is not supported by the remote memory backend. \
+             Use --mode semantic or omit --mode to use the default hybrid mode."
+        )
+    }
+
+    /// Remote backend: hybrid search falls back to semantic search
+    /// (server-side FTS is not available in this client).
+    async fn search_hybrid(
+        &self,
+        query_blob: &[u8],
+        _query: &str,
+        limit: usize,
+    ) -> Result<Vec<Note>> {
+        self.search(query_blob, limit).await
     }
 
     async fn list(
