@@ -22,6 +22,12 @@ pub struct Note {
     /// Git commit SHA for harvested entries; NULL for manually created entries.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_ref: Option<String>,
+    /// When this entry became valid (unix epoch). None = treat as created_at.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub valid_at: Option<i64>,
+    /// When this entry was invalidated/superseded (unix epoch). None = still valid.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invalid_at: Option<i64>,
     /// Semantic distance — only populated by search(), None otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distance: Option<f64>,
@@ -65,11 +71,24 @@ impl MemoryStore {
         self.conn
             .execute_batch(include_str!("../../migrations/012_memory_fts.sql"))
             .context("running memory FTS migration")?;
+        // Migration 014: temporal fields — valid_at and invalid_at.
+        for stmt in [
+            "ALTER TABLE notes ADD COLUMN valid_at INTEGER",
+            "ALTER TABLE notes ADD COLUMN invalid_at INTEGER",
+            "CREATE INDEX IF NOT EXISTS idx_memory_invalid_at ON notes(invalid_at)",
+        ] {
+            match self.conn.execute_batch(stmt) {
+                Ok(_) => {}
+                Err(e) if e.to_string().contains("duplicate column name") => {}
+                Err(e) => return Err(e).context("running memory temporal migration"),
+            }
+        }
         Ok(())
     }
 
     /// Insert a note and return its id. Does not store an embedding —
     /// call `insert_embedding` afterwards if the embedder is available.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_note(
         &self,
         kind: &str,
@@ -78,10 +97,11 @@ impl MemoryStore {
         tags: &[&str],
         linked_files: &[&str],
         source_ref: Option<&str>,
+        valid_at: Option<i64>,
     ) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO notes (kind, title, body, tags, linked_files, source_ref)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO notes (kind, title, body, tags, linked_files, source_ref, valid_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![
                 kind,
                 title,
@@ -89,9 +109,60 @@ impl MemoryStore {
                 tags.join(","),
                 linked_files.join(","),
                 source_ref,
+                valid_at,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Insert a note in a transaction that also sets `invalid_at` on the superseded entry.
+    /// Returns the new note's id.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_note_superseding(
+        &self,
+        kind: &str,
+        title: &str,
+        body: &str,
+        tags: &[&str],
+        linked_files: &[&str],
+        valid_at: Option<i64>,
+        supersedes_id: i64,
+    ) -> Result<i64> {
+        self.conn.execute_batch("BEGIN")?;
+        let result = (|| -> Result<i64> {
+            self.conn.execute(
+                "INSERT INTO notes (kind, title, body, tags, linked_files, valid_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    kind,
+                    title,
+                    body,
+                    tags.join(","),
+                    linked_files.join(","),
+                    valid_at,
+                ],
+            )?;
+            let new_id = self.conn.last_insert_rowid();
+            self.conn.execute(
+                "UPDATE notes
+                 SET    status = 'archived',
+                        superseded_by = ?2,
+                        invalid_at = CASE WHEN invalid_at IS NULL THEN unixepoch() ELSE invalid_at END
+                 WHERE  id = ?1 AND status = 'active'",
+                rusqlite::params![supersedes_id, new_id],
+            )?;
+            Ok(new_id)
+        })();
+        match result {
+            Ok(id) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(id)
+            }
+            Err(e) => {
+                self.conn.execute_batch("ROLLBACK").ok();
+                Err(e)
+            }
+        }
     }
 
     pub fn insert_embedding(&self, note_id: i64, blob: &[u8]) -> Result<()> {
@@ -114,7 +185,7 @@ impl MemoryStore {
              )
              SELECT n.id, n.kind, n.title, n.body, n.tags, n.linked_files,
                     n.created_at, n.status, n.superseded_by, n.source_ref,
-                    CAST(k.distance AS REAL)
+                    n.valid_at, n.invalid_at, CAST(k.distance AS REAL)
              FROM   knn k
              JOIN   notes n ON n.id = k.note_id
              WHERE  n.status = 'active'
@@ -134,7 +205,7 @@ impl MemoryStore {
         let sql = format!(
             "SELECT n.id, n.kind, n.title, n.body, n.tags, n.linked_files,
                     n.created_at, n.status, n.superseded_by, n.source_ref,
-                    bm25(memory_fts) AS bm25_score
+                    n.valid_at, n.invalid_at, bm25(memory_fts) AS bm25_score
              FROM memory_fts
              JOIN notes n ON memory_fts.rowid = n.id
              WHERE memory_fts MATCH ?1
@@ -145,7 +216,7 @@ impl MemoryStore {
         let mut stmt = self.conn.prepare(&sql)?;
         let notes = stmt
             .query_map(rusqlite::params![query], |row| {
-                let bm25_score: f64 = row.get(10)?;
+                let bm25_score: f64 = row.get(12)?;
                 let mut note = row_to_note(row)?;
                 // Negate so that higher relevance → lower distance (ascending convention).
                 note.distance = Some(-bm25_score);
@@ -244,7 +315,7 @@ impl MemoryStore {
         }
 
         let sql = format!(
-            "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by, source_ref
+            "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by, source_ref, valid_at, invalid_at
              FROM notes {conditions} ORDER BY created_at DESC LIMIT {limit}"
         );
 
@@ -267,9 +338,14 @@ impl MemoryStore {
     }
 
     /// Archive `old_id` and link it to `new_id` as its replacement.
+    /// Sets `invalid_at` to now if not already set.
     pub fn supersede(&self, old_id: i64, new_id: i64) -> Result<bool> {
         let changed = self.conn.execute(
-            "UPDATE notes SET status = 'archived', superseded_by = ?2 WHERE id = ?1 AND status = 'active'",
+            "UPDATE notes
+             SET    status = 'archived',
+                    superseded_by = ?2,
+                    invalid_at = CASE WHEN invalid_at IS NULL THEN unixepoch() ELSE invalid_at END
+             WHERE  id = ?1 AND status = 'active'",
             rusqlite::params![old_id, new_id],
         )?;
         Ok(changed > 0)
@@ -341,7 +417,7 @@ impl MemoryStore {
 
     pub fn get(&self, id: i64) -> Result<Option<Note>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by, source_ref
+            "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by, source_ref, valid_at, invalid_at
              FROM notes WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(rusqlite::params![id], row_to_note)?;
@@ -363,6 +439,8 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
         status: row.get(7)?,
         superseded_by: row.get(8)?,
         source_ref: row.get(9)?,
+        valid_at: row.get(10)?,
+        invalid_at: row.get(11)?,
         distance: None,
         score: None,
     })
@@ -380,7 +458,9 @@ fn row_to_note_with_distance(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> 
         status: row.get(7)?,
         superseded_by: row.get(8)?,
         source_ref: row.get(9)?,
-        distance: Some(row.get(10)?),
+        valid_at: row.get(10)?,
+        invalid_at: row.get(11)?,
+        distance: Some(row.get(12)?),
         score: None,
     })
 }
