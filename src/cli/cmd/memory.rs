@@ -235,10 +235,12 @@ async fn memory_search(
     let mode = args.mode.as_str();
     let backend = open_memory_backend(cfg, mem_path)?;
 
+    let as_of = parse_as_of(args.as_of.as_deref())?;
+
     let notes = if mode == "text" {
         // BM25 only — no embedding model required.
         let sp = spinner("Searching (text)…");
-        let result = backend.search_text(&args.query, args.limit).await?;
+        let result = backend.search_text(&args.query, args.limit, as_of).await?;
         sp.finish_and_clear();
         result
     } else {
@@ -251,11 +253,11 @@ async fn memory_search(
         sp.finish_and_clear();
 
         if mode == "semantic" {
-            backend.search(&blob, args.limit).await?
+            backend.search(&blob, args.limit, as_of).await?
         } else {
             // hybrid (default)
             backend
-                .search_hybrid(&blob, &args.query, args.limit)
+                .search_hybrid(&blob, &args.query, args.limit, as_of)
                 .await?
         }
     };
@@ -278,13 +280,14 @@ async fn memory_search(
 
 async fn memory_list(args: MemoryListArgs, mem_path: &std::path::Path, cfg: &Config) -> Result<()> {
     let backend = open_memory_backend(cfg, mem_path)?;
+    let as_of = parse_as_of(args.as_of.as_deref())?;
     let notes = if let Some(ref sha_prefix) = args.source_ref {
         backend
-            .list_by_source_ref(sha_prefix, args.limit, args.archived)
+            .list_by_source_ref(sha_prefix, args.limit, args.archived, as_of)
             .await?
     } else {
         backend
-            .list(args.kind.as_deref(), args.limit, args.archived)
+            .list(args.kind.as_deref(), args.limit, args.archived, as_of)
             .await?
     };
 
@@ -839,7 +842,7 @@ async fn memory_harvest(
             let blob = vec_to_blob(&vec);
 
             // Skip if a near-duplicate already exists in the memory store.
-            let neighbors = backend.search(&blob, 1).await?;
+            let neighbors = backend.search(&blob, 1, None).await?;
             if let Some(top) = neighbors.first()
                 && top.distance.unwrap_or(1.0) < DEDUP_THRESHOLD
             {
@@ -882,6 +885,21 @@ async fn memory_harvest(
         dedup_skipped
     );
     Ok(())
+}
+
+/// Parse an optional `--as-of` argument into a Unix timestamp.
+/// Returns `Ok(None)` when the argument is absent.
+fn parse_as_of(s: Option<&str>) -> Result<Option<i64>> {
+    match s {
+        None => Ok(None),
+        Some(v) => parse_iso8601_to_epoch(v)
+            .with_context(|| {
+                format!(
+                    "parsing --as-of '{v}': expected ISO 8601 (e.g. 2026-03-15 or 2026-03-15T10:00:00)"
+                )
+            })
+            .map(Some),
+    }
 }
 
 /// Parse an ISO 8601 date or datetime string to a unix epoch (seconds, UTC).

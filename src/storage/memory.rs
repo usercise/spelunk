@@ -174,8 +174,14 @@ impl MemoryStore {
     }
 
     /// Semantic KNN search. Returns active notes ordered by ascending distance.
-    pub fn search(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>> {
+    /// When `as_of` is `Some(ts)`, only entries valid at that Unix timestamp are returned.
+    pub fn search(&self, query_blob: &[u8], limit: usize, as_of: Option<i64>) -> Result<Vec<Note>> {
         let limit = limit.min(100);
+        let as_of_clause = if as_of.is_some() {
+            "AND (n.valid_at IS NULL OR n.valid_at <= ?2) AND (n.invalid_at IS NULL OR n.invalid_at > ?2)"
+        } else {
+            ""
+        };
         let sql = format!(
             "WITH knn AS (
                  SELECT note_id, distance
@@ -189,19 +195,30 @@ impl MemoryStore {
              FROM   knn k
              JOIN   notes n ON n.id = k.note_id
              WHERE  n.status = 'active'
+             {as_of_clause}
              ORDER  BY k.distance"
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let notes = stmt
-            .query_map(rusqlite::params![query_blob], row_to_note_with_distance)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let notes = if let Some(ts) = as_of {
+            stmt.query_map(rusqlite::params![query_blob, ts], row_to_note_with_distance)?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        } else {
+            stmt.query_map(rusqlite::params![query_blob], row_to_note_with_distance)?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
         Ok(notes)
     }
 
     /// BM25 full-text search over notes (title, body, tags).
     /// Returns active notes ordered by descending relevance.
-    pub fn search_text(&self, query: &str, limit: usize) -> Result<Vec<Note>> {
+    /// When `as_of` is `Some(ts)`, only entries valid at that Unix timestamp are returned.
+    pub fn search_text(&self, query: &str, limit: usize, as_of: Option<i64>) -> Result<Vec<Note>> {
         let limit = limit.min(1_000);
+        let as_of_clause = if as_of.is_some() {
+            "AND (n.valid_at IS NULL OR n.valid_at <= ?2) AND (n.invalid_at IS NULL OR n.invalid_at > ?2)"
+        } else {
+            ""
+        };
         let sql = format!(
             "SELECT n.id, n.kind, n.title, n.body, n.tags, n.linked_files,
                     n.created_at, n.status, n.superseded_by, n.source_ref,
@@ -210,19 +227,29 @@ impl MemoryStore {
              JOIN notes n ON memory_fts.rowid = n.id
              WHERE memory_fts MATCH ?1
                AND n.status = 'active'
+             {as_of_clause}
              ORDER BY bm25_score
              LIMIT {limit}"
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let notes = stmt
-            .query_map(rusqlite::params![query], |row| {
+        let notes = if let Some(ts) = as_of {
+            stmt.query_map(rusqlite::params![query, ts], |row| {
+                let bm25_score: f64 = row.get(12)?;
+                let mut note = row_to_note(row)?;
+                note.distance = Some(-bm25_score);
+                Ok(note)
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+        } else {
+            stmt.query_map(rusqlite::params![query], |row| {
                 let bm25_score: f64 = row.get(12)?;
                 let mut note = row_to_note(row)?;
                 // Negate so that higher relevance → lower distance (ascending convention).
                 note.distance = Some(-bm25_score);
                 Ok(note)
             })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+            .collect::<rusqlite::Result<Vec<_>>>()?
+        };
         Ok(notes)
     }
 
@@ -231,13 +258,22 @@ impl MemoryStore {
     /// RRF score: `Σ 1 / (k + rank_i)` where `k = 60` (standard default).
     /// Candidates from both lists are merged by note ID, scores summed, then the top
     /// `limit` are returned in descending RRF score order.
-    pub fn search_hybrid(&self, query_blob: &[u8], query: &str, limit: usize) -> Result<Vec<Note>> {
+    /// When `as_of` is `Some(ts)`, only entries valid at that timestamp are considered.
+    pub fn search_hybrid(
+        &self,
+        query_blob: &[u8],
+        query: &str,
+        limit: usize,
+        as_of: Option<i64>,
+    ) -> Result<Vec<Note>> {
         use std::collections::HashMap;
 
         let candidates = (limit * 3).max(20);
 
-        let vec_results = self.search(query_blob, candidates)?;
-        let text_results = self.search_text(query, candidates).unwrap_or_default();
+        let vec_results = self.search(query_blob, candidates, as_of)?;
+        let text_results = self
+            .search_text(query, candidates, as_of)
+            .unwrap_or_default();
 
         const K: f64 = 60.0;
 
@@ -284,16 +320,18 @@ impl MemoryStore {
         limit: usize,
         include_archived: bool,
     ) -> Result<Vec<Note>> {
-        self.list_filtered(kind_filter, None, limit, include_archived)
+        self.list_filtered(kind_filter, None, limit, include_archived, None)
     }
 
-    /// List notes with optional kind and source_ref (prefix) filters.
+    /// List notes with optional kind, source_ref (prefix), and as_of filters.
+    /// When `as_of` is `Some(ts)`, only entries valid at that Unix timestamp are returned.
     pub fn list_filtered(
         &self,
         kind_filter: Option<&str>,
         source_ref_prefix: Option<&str>,
         limit: usize,
         include_archived: bool,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>> {
         let limit = limit.min(500);
         let status_clause = if include_archived {
@@ -312,6 +350,13 @@ impl MemoryStore {
         if let Some(prefix) = source_ref_prefix {
             conditions.push_str(&format!(" AND source_ref LIKE ?{}", params.len() + 1));
             params.push(Box::new(format!("{prefix}%")));
+        }
+        if let Some(ts) = as_of {
+            conditions.push_str(&format!(
+                " AND (valid_at IS NULL OR valid_at <= ?{p}) AND (invalid_at IS NULL OR invalid_at > ?{p})",
+                p = params.len() + 1
+            ));
+            params.push(Box::new(ts));
         }
 
         let sql = format!(

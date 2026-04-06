@@ -150,7 +150,12 @@ impl MemoryBackend for RemoteMemoryBackend {
         Ok(resp.id)
     }
 
-    async fn search(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>> {
+    async fn search(
+        &self,
+        query_blob: &[u8],
+        limit: usize,
+        _as_of: Option<i64>,
+    ) -> Result<Vec<Note>> {
         let embedding = blob_to_vec(query_blob);
         let body = SearchRequest { embedding, limit };
         let resp = self
@@ -168,7 +173,12 @@ impl MemoryBackend for RemoteMemoryBackend {
     }
 
     /// Remote backend: BM25 text search is not supported — falls back to semantic search.
-    async fn search_text(&self, _query: &str, _limit: usize) -> Result<Vec<Note>> {
+    async fn search_text(
+        &self,
+        _query: &str,
+        _limit: usize,
+        _as_of: Option<i64>,
+    ) -> Result<Vec<Note>> {
         anyhow::bail!(
             "BM25 text search is not supported by the remote memory backend. \
              Use --mode semantic or omit --mode to use the default hybrid mode."
@@ -182,8 +192,9 @@ impl MemoryBackend for RemoteMemoryBackend {
         query_blob: &[u8],
         _query: &str,
         limit: usize,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>> {
-        self.search(query_blob, limit).await
+        self.search(query_blob, limit, as_of).await
     }
 
     async fn list(
@@ -191,6 +202,7 @@ impl MemoryBackend for RemoteMemoryBackend {
         kind_filter: Option<&str>,
         limit: usize,
         include_archived: bool,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>> {
         let mut req = self.client.get(self.url("memory")).query(&[
             ("limit", limit.to_string().as_str()),
@@ -198,6 +210,9 @@ impl MemoryBackend for RemoteMemoryBackend {
         ]);
         if let Some(kind) = kind_filter {
             req = req.query(&[("kind", kind)]);
+        }
+        if let Some(ts) = as_of {
+            req = req.query(&[("as_of", ts.to_string().as_str())]);
         }
         let resp = self
             .authed(req)
@@ -282,6 +297,7 @@ impl MemoryBackend for RemoteMemoryBackend {
         source_ref_prefix: &str,
         limit: usize,
         include_archived: bool,
+        _as_of: Option<i64>,
     ) -> Result<Vec<Note>> {
         let req = self.client.get(self.url("memory")).query(&[
             ("limit", limit.to_string().as_str()),
@@ -318,7 +334,7 @@ impl MemoryBackend for RemoteMemoryBackend {
     async fn has_source_ref(&self, sha: &str) -> Result<bool> {
         // Reuse the list endpoint with the full SHA as prefix; if any results come back,
         // this commit has been harvested.
-        let notes = self.list_by_source_ref(sha, 1, true).await?;
+        let notes = self.list_by_source_ref(sha, 1, true, None).await?;
         Ok(!notes.is_empty())
     }
 }
