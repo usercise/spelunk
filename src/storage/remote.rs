@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use super::backend::{MemoryBackend, NoteInput};
-use super::memory::Note;
+use super::memory::{MemoryEdge, Note};
 use crate::embeddings::blob_to_vec;
 
 /// HTTP client for the spelunk-server REST API.
@@ -341,5 +341,15 @@ impl MemoryBackend for RemoteMemoryBackend {
         // this commit has been harvested.
         let notes = self.list_by_source_ref(sha, 1, true, None).await?;
         Ok(!notes.is_empty())
+    }
+
+    /// Remote backend: edge mutations are not supported — no-op.
+    async fn add_edge(&self, _from_id: i64, _to_id: i64, _kind: &str) -> Result<()> {
+        Ok(())
+    }
+
+    /// Remote backend: edge queries are not supported — returns empty lists.
+    async fn get_edges(&self, _id: i64) -> Result<(Vec<MemoryEdge>, Vec<MemoryEdge>)> {
+        Ok((vec![], vec![]))
     }
 }

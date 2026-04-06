@@ -5,7 +5,7 @@ pub mod remote;
 
 pub use backend::{LocalMemoryBackend, MemoryBackend, NoteInput};
 pub use db::{Database, record_usage_at};
-pub use memory::MemoryStore;
+pub use memory::{MemoryEdge, MemoryStore};
 pub use remote::RemoteMemoryBackend;
 
 use anyhow::Result;

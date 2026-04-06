@@ -327,6 +327,18 @@ pub enum MemoryCommand {
     Push(MemoryPushArgs),
     /// Show how the team's understanding of a topic evolved over time
     Timeline(MemoryTimelineArgs),
+    /// Show the relationship graph for a memory entry
+    Graph(MemoryGraphArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryGraphArgs {
+    /// Entry ID to show the relationship graph for
+    pub id: i64,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
 }
 
 #[derive(Args, Debug)]
@@ -378,6 +390,10 @@ pub struct MemoryAddArgs {
     /// The old entry's invalid_at is set to now atomically in the same transaction.
     #[arg(long, value_name = "ID")]
     pub supersedes: Option<i64>,
+
+    /// ID of an existing entry this entry relates to (creates a relates_to edge).
+    #[arg(long, value_name = "ID")]
+    pub relates_to: Option<i64>,
 }
 
 #[derive(Args, Debug)]
@@ -400,6 +416,10 @@ pub struct MemorySearchArgs {
     /// Return only entries valid at this point in time (ISO 8601, e.g. 2026-03-15 or 2026-03-15T10:00:00)
     #[arg(long, value_name = "DATE")]
     pub as_of: Option<String>,
+
+    /// Expand results by 1 hop along relates_to edges
+    #[arg(long)]
+    pub expand_graph: bool,
 }
 
 #[derive(Args, Debug)]

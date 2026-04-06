@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashSet;
 
-use super::memory::{MemoryStore, Note};
+use super::memory::{MemoryEdge, MemoryStore, Note};
 
 /// Input for adding a note. Owned to avoid lifetime issues across async boundaries.
 pub struct NoteInput {
@@ -74,6 +74,11 @@ pub trait MemoryBackend: Send {
     async fn harvested_shas(&self) -> Result<HashSet<String>>;
     /// Check whether any entry already has the given full SHA in source_ref.
     async fn has_source_ref(&self, sha: &str) -> Result<bool>;
+    /// Insert a directed edge between two notes.
+    /// `kind` must be one of: supersedes, relates_to, contradicts.
+    async fn add_edge(&self, from_id: i64, to_id: i64, kind: &str) -> Result<()>;
+    /// Return `(outgoing, incoming)` edges for a note.
+    async fn get_edges(&self, id: i64) -> Result<(Vec<MemoryEdge>, Vec<MemoryEdge>)>;
 }
 
 // ── Local SQLite backend ──────────────────────────────────────────────────────
@@ -211,5 +216,13 @@ impl MemoryBackend for LocalMemoryBackend {
 
     async fn has_source_ref(&self, sha: &str) -> Result<bool> {
         self.store.lock().await.has_source_ref(sha)
+    }
+
+    async fn add_edge(&self, from_id: i64, to_id: i64, kind: &str) -> Result<()> {
+        self.store.lock().await.add_edge(from_id, to_id, kind)
+    }
+
+    async fn get_edges(&self, id: i64) -> Result<(Vec<MemoryEdge>, Vec<MemoryEdge>)> {
+        self.store.lock().await.get_edges(id)
     }
 }
