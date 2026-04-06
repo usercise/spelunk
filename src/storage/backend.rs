@@ -27,6 +27,8 @@ pub struct NoteInput {
 #[async_trait]
 pub trait MemoryBackend: Send {
     async fn add(&self, input: NoteInput) -> Result<i64>;
+    /// Semantic search over ALL notes (incl. archived), ordered by valid_at/created_at ASC.
+    async fn search_timeline(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>>;
     /// Semantic (vector KNN) search.
     /// `as_of`: if set, only entries valid at that Unix timestamp are returned.
     async fn search(
@@ -121,6 +123,10 @@ impl MemoryBackend for LocalMemoryBackend {
             store.insert_embedding(id, blob)?;
         }
         Ok(id)
+    }
+
+    async fn search_timeline(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>> {
+        self.store.lock().await.search_timeline(query_blob, limit)
     }
 
     async fn search(

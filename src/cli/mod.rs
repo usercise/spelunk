@@ -325,6 +325,22 @@ pub enum MemoryCommand {
     Supersede(MemorySupersededArgs),
     /// Push all local memory entries to the configured memory server
     Push(MemoryPushArgs),
+    /// Show how the team's understanding of a topic evolved over time
+    Timeline(MemoryTimelineArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryTimelineArgs {
+    /// Topic to trace through time
+    pub query: String,
+
+    /// Number of entries to retrieve before timeline construction
+    #[arg(short, long, default_value = "20")]
+    pub limit: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
 }
 
 #[derive(Args, Debug)]
