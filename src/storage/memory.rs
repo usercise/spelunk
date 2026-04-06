@@ -8,6 +8,14 @@ pub struct MemoryStore {
 }
 
 #[derive(Debug, Serialize)]
+pub struct MemoryEdge {
+    pub from_id: i64,
+    pub to_id: i64,
+    pub kind: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize)]
 pub struct Note {
     pub id: i64,
     pub kind: String,
@@ -83,6 +91,10 @@ impl MemoryStore {
                 Err(e) => return Err(e).context("running memory temporal migration"),
             }
         }
+        // Migration 015: memory edge table.
+        self.conn
+            .execute_batch(include_str!("../../migrations/015_memory_edges.sql"))
+            .context("running memory edges migration")?;
         Ok(())
     }
 
@@ -150,6 +162,10 @@ impl MemoryStore {
                         invalid_at = CASE WHEN invalid_at IS NULL THEN unixepoch() ELSE invalid_at END
                  WHERE  id = ?1 AND status = 'active'",
                 rusqlite::params![supersedes_id, new_id],
+            )?;
+            self.conn.execute(
+                "INSERT OR IGNORE INTO memory_edges (from_id, to_id, kind) VALUES (?1, ?2, 'supersedes')",
+                rusqlite::params![new_id, supersedes_id],
             )?;
             Ok(new_id)
         })();
@@ -418,7 +434,43 @@ impl MemoryStore {
              WHERE  id = ?1 AND status = 'active'",
             rusqlite::params![old_id, new_id],
         )?;
+        if changed > 0 {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO memory_edges (from_id, to_id, kind) VALUES (?1, ?2, 'supersedes')",
+                rusqlite::params![new_id, old_id],
+            )?;
+        }
         Ok(changed > 0)
+    }
+
+    /// Insert a directed edge between two notes.
+    /// `kind` must be one of: supersedes, relates_to, contradicts.
+    pub fn add_edge(&self, from_id: i64, to_id: i64, kind: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO memory_edges (from_id, to_id, kind) VALUES (?1, ?2, ?3)",
+            rusqlite::params![from_id, to_id, kind],
+        )?;
+        Ok(())
+    }
+
+    /// Return all outgoing and incoming edges for a note.
+    /// Returns `(outgoing, incoming)`.
+    pub fn get_edges(&self, id: i64) -> Result<(Vec<MemoryEdge>, Vec<MemoryEdge>)> {
+        let mut stmt = self.conn.prepare(
+            "SELECT from_id, to_id, kind, created_at FROM memory_edges WHERE from_id = ?1 ORDER BY created_at",
+        )?;
+        let outgoing = stmt
+            .query_map(rusqlite::params![id], row_to_edge)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut stmt2 = self.conn.prepare(
+            "SELECT from_id, to_id, kind, created_at FROM memory_edges WHERE to_id = ?1 ORDER BY created_at",
+        )?;
+        let incoming = stmt2
+            .query_map(rusqlite::params![id], row_to_edge)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        Ok((outgoing, incoming))
     }
 
     /// Retrieve the raw embedding blob for a note (for use by `memory push`).
@@ -532,6 +584,15 @@ fn row_to_note_with_distance(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> 
         invalid_at: row.get(11)?,
         distance: Some(row.get(12)?),
         score: None,
+    })
+}
+
+fn row_to_edge(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryEdge> {
+    Ok(MemoryEdge {
+        from_id: row.get(0)?,
+        to_id: row.get(1)?,
+        kind: row.get(2)?,
+        created_at: row.get(3)?,
     })
 }
 

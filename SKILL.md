@@ -66,6 +66,14 @@ spelunk memory add \
   --body "Keeps spelunk self-contained; no external process. Revisit if >1M chunks." \
   --tags "architecture,storage" \
   --files "src/storage/db.rs"
+
+# Supersede an old entry (archives the old one; creates a supersedes edge)
+spelunk memory add --kind decision --title "New auth approach" --body "..." \
+  --supersedes <old-id>
+
+# Link two entries as related (creates a relates_to edge)
+spelunk memory add --kind note --title "Follow-up observation" --body "..." \
+  --relates-to <other-id>
 ```
 
 **Kinds:** `decision` · `context` · `requirement` · `note`
@@ -74,10 +82,14 @@ spelunk memory add \
 
 ```bash
 spelunk memory search "<question>"        # semantic search over stored entries
+spelunk memory search "<q>" --expand-graph  # also include 1-hop relates_to neighbours
 spelunk memory list                       # recent entries
 spelunk memory list --kind decision       # filter by kind
 spelunk memory list --kind decision --limit 10
-spelunk memory show <id>                  # full entry
+spelunk memory list --as-of 2026-01-01   # point-in-time snapshot
+spelunk memory show <id>                  # full entry + relationships
+spelunk memory graph <id>                 # relationship graph for an entry
+spelunk memory timeline "<topic>"         # topic evolution across all entries (ASC time)
 spelunk memory search "<q>" --format json
 ```
 

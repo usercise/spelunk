@@ -43,6 +43,18 @@ spelunk memory add --title "Decision: use blake3 for file hashing" --kind decisi
 spelunk memory add --title "Auth middleware refactored" \
               --body "Moved session validation to src/auth/middleware.rs" \
               --files "src/auth/middleware.rs,src/auth/session.rs"
+
+# Record when a decision became valid (ISO 8601)
+spelunk memory add --title "Adopted monorepo layout" --kind decision \
+              --valid-at 2026-01-15
+
+# Supersede an old entry — archives it and records a supersedes edge
+spelunk memory add --title "New auth approach" --kind decision --body "..." \
+              --supersedes <old-id>
+
+# Mark two entries as related — creates a relates_to edge
+spelunk memory add --title "Follow-up note" --kind note --body "..." \
+              --relates-to <other-id>
 ```
 
 When `--body` is omitted, `spelunk` opens `$VISUAL` or `$EDITOR` (falling back to `vi`). Lines starting with `#` are stripped (comment convention).
@@ -77,6 +89,26 @@ For GitHub issues, `spelunk` calls `gh api` to get structured issue data (requir
 # Semantic search — finds entries by meaning
 spelunk memory search "why did we choose sqlite"
 spelunk memory search "authentication decisions" --limit 5
+
+# Also surface 1-hop relates_to neighbours of each result
+spelunk memory search "authentication decisions" --expand-graph
+
+# Search mode: hybrid (default), semantic, text
+spelunk memory search "auth" --mode semantic
+spelunk memory search "auth" --mode text
+
+# Point-in-time: only entries that were valid at this date
+spelunk memory search "auth decisions" --as-of 2026-01-01
+```
+
+## Tracking topic evolution
+
+`spelunk memory timeline` returns all entries related to a topic, sorted by the time they became valid — useful for understanding how a decision or understanding evolved.
+
+```bash
+spelunk memory timeline "authentication strategy"
+spelunk memory timeline "database choice" --limit 30
+spelunk memory timeline "auth" --format json
 ```
 
 ## Listing entries
@@ -91,6 +123,12 @@ spelunk memory list --kind question
 
 # More entries
 spelunk memory list --limit 50
+
+# Point-in-time snapshot — only entries valid at a given date
+spelunk memory list --as-of 2026-01-01
+
+# Filter by commit SHA (exact or prefix)
+spelunk memory list --source-ref abc1234
 ```
 
 `question` and `answer` entries show titles only in list view to avoid context saturation. Use `spelunk memory show <id>` to read the full body.
@@ -100,6 +138,18 @@ spelunk memory list --limit 50
 ```bash
 spelunk memory show 42
 spelunk memory show 42 --format json
+```
+
+`memory show` displays the full body plus any incoming and outgoing relationship edges (supersedes, relates_to, contradicts) with linked entry titles.
+
+## Relationship graph
+
+```bash
+# Show all edges for an entry (text)
+spelunk memory graph 42
+
+# Machine-readable
+spelunk memory graph 42 --format json
 ```
 
 ## Harvesting from git history
@@ -144,3 +194,6 @@ AGENT=true spelunk memory search "database decisions"
 - **Use `question` kind actively** — when you hit a decision point you're unsure about, store it. Come back with `spelunk memory list --kind question` at the start of the next session.
 - **Use `handoff` kind** at the end of a long session to summarise the current state for your next session (or for another agent).
 - **Tag entries** — tags like `auth`, `database`, `performance` make `spelunk memory list` more scannable and improve search relevance.
+- **Use `--supersedes` when updating a decision** — it archives the old entry, sets its invalidation time, and creates a traceable edge so you can always follow the chain of reasoning.
+- **Use `--relates-to` for non-superseding connections** — linking a follow-up note or a contradicting observation lets `memory graph` and `--expand-graph` surface related context automatically.
+- **Use `--as-of` for archaeology** — `spelunk memory list --as-of 2026-01-01` shows the knowledge state at that date, which is useful for post-mortems or understanding old decisions in context.

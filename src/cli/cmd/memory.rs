@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 
 use super::super::{
-    MemoryAddArgs, MemoryArchiveArgs, MemoryArgs, MemoryCommand, MemoryHarvestArgs, MemoryListArgs,
-    MemoryPushArgs, MemorySearchArgs, MemoryShowArgs, MemorySupersededArgs, MemoryTimelineArgs,
+    MemoryAddArgs, MemoryArchiveArgs, MemoryArgs, MemoryCommand, MemoryGraphArgs,
+    MemoryHarvestArgs, MemoryListArgs, MemoryPushArgs, MemorySearchArgs, MemoryShowArgs,
+    MemorySupersededArgs, MemoryTimelineArgs,
 };
 use super::helpers::embed_query;
 use super::status::format_age;
@@ -29,6 +30,7 @@ pub async fn memory(args: MemoryArgs, cfg: Config) -> Result<()> {
         MemoryCommand::Supersede(a) => memory_supersede(a, &mem_path, &cfg).await,
         MemoryCommand::Push(a) => memory_push(a, &mem_path, &cfg).await,
         MemoryCommand::Timeline(a) => memory_timeline(a, &mem_path, &cfg).await,
+        MemoryCommand::Graph(a) => memory_graph(a, &mem_path, &cfg).await,
     }
 }
 
@@ -99,6 +101,13 @@ async fn memory_add(args: MemoryAddArgs, mem_path: &std::path::Path, cfg: &Confi
         anyhow::bail!("No memory entry with id {} (--supersedes).", old_id);
     }
 
+    // If --relates-to is specified, verify that entry exists first.
+    if let Some(rel_id) = args.relates_to
+        && backend.get(rel_id).await?.is_none()
+    {
+        anyhow::bail!("No memory entry with id {} (--relates-to).", rel_id);
+    }
+
     let note_id = backend
         .add(NoteInput {
             kind: args.kind.clone(),
@@ -112,6 +121,10 @@ async fn memory_add(args: MemoryAddArgs, mem_path: &std::path::Path, cfg: &Confi
             supersedes: args.supersedes,
         })
         .await?;
+
+    if let Some(rel_id) = args.relates_to {
+        backend.add_edge(note_id, rel_id, "relates_to").await?;
+    }
 
     println!(
         "Stored [{kind}] #{id}: {title}",
@@ -268,6 +281,35 @@ async fn memory_search(
         return Ok(());
     }
 
+    // --expand-graph: add 1-hop relates_to neighbours.
+    let notes = if args.expand_graph {
+        let mut seen: std::collections::HashSet<i64> = notes.iter().map(|n| n.id).collect();
+        let mut expanded = notes;
+        let mut neighbours = vec![];
+        for n in &expanded {
+            let (outgoing, incoming) = backend.get_edges(n.id).await?;
+            for e in outgoing.iter().chain(incoming.iter()) {
+                if e.kind != "relates_to" {
+                    continue;
+                }
+                let neighbour_id = if e.from_id == n.id {
+                    e.to_id
+                } else {
+                    e.from_id
+                };
+                if seen.insert(neighbour_id)
+                    && let Some(nb) = backend.get(neighbour_id).await?
+                {
+                    neighbours.push(nb);
+                }
+            }
+        }
+        expanded.extend(neighbours);
+        expanded
+    } else {
+        notes
+    };
+
     match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&notes)?),
         _ => {
@@ -346,8 +388,132 @@ async fn memory_show(args: MemoryShowArgs, mem_path: &std::path::Path, cfg: &Con
                 }
                 println!();
                 println!("{}", n.body);
+
+                // Show relationships.
+                let (outgoing, incoming) = backend.get_edges(n.id).await?;
+                if !outgoing.is_empty() || !incoming.is_empty() {
+                    println!();
+                    println!("\x1b[2m── relationships ──\x1b[0m");
+                    for e in &outgoing {
+                        let label = match e.kind.as_str() {
+                            "supersedes" => "\x1b[33m→ supersedes\x1b[0m",
+                            "relates_to" => "\x1b[36m→ relates_to\x1b[0m",
+                            "contradicts" => "\x1b[31m→ contradicts\x1b[0m",
+                            _ => "→",
+                        };
+                        let target_title = backend
+                            .get(e.to_id)
+                            .await?
+                            .map(|n| n.title)
+                            .unwrap_or_else(|| "(deleted)".to_string());
+                        println!("  {label}  #{} {target_title}", e.to_id);
+                    }
+                    for e in &incoming {
+                        let label = match e.kind.as_str() {
+                            "supersedes" => "\x1b[33m← superseded by\x1b[0m",
+                            "relates_to" => "\x1b[36m← related from\x1b[0m",
+                            "contradicts" => "\x1b[31m← contradicted by\x1b[0m",
+                            _ => "←",
+                        };
+                        let src_title = backend
+                            .get(e.from_id)
+                            .await?
+                            .map(|n| n.title)
+                            .unwrap_or_else(|| "(deleted)".to_string());
+                        println!("  {label}  #{} {src_title}", e.from_id);
+                    }
+                }
             }
         },
+    }
+    Ok(())
+}
+
+async fn memory_graph(
+    args: MemoryGraphArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
+    let backend = open_memory_backend(cfg, mem_path)?;
+    let root = backend
+        .get(args.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("No memory entry with id {}.", args.id))?;
+
+    let (outgoing, incoming) = backend.get_edges(args.id).await?;
+
+    if crate::utils::effective_format(&args.format) == "json" {
+        #[derive(serde::Serialize)]
+        struct EdgeJson {
+            from_id: i64,
+            to_id: i64,
+            kind: String,
+        }
+        #[derive(serde::Serialize)]
+        struct GraphJson {
+            id: i64,
+            title: String,
+            outgoing: Vec<EdgeJson>,
+            incoming: Vec<EdgeJson>,
+        }
+        let graph = GraphJson {
+            id: root.id,
+            title: root.title.clone(),
+            outgoing: outgoing
+                .iter()
+                .map(|e| EdgeJson {
+                    from_id: e.from_id,
+                    to_id: e.to_id,
+                    kind: e.kind.clone(),
+                })
+                .collect(),
+            incoming: incoming
+                .iter()
+                .map(|e| EdgeJson {
+                    from_id: e.from_id,
+                    to_id: e.to_id,
+                    kind: e.kind.clone(),
+                })
+                .collect(),
+        };
+        println!("{}", serde_json::to_string_pretty(&graph)?);
+        return Ok(());
+    }
+
+    println!("\x1b[1m#{} [{}] {}\x1b[0m", root.id, root.kind, root.title);
+
+    if outgoing.is_empty() && incoming.is_empty() {
+        println!("  (no relationships)");
+        return Ok(());
+    }
+
+    for e in &outgoing {
+        let target_title = backend
+            .get(e.to_id)
+            .await?
+            .map(|n| n.title)
+            .unwrap_or_else(|| "(deleted)".to_string());
+        let arrow = match e.kind.as_str() {
+            "supersedes" => "\x1b[33m─[supersedes]→\x1b[0m",
+            "relates_to" => "\x1b[36m─[relates_to]→\x1b[0m",
+            "contradicts" => "\x1b[31m─[contradicts]→\x1b[0m",
+            k => &format!("─[{k}]→"),
+        };
+        println!("  {arrow}  #{} {target_title}", e.to_id);
+    }
+    for e in &incoming {
+        let src_title = backend
+            .get(e.from_id)
+            .await?
+            .map(|n| n.title)
+            .unwrap_or_else(|| "(deleted)".to_string());
+        let arrow = match e.kind.as_str() {
+            "supersedes" => "\x1b[33m←[superseded by]\x1b[0m",
+            "relates_to" => "\x1b[36m←[related from]\x1b[0m",
+            "contradicts" => "\x1b[31m←[contradicted by]\x1b[0m",
+            k => &format!("←[{k}]"),
+        };
+        println!("  {arrow}  #{} {src_title}", e.from_id);
     }
     Ok(())
 }
