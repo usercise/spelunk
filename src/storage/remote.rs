@@ -150,6 +150,11 @@ impl MemoryBackend for RemoteMemoryBackend {
         Ok(resp.id)
     }
 
+    /// Remote backend: timeline search falls back to regular semantic search.
+    async fn search_timeline(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>> {
+        self.search(query_blob, limit, None).await
+    }
+
     async fn search(
         &self,
         query_blob: &[u8],

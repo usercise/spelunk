@@ -312,6 +312,31 @@ impl MemoryStore {
         Ok(results)
     }
 
+    /// Semantic search over ALL notes regardless of status (for timeline view).
+    /// Returns notes ordered by `COALESCE(valid_at, created_at) ASC`.
+    pub fn search_timeline(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>> {
+        let limit = limit.min(200);
+        let sql = format!(
+            "WITH knn AS (
+                 SELECT note_id, distance
+                 FROM   note_embeddings
+                 WHERE  embedding MATCH ?1
+                   AND  k = {limit}
+             )
+             SELECT n.id, n.kind, n.title, n.body, n.tags, n.linked_files,
+                    n.created_at, n.status, n.superseded_by, n.source_ref,
+                    n.valid_at, n.invalid_at, CAST(k.distance AS REAL)
+             FROM   knn k
+             JOIN   notes n ON n.id = k.note_id
+             ORDER  BY COALESCE(n.valid_at, n.created_at) ASC"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let notes = stmt
+            .query_map(rusqlite::params![query_blob], row_to_note_with_distance)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(notes)
+    }
+
     /// List notes, optionally filtered by kind, newest first.
     /// When `include_archived` is false only active entries are returned.
     pub fn list(
