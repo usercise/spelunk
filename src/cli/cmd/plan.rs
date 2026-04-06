@@ -38,7 +38,7 @@ async fn plan_create(
     let memory_context = {
         let mblob = blob.clone();
         match open_memory_backend(cfg, &mem_path).ok() {
-            Some(b) => b.search(&mblob, 5).await.ok().and_then(|notes| {
+            Some(b) => b.search(&mblob, 5, None).await.ok().and_then(|notes| {
                 if notes.is_empty() {
                     None
                 } else {

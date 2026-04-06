@@ -380,6 +380,10 @@ pub struct MemorySearchArgs {
     /// Search mode: hybrid (default), semantic, text
     #[arg(long, default_value = "hybrid")]
     pub mode: String,
+
+    /// Return only entries valid at this point in time (ISO 8601, e.g. 2026-03-15 or 2026-03-15T10:00:00)
+    #[arg(long, value_name = "DATE")]
+    pub as_of: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -403,6 +407,10 @@ pub struct MemoryListArgs {
     /// Include archived entries
     #[arg(long)]
     pub archived: bool,
+
+    /// Return only entries valid at this point in time (ISO 8601, e.g. 2026-03-15 or 2026-03-15T10:00:00)
+    #[arg(long, value_name = "DATE")]
+    pub as_of: Option<String>,
 }
 
 #[derive(Args, Debug)]

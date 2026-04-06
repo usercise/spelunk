@@ -124,7 +124,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     // ── Step 2c: memory context (decisions / requirements / background) ──────
     let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
     let memory_context: Option<String> = if let Ok(backend) = open_memory_backend(&cfg, &mem_path) {
-        match backend.search(&query_blob, 5).await {
+        match backend.search(&query_blob, 5, None).await {
             Ok(notes) if !notes.is_empty() => {
                 let text = notes
                     .iter()

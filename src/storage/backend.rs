@@ -28,28 +28,42 @@ pub struct NoteInput {
 pub trait MemoryBackend: Send {
     async fn add(&self, input: NoteInput) -> Result<i64>;
     /// Semantic (vector KNN) search.
-    async fn search(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>>;
+    /// `as_of`: if set, only entries valid at that Unix timestamp are returned.
+    async fn search(
+        &self,
+        query_blob: &[u8],
+        limit: usize,
+        as_of: Option<i64>,
+    ) -> Result<Vec<Note>>;
     /// BM25 full-text search (no embedding required).
-    async fn search_text(&self, query: &str, limit: usize) -> Result<Vec<Note>>;
+    /// `as_of`: if set, only entries valid at that Unix timestamp are returned.
+    async fn search_text(&self, query: &str, limit: usize, as_of: Option<i64>)
+    -> Result<Vec<Note>>;
     /// Hybrid search: semantic + BM25 fused via Reciprocal Rank Fusion.
+    /// `as_of`: if set, only entries valid at that Unix timestamp are returned.
     async fn search_hybrid(
         &self,
         query_blob: &[u8],
         query: &str,
         limit: usize,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>>;
+    /// `as_of`: if set, only entries valid at that Unix timestamp are returned.
     async fn list(
         &self,
         kind_filter: Option<&str>,
         limit: usize,
         include_archived: bool,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>>;
     /// List entries filtered by source_ref prefix (exact or prefix match).
+    /// `as_of`: if set, only entries valid at that Unix timestamp are returned.
     async fn list_by_source_ref(
         &self,
         source_ref_prefix: &str,
         limit: usize,
         include_archived: bool,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>>;
     async fn get(&self, id: i64) -> Result<Option<Note>>;
     async fn count(&self) -> Result<i64>;
@@ -109,12 +123,22 @@ impl MemoryBackend for LocalMemoryBackend {
         Ok(id)
     }
 
-    async fn search(&self, query_blob: &[u8], limit: usize) -> Result<Vec<Note>> {
-        self.store.lock().await.search(query_blob, limit)
+    async fn search(
+        &self,
+        query_blob: &[u8],
+        limit: usize,
+        as_of: Option<i64>,
+    ) -> Result<Vec<Note>> {
+        self.store.lock().await.search(query_blob, limit, as_of)
     }
 
-    async fn search_text(&self, query: &str, limit: usize) -> Result<Vec<Note>> {
-        self.store.lock().await.search_text(query, limit)
+    async fn search_text(
+        &self,
+        query: &str,
+        limit: usize,
+        as_of: Option<i64>,
+    ) -> Result<Vec<Note>> {
+        self.store.lock().await.search_text(query, limit, as_of)
     }
 
     async fn search_hybrid(
@@ -122,11 +146,12 @@ impl MemoryBackend for LocalMemoryBackend {
         query_blob: &[u8],
         query: &str,
         limit: usize,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>> {
         self.store
             .lock()
             .await
-            .search_hybrid(query_blob, query, limit)
+            .search_hybrid(query_blob, query, limit, as_of)
     }
 
     async fn list(
@@ -134,11 +159,12 @@ impl MemoryBackend for LocalMemoryBackend {
         kind_filter: Option<&str>,
         limit: usize,
         include_archived: bool,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>> {
         self.store
             .lock()
             .await
-            .list(kind_filter, limit, include_archived)
+            .list_filtered(kind_filter, None, limit, include_archived, as_of)
     }
 
     async fn list_by_source_ref(
@@ -146,12 +172,14 @@ impl MemoryBackend for LocalMemoryBackend {
         source_ref_prefix: &str,
         limit: usize,
         include_archived: bool,
+        as_of: Option<i64>,
     ) -> Result<Vec<Note>> {
         self.store.lock().await.list_filtered(
             None,
             Some(source_ref_prefix),
             limit,
             include_archived,
+            as_of,
         )
     }
 
