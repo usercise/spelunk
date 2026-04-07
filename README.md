@@ -53,12 +53,12 @@ spelunk needs an embedding model running on any OpenAI-compatible endpoint. The 
 # Load google/embeddinggemma-300m-qat in LM Studio and start the server (port 1234)
 ```
 
-**3. Index and search**
+**3. Init, index, and search**
 
 ```bash
-spelunk index .
+spelunk init                                   # register + index in one step
 spelunk search "error handling in the HTTP layer"
-spelunk search "database migrations" --graph    # include callers/callees
+spelunk search "database migrations" --graph   # include callers/callees
 ```
 
 ## Core features
@@ -68,6 +68,8 @@ spelunk search "database migrations" --graph    # include callers/callees
 ```bash
 spelunk search "how are errors propagated to the user"
 spelunk search "database connection pooling" --graph --format json
+spelunk search "auth middleware" --mode hybrid   # hybrid (default), semantic, or text
+spelunk search "request handling" --budget 4000  # fit results within a token budget
 ```
 
 Tree-sitter extracts functions, structs, classes, and methods as discrete chunks — not naive line splits. Each chunk is embedded and stored in a local SQLite database with the [sqlite-vec](https://github.com/asg017/sqlite-vec) extension for fast KNN search.
@@ -93,6 +95,24 @@ spelunk memory harvest   # auto-extract decisions from recent commits
 ```
 
 Memory entries are embedded and retrieved semantically — each query gets only the entries relevant to the current task, not the entire context file.
+
+### Agentic exploration
+
+```bash
+spelunk explore "how does incremental indexing work?"   # LLM iterates search + graph to answer
+spelunk explore "what guards the context window?" --verbose
+```
+
+`explore` requires `llm_model` to be set in config.
+
+### Historical snapshots
+
+```bash
+spelunk snapshot create --commit abc1234   # index the codebase at a past commit
+spelunk snapshot list
+spelunk history validate_token             # show how a symbol changed across snapshots
+spelunk search "auth flow" --snapshot abc1234  # search against a past snapshot
+```
 
 ### Multi-project search
 

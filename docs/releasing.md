@@ -36,10 +36,22 @@ name = "spelunk"
 version = "0.2.0"   # <-- update this
 ```
 
-Commit the bump:
+### 1a. Update version references in docs
+
+After bumping `Cargo.toml`, update the hardcoded version strings in any docs that reference download URLs. Currently that includes:
+
+- **`docs/getting-started.md`** — five `curl` commands in the Install section each contain `spelunk-v<old>-<target>.tar.gz`; replace the version segment in all of them.
+
+Search for the old version to catch any others:
 
 ```bash
-git add Cargo.toml Cargo.lock
+grep -r "spelunk-v" docs/
+```
+
+Commit everything together:
+
+```bash
+git add Cargo.toml Cargo.lock docs/getting-started.md
 git commit -m "chore: bump version to 0.2.0"
 git push origin main
 ```
