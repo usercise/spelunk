@@ -32,6 +32,7 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
                 "chunk_count": stats.chunk_count,
                 "embedding_count": stats.embedding_count,
                 "last_indexed_unix": stats.last_indexed,
+                "snapshot_count": stats.snapshot_count,
                 "memory_entry_count": memory_count,
                 "drift_candidates": drift,
                 "usage_7d": {
@@ -144,6 +145,9 @@ pub async fn status(args: StatusArgs, cfg: Config) -> Result<()> {
     println!("Files:      {}", s.file_count);
     println!("Chunks:     {}", s.chunk_count);
     println!("Embeddings: {}", s.embedding_count);
+    if s.snapshot_count > 0 {
+        println!("Snapshots:  {}", s.snapshot_count);
+    }
     if let Some(ts) = s.last_indexed {
         println!("Last index: {}", format_age(ts));
     }

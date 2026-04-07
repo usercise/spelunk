@@ -55,6 +55,10 @@ pub enum Command {
     Explore(ExploreArgs),
     /// Manage and inspect cross-project links
     Links(LinksArgs),
+    /// Manage historical code snapshots (index at a specific commit)
+    Snapshot(SnapshotArgs),
+    /// Show how a symbol evolved across indexed snapshots
+    History(HistoryArgs),
 }
 
 #[derive(Args, Debug)]
@@ -143,6 +147,10 @@ pub struct SearchArgs {
     /// Search only the primary project index, skipping all linked project DBs
     #[arg(long)]
     pub local_only: bool,
+
+    /// Search against this snapshot instead of the live index (full or short commit SHA)
+    #[arg(long, value_name = "SHA")]
+    pub as_of: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -644,4 +652,66 @@ pub struct LinksListArgs {
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     pub format: String,
+}
+
+// ── Snapshot ───────────────────────────────────────────────────────────────
+
+#[derive(Args, Debug)]
+pub struct SnapshotArgs {
+    #[command(subcommand)]
+    pub command: SnapshotCommand,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SnapshotCommand {
+    /// Index the codebase at a specific commit and store as a named snapshot
+    Create(SnapshotCreateArgs),
+    /// List all stored snapshots
+    List(SnapshotListArgs),
+    /// Delete a snapshot and its data
+    Delete(SnapshotDeleteArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SnapshotCreateArgs {
+    /// Git commit SHA or ref to snapshot (defaults to HEAD)
+    #[arg(default_value = "HEAD")]
+    pub commit: String,
+
+    /// Max concurrent embedding requests
+    #[arg(long, default_value = "32")]
+    pub batch_size: usize,
+}
+
+#[derive(Args, Debug)]
+pub struct SnapshotListArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SnapshotDeleteArgs {
+    /// Commit SHA of the snapshot to delete (full or short)
+    pub sha: String,
+}
+
+// ── History ────────────────────────────────────────────────────────────────
+
+#[derive(Args, Debug)]
+pub struct HistoryArgs {
+    /// Symbol name to trace (function, struct, class, etc.)
+    pub symbol: String,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
 }
