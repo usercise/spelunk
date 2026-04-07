@@ -105,15 +105,6 @@ spelunk explore "what guards the context window?" --verbose
 
 `explore` requires `llm_model` to be set in config.
 
-### Historical snapshots
-
-```bash
-spelunk snapshot create --commit abc1234   # index the codebase at a past commit
-spelunk snapshot list
-spelunk history validate_token             # show how a symbol changed across snapshots
-spelunk search "auth flow" --snapshot abc1234  # search against a past snapshot
-```
-
 ### Multi-project search
 
 ```bash
