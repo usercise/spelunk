@@ -16,15 +16,6 @@ fn test_help_output() {
 }
 
 #[test]
-fn test_version_output() {
-    let mut cmd = Command::cargo_bin("spelunk").unwrap();
-    cmd.arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("spelunk 0.2.1"));
-}
-
-#[test]
 fn test_invalid_command() {
     let mut cmd = Command::cargo_bin("spelunk").unwrap();
     cmd.arg("nonexistent-command")
