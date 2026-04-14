@@ -16,19 +16,37 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     crate::storage::record_usage_at(&db_path, "search");
 
     // Apply --local-only: discard linked deps.
-    let dep_projects = if args.local_only {
+    let dep_projects = if args.local_only || args.as_of.is_some() {
         vec![]
     } else {
         dep_projects
     };
 
-    if !args.no_stale_check {
+    if !args.no_stale_check && args.as_of.is_none() {
         maybe_warn_stale(&db_path);
     }
 
+    // --as-of: resolve commit SHA to snapshot id.
+    let snapshot_id: Option<i64> = if let Some(ref sha_prefix) = args.as_of {
+        let db = Database::open(&db_path)?;
+        let snap = db
+            .list_snapshots()?
+            .into_iter()
+            .find(|s| s.commit_sha.starts_with(sha_prefix.as_str()))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No snapshot found for '{}'. Run `spelunk snapshot list` to see available snapshots.",
+                    sha_prefix
+                )
+            })?;
+        Some(snap.id)
+    } else {
+        None
+    };
+
     let mode = args.mode.as_str();
 
-    let mut results = if mode == "text" {
+    let mut results = if mode == "text" && snapshot_id.is_none() {
         // Text mode: FTS5 only, no embedding model required.
         let sp = spinner("Searching (text)…");
         let db = Database::open(&db_path)?;
@@ -38,7 +56,7 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
         sp.finish_and_clear();
         res
     } else {
-        // semantic or hybrid: need an embedding.
+        // semantic, hybrid, or snapshot search: need an embedding.
         let sp = spinner("Loading model…");
         let embedder = crate::backends::ActiveEmbedder::load(&cfg)
             .await
@@ -58,7 +76,10 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
         };
 
         sp.set_message("Searching…");
-        let res = if mode == "hybrid" {
+        let res = if let Some(snap_id) = snapshot_id {
+            let db = Database::open(&db_path)?;
+            db.search_snapshot(snap_id, &query_blob, fetch_limit)?
+        } else if mode == "hybrid" {
             search_all_dbs_hybrid(
                 &db_path,
                 &dep_projects,
