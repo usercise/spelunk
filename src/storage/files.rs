@@ -2,6 +2,15 @@ use anyhow::Result;
 
 use super::Database;
 
+/// A row from the `files` table, returned by [`Database::file_records_under`].
+pub struct FileRecord {
+    pub id: i64,
+    pub path: String,
+    pub language: Option<String>,
+    pub hash: String,
+    pub indexed_at: i64,
+}
+
 impl Database {
     pub fn upsert_file(&self, path: &str, language: Option<&str>, hash: &str) -> Result<i64> {
         let now = std::time::SystemTime::now()
@@ -66,6 +75,25 @@ impl Database {
             .prepare_cached("SELECT id, path FROM files WHERE path LIKE ?1")?;
         let rows = stmt.query_map(rusqlite::params![prefix], |r| {
             Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// List all indexed files under the given root prefix, including hash and indexed_at.
+    pub fn file_records_under(&self, root: &str) -> Result<Vec<FileRecord>> {
+        let prefix = format!("{root}%");
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, path, language, hash, indexed_at FROM files WHERE path LIKE ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![prefix], |r| {
+            Ok(FileRecord {
+                id: r.get(0)?,
+                path: r.get(1)?,
+                language: r.get(2)?,
+                hash: r.get(3)?,
+                indexed_at: r.get(4)?,
+            })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)

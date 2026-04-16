@@ -23,7 +23,7 @@ pub async fn plumbing(args: PlumbingArgs, cfg: Config) -> Result<()> {
 
     match args.command {
         PlumbingCommand::ParseFile(a) => return parse_file::parse_file(a),
-        PlumbingCommand::Embed(_) => return embed_cmd::embed_cmd(&cfg).await,
+        PlumbingCommand::Embed(a) => return embed_cmd::embed_cmd(&cfg, a.query).await,
         _ => {}
     }
 
@@ -40,7 +40,7 @@ pub async fn plumbing(args: PlumbingArgs, cfg: Config) -> Result<()> {
         PlumbingCommand::CatChunks(a) => cat_chunks::cat_chunks(a, &db, &cfg),
         PlumbingCommand::LsFiles(a) => ls_files::ls_files(a, &db),
         PlumbingCommand::HashFile(a) => hash_file::hash_file(a, &db),
-        PlumbingCommand::Knn(a) => knn::knn(a, &db, &cfg).await,
+        PlumbingCommand::Knn(a) => knn::knn(a, &db).await,
         PlumbingCommand::GraphEdges(a) => graph_edges::graph_edges(a, &db),
         PlumbingCommand::ReadMemory(a) => {
             let mem_path = db_path.with_file_name("memory.db");
@@ -50,6 +50,3 @@ pub async fn plumbing(args: PlumbingArgs, cfg: Config) -> Result<()> {
         PlumbingCommand::ParseFile(_) | PlumbingCommand::Embed(_) => unreachable!(),
     }
 }
-
-/// Re-export embed_query for use by knn.rs
-pub(super) use super::helpers::embed_query;

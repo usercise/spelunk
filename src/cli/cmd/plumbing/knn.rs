@@ -1,15 +1,31 @@
 use anyhow::{Context, Result};
+use std::io::Read as _;
 
 use super::super::super::PlumbingKnnArgs;
-use super::embed_query;
-use crate::{config::Config, storage::Database};
+use crate::{embeddings::vec_to_blob, storage::Database};
 
-pub(super) async fn knn(args: PlumbingKnnArgs, db: &Database, cfg: &Config) -> Result<()> {
-    let embedder = crate::backends::ActiveEmbedder::load(cfg)
-        .await
-        .context("loading embedding model")?;
+pub(super) async fn knn(args: PlumbingKnnArgs, db: &Database) -> Result<()> {
+    // Read entire stdin and parse as JSON: {"model":"...","dimensions":N,"vector":[...]}
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .context("reading vector from stdin")?;
 
-    let blob = embed_query(&embedder, "code retrieval", &args.query).await?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(input.trim()).context("parsing stdin as JSON")?;
+
+    let vector_arr = parsed
+        .get("vector")
+        .and_then(|v| v.as_array())
+        .context("expected JSON with a \"vector\" array field")?;
+
+    let vector: Vec<f32> = vector_arr
+        .iter()
+        .map(|v| v.as_f64().map(|f| f as f32))
+        .collect::<Option<Vec<_>>>()
+        .context("\"vector\" array must contain numbers")?;
+
+    let blob = vec_to_blob(&vector);
 
     let mut results = db.search_similar(&blob, args.limit + 20)?;
 

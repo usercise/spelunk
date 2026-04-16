@@ -75,20 +75,20 @@ pub(super) fn run_parse_phase(
 
         // ── Binary document formats (DOCX, XLSX, PDF, …) ─────────────────────
         #[cfg(feature = "rich-formats")]
-        if let Some(doc_lang) = detect_doc_language(path) {
-            if process_doc_file(path, &path_str, doc_lang, db, args, &mut acc)? {
-                parse_bar.inc(1);
-                continue;
-            }
+        if let Some(doc_lang) = detect_doc_language(path)
+            && process_doc_file(path, &path_str, doc_lang, db, args, &mut acc)?
+        {
+            parse_bar.inc(1);
+            continue;
         }
 
         // ── PDF documents (feature-gated) ─────────────────────────────────────
         #[cfg(feature = "rich-formats")]
-        if detect_language(path) == Some("pdf") {
-            if process_pdf_file(path, &path_str, db, args, &mut acc)? {
-                parse_bar.inc(1);
-                continue;
-            }
+        if detect_language(path) == Some("pdf")
+            && process_pdf_file(path, &path_str, db, args, &mut acc)?
+        {
+            parse_bar.inc(1);
+            continue;
         }
 
         // ── Text / code formats ───────────────────────────────────────────────

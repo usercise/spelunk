@@ -685,6 +685,10 @@ pub struct PlumbingLsFilesArgs {
     /// Only list files whose path starts with this prefix
     #[arg(long)]
     pub prefix: Option<String>,
+
+    /// Only emit files where on-disk hash differs from stored hash
+    #[arg(long)]
+    pub stale: bool,
 }
 
 #[derive(Args, Debug)]
@@ -701,9 +705,6 @@ pub struct PlumbingHashFileArgs {
 
 #[derive(Args, Debug)]
 pub struct PlumbingKnnArgs {
-    /// Query text to embed and search for
-    pub query: String,
-
     /// Maximum number of results (default: 10)
     #[arg(long, default_value = "10")]
     pub limit: usize,
@@ -719,7 +720,9 @@ pub struct PlumbingKnnArgs {
 
 #[derive(Args, Debug)]
 pub struct PlumbingEmbedArgs {
-    // Text is read from stdin; no positional args needed.
+    /// Prepend query retrieval prefix instead of document prefix
+    #[arg(long)]
+    pub query: bool,
 }
 
 #[derive(Args, Debug)]

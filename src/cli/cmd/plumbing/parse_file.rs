@@ -16,9 +16,10 @@ struct ParsedChunk {
 
 pub(super) fn parse_file(args: PlumbingParseFileArgs) -> Result<()> {
     let path = &args.file;
-    let language = detect_language(path)
-        .or_else(|| detect_text_language(path))
-        .with_context(|| format!("unsupported file type: {}", path.display()))?;
+    let language = match detect_language(path).or_else(|| detect_text_language(path)) {
+        Some(l) => l,
+        None => std::process::exit(1), // unsupported type — no results
+    };
 
     let source =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;

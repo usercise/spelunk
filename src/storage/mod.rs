@@ -14,6 +14,7 @@ mod stats;
 
 pub use backend::{LocalMemoryBackend, MemoryBackend, NoteInput};
 pub use db::Database;
+pub use files::FileRecord;
 pub use graph::GraphEdge;
 pub use memory::{MemoryEdge, MemoryStore};
 pub use remote::RemoteMemoryBackend;
