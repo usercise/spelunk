@@ -46,7 +46,7 @@ pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
     Ok(())
 }
 
-fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
+fn print_edges(edges: &[crate::storage::GraphEdge], query: &str) {
     // Group into outgoing (source) and incoming (target) edges.
     let outgoing: Vec<_> = edges
         .iter()

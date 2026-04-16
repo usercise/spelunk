@@ -1,0 +1,82 @@
+use anyhow::{Context, Result};
+
+use super::super::super::MemoryTimelineArgs;
+use super::super::helpers::embed_query;
+use super::super::status::format_age;
+use crate::{config::Config, storage::open_memory_backend};
+
+pub(super) async fn memory_timeline(
+    args: MemoryTimelineArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
+    let sp = super::super::ui::spinner("Embedding query…");
+    let embedder = crate::backends::ActiveEmbedder::load(cfg)
+        .await
+        .context("loading embedding model")?;
+    let blob = embed_query(&embedder, "question answering", &args.query).await?;
+    sp.finish_and_clear();
+
+    let backend = open_memory_backend(cfg, mem_path)?;
+    let notes = backend.search_timeline(&blob, args.limit).await?;
+
+    if notes.is_empty() {
+        println!("No memory entries found for topic: {}", args.query);
+        return Ok(());
+    }
+
+    match crate::utils::effective_format(&args.format) {
+        "json" => println!("{}", serde_json::to_string_pretty(&notes)?),
+        _ => {
+            println!("\x1b[1mTimeline: {}\x1b[0m\n", args.query);
+            let (active, superseded): (Vec<_>, Vec<_>) =
+                notes.iter().partition(|n| n.status == "active");
+
+            if !active.is_empty() {
+                println!("\x1b[32mActive\x1b[0m");
+                for n in &active {
+                    print_timeline_entry(n);
+                }
+            }
+            if !superseded.is_empty() {
+                if !active.is_empty() {
+                    println!();
+                }
+                println!("\x1b[2mSuperseded / Archived\x1b[0m");
+                for n in &superseded {
+                    print_timeline_entry(n);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_timeline_entry(n: &crate::storage::memory::Note) {
+    let ts = n.valid_at.unwrap_or(n.created_at);
+    let marker = if n.status == "active" { "●" } else { "○" };
+    let sup = if let Some(id) = n.superseded_by {
+        format!(" → #{id}")
+    } else {
+        String::new()
+    };
+    let short_ref = n
+        .source_ref
+        .as_deref()
+        .map(|s| format!(" \x1b[2m({})\x1b[0m", &s[..s.len().min(7)]))
+        .unwrap_or_default();
+    let inv = n
+        .invalid_at
+        .map(|t| format!(" \x1b[2m– {}\x1b[0m", format_age(t)))
+        .unwrap_or_default();
+    println!(
+        " {marker} \x1b[36m{}\x1b[0m  \x1b[1m[{}] #{} {}\x1b[0m{sup}{short_ref}{inv}",
+        format_age(ts),
+        n.kind,
+        n.id,
+        n.title
+    );
+    let excerpt: String = n.body.chars().take(80).collect();
+    let ellipsis = if n.body.len() > 80 { "…" } else { "" };
+    println!("     \x1b[2m{excerpt}{ellipsis}\x1b[0m");
+}
