@@ -642,6 +642,112 @@ pub struct SnapshotDeleteArgs {
     pub sha: String,
 }
 
+// ── Plumbing ───────────────────────────────────────────────────────────────
+
+#[derive(Args, Debug)]
+pub struct PlumbingArgs {
+    #[command(subcommand)]
+    pub command: PlumbingCommand,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(short, long, global = true)]
+    pub db: Option<std::path::PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PlumbingCommand {
+    /// Emit indexed chunks for a file as NDJSON
+    CatChunks(PlumbingCatChunksArgs),
+    /// List all indexed files as NDJSON
+    LsFiles(PlumbingLsFilesArgs),
+    /// Parse a file and emit chunks as NDJSON (without storing)
+    ParseFile(PlumbingParseFileArgs),
+    /// Compute blake3 hash of a file and check index currency
+    HashFile(PlumbingHashFileArgs),
+    /// KNN vector search returning NDJSON results
+    Knn(PlumbingKnnArgs),
+    /// Read lines from stdin and emit embedding vectors as NDJSON
+    Embed(PlumbingEmbedArgs),
+    /// Emit code graph edges as NDJSON
+    GraphEdges(PlumbingGraphEdgesArgs),
+    /// Emit memory entries as NDJSON
+    ReadMemory(PlumbingReadMemoryArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingCatChunksArgs {
+    /// Path of the file whose chunks to emit (relative to project root)
+    pub file: String,
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingLsFilesArgs {
+    /// Only list files whose path starts with this prefix
+    #[arg(long)]
+    pub prefix: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingParseFileArgs {
+    /// Path to the file to parse
+    pub file: std::path::PathBuf,
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingHashFileArgs {
+    /// Path to the file to hash
+    pub file: std::path::PathBuf,
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingKnnArgs {
+    /// Query text to embed and search for
+    pub query: String,
+
+    /// Maximum number of results (default: 10)
+    #[arg(long, default_value = "10")]
+    pub limit: usize,
+
+    /// Drop results below this cosine similarity score
+    #[arg(long, default_value = "0.0")]
+    pub min_score: f32,
+
+    /// Restrict results to chunks from files of this language
+    #[arg(long)]
+    pub lang: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingEmbedArgs {
+    // Text is read from stdin; no positional args needed.
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingGraphEdgesArgs {
+    /// Filter edges to those involving this file (path relative to project root)
+    #[arg(long)]
+    pub file: Option<String>,
+
+    /// Filter edges to those involving this symbol name
+    #[arg(long)]
+    pub symbol: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct PlumbingReadMemoryArgs {
+    /// Filter by memory kind (decision, question, note, etc.)
+    #[arg(long)]
+    pub kind: Option<String>,
+
+    /// Fetch a single entry by id
+    #[arg(long)]
+    pub id: Option<i64>,
+
+    /// Maximum number of entries (default: 50)
+    #[arg(long, default_value = "50")]
+    pub limit: usize,
+}
+
 // ── History ────────────────────────────────────────────────────────────────
 
 #[derive(Args, Debug)]

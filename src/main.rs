@@ -68,5 +68,6 @@ async fn main() -> Result<()> {
         Command::Links(args) => cli::cmd::links(args, cfg).await,
         Command::Snapshot(args) => cli::cmd::snapshot(args, cfg).await,
         Command::History(args) => cli::cmd::history(args, cfg),
+        Command::Plumbing(args) => cli::cmd::plumbing(args, cfg).await,
     }
 }

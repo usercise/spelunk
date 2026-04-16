@@ -61,4 +61,6 @@ pub enum Command {
     Snapshot(SnapshotArgs),
     /// Show how a symbol evolved across indexed snapshots
     History(HistoryArgs),
+    /// Low-level plumbing commands for agents and scripts (NDJSON output)
+    Plumbing(PlumbingArgs),
 }
