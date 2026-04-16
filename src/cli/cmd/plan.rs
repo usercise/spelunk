@@ -290,7 +290,7 @@ fn plan_status(args: super::super::PlanStatusArgs, cfg: &Config) -> Result<()> {
                 "file": path.display().to_string(),
             }));
         } else {
-            let pct = if total > 0 { done * 100 / total } else { 0 };
+            let pct = (done * 100).checked_div(total).unwrap_or(0);
             let bar = {
                 let filled = pct / 10;
                 format!("[{}{}]", "#".repeat(filled), ".".repeat(10 - filled))
