@@ -25,6 +25,14 @@ pub(super) struct ParseResult {
     pub removed: u64,
 }
 
+/// Mutable accumulators shared across per-file processor functions.
+/// Bundled into one struct so processor signatures stay under 7 arguments.
+struct ParseAcc {
+    out: Vec<(i64, String)>,
+    indexed: u64,
+    skipped: u64,
+}
+
 /// Collect source files from `root`, parse them, store chunks + graph edges,
 /// then remove stale index records for files that no longer exist.
 pub(super) fn run_parse_phase(
@@ -52,9 +60,11 @@ pub(super) fn run_parse_phase(
         ProgressBar::hidden()
     };
 
-    let mut chunk_ids_and_texts: Vec<(i64, String)> = Vec::new();
-    let mut indexed = 0u64;
-    let mut skipped = 0u64; // tracked for progress bar message only
+    let mut acc = ParseAcc {
+        out: Vec::new(),
+        indexed: 0,
+        skipped: 0,
+    };
 
     for entry in &files {
         let path = entry.path();
@@ -66,16 +76,7 @@ pub(super) fn run_parse_phase(
         // ── Binary document formats (DOCX, XLSX, PDF, …) ─────────────────────
         #[cfg(feature = "rich-formats")]
         if let Some(doc_lang) = detect_doc_language(path) {
-            if process_doc_file(
-                path,
-                &path_str,
-                doc_lang,
-                db,
-                args,
-                &mut chunk_ids_and_texts,
-                &mut indexed,
-                &mut skipped,
-            )? {
+            if process_doc_file(path, &path_str, doc_lang, db, args, &mut acc)? {
                 parse_bar.inc(1);
                 continue;
             }
@@ -84,37 +85,28 @@ pub(super) fn run_parse_phase(
         // ── PDF documents (feature-gated) ─────────────────────────────────────
         #[cfg(feature = "rich-formats")]
         if detect_language(path) == Some("pdf") {
-            if process_pdf_file(
-                path,
-                &path_str,
-                db,
-                args,
-                &mut chunk_ids_and_texts,
-                &mut indexed,
-            )? {
+            if process_pdf_file(path, &path_str, db, args, &mut acc)? {
                 parse_bar.inc(1);
                 continue;
             }
         }
 
         // ── Text / code formats ───────────────────────────────────────────────
-        process_text_file(
-            path,
-            &path_str,
-            db,
-            args,
-            &mut chunk_ids_and_texts,
-            &mut indexed,
-            &mut skipped,
-        )?;
+        process_text_file(path, &path_str, db, args, &mut acc)?;
         parse_bar.inc(1);
     }
 
     parse_bar.finish_with_message(format!(
-        "{indexed} files parsed ({skipped} skipped, {indexed} new/changed)"
+        "{} files parsed ({} skipped, {} new/changed)",
+        acc.indexed, acc.skipped, acc.indexed
     ));
 
     let removed = remove_stale_files(&files, root, db)?;
+    let ParseAcc {
+        out: chunk_ids_and_texts,
+        indexed,
+        ..
+    } = acc;
 
     Ok(ParseResult {
         chunk_ids_and_texts,
@@ -178,9 +170,7 @@ fn process_doc_file(
     doc_lang: &'static str,
     db: &Database,
     args: &IndexArgs,
-    out: &mut Vec<(i64, String)>,
-    indexed: &mut u64,
-    skipped: &mut u64,
+    acc: &mut ParseAcc,
 ) -> Result<bool> {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
@@ -194,7 +184,7 @@ fn process_doc_file(
         && let Some(existing) = db.file_hash(path_str)?
         && existing == hash
     {
-        *skipped += 1;
+        acc.skipped += 1;
         return Ok(true);
     }
     let chunks = parse_doc(&bytes, path_str, doc_lang);
@@ -222,9 +212,9 @@ fn process_doc_file(
             Some(&metadata.to_string()),
             tc,
         )?;
-        out.push((chunk_id, chunk.embedding_text()));
+        acc.out.push((chunk_id, chunk.embedding_text()));
     }
-    *indexed += 1;
+    acc.indexed += 1;
     Ok(true)
 }
 
@@ -234,8 +224,7 @@ fn process_pdf_file(
     path_str: &str,
     db: &Database,
     args: &IndexArgs,
-    out: &mut Vec<(i64, String)>,
-    indexed: &mut u64,
+    acc: &mut ParseAcc,
 ) -> Result<bool> {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
@@ -287,9 +276,9 @@ fn process_pdf_file(
                     Some(&metadata.to_string()),
                     tc,
                 )?;
-                out.push((chunk_id, chunk.embedding_text()));
+                acc.out.push((chunk_id, chunk.embedding_text()));
             }
-            *indexed += 1;
+            acc.indexed += 1;
         }
         Err(e) => {
             tracing::warn!("skipping PDF {}: {e}", path.display());
@@ -303,9 +292,7 @@ fn process_text_file(
     path_str: &str,
     db: &Database,
     args: &IndexArgs,
-    out: &mut Vec<(i64, String)>,
-    indexed: &mut u64,
-    skipped: &mut u64,
+    acc: &mut ParseAcc,
 ) -> Result<()> {
     let language = detect_language(path)
         .or_else(|| detect_text_language(path))
@@ -323,7 +310,7 @@ fn process_text_file(
         && let Some(existing) = db.file_hash(path_str)?
         && existing == hash
     {
-        *skipped += 1;
+        acc.skipped += 1;
         return Ok(());
     }
 
@@ -370,10 +357,10 @@ fn process_text_file(
             Some(&metadata.to_string()),
             tc,
         )?;
-        out.push((chunk_id, chunk.embedding_text()));
+        acc.out.push((chunk_id, chunk.embedding_text()));
     }
 
-    *indexed += 1;
+    acc.indexed += 1;
     Ok(())
 }
 
