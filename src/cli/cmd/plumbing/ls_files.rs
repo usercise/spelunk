@@ -21,6 +21,7 @@ pub(super) fn ls_files(args: PlumbingLsFilesArgs, db: &Database) -> Result<()> {
         std::process::exit(1);
     }
 
+    let mut emitted = false;
     for record in records {
         // Compute staleness by hashing the on-disk file.
         let stale = match std::fs::read(&record.path) {
@@ -48,6 +49,10 @@ pub(super) fn ls_files(args: PlumbingLsFilesArgs, db: &Database) -> Result<()> {
             stale,
         };
         println!("{}", serde_json::to_string(&entry)?);
+        emitted = true;
+    }
+    if !emitted {
+        std::process::exit(1);
     }
     Ok(())
 }

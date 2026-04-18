@@ -68,6 +68,12 @@ async fn main() -> Result<()> {
         Command::Links(args) => cli::cmd::links(args, cfg).await,
         Command::Snapshot(args) => cli::cmd::snapshot(args, cfg).await,
         Command::History(args) => cli::cmd::history(args, cfg),
-        Command::Plumbing(args) => cli::cmd::plumbing(args, cfg).await,
+        Command::Plumbing(args) => {
+            if let Err(e) = cli::cmd::plumbing(args, cfg).await {
+                eprintln!("error: {e:#}");
+                std::process::exit(2);
+            }
+            Ok(())
+        }
     }
 }

@@ -62,12 +62,63 @@ and `plan create`).
 ```
 src/
   main.rs          — entry point: parse CLI, dispatch to commands
-  cli/
-    mod.rs         — clap structs (Cli, Command, *Args)
-    commands.rs    — async handler for each subcommand
+  lib.rs           — crate root; re-exports public modules
+  error.rs         — SpelunkError enum
   config.rs        — Config struct; load from ~/.config/spelunk/config.toml
   backends.rs      — re-exports ActiveEmbedder / ActiveLlm (LM Studio)
-  utils.rs         — strip_ansi(): sanitize LLM output before printing
+  utils.rs         — strip_ansi(), misc helpers
+  registry.rs      — global project registry (~/.config/spelunk/registry.db)
+
+  cli/
+    mod.rs         — clap structs (Cli, Command, *Args)
+    cmd/
+      mod.rs       — re-exports one pub fn per subcommand
+      ask.rs       — `spelunk ask` handler
+      check.rs     — `spelunk check` handler
+      explore.rs   — `spelunk explore` handler
+      graph.rs     — `spelunk graph` handler
+      helpers.rs   — shared output / progress helpers
+      history.rs   — `spelunk history` handler
+      hooks.rs     — `spelunk hooks` handler
+      init.rs      — `spelunk init` handler
+      link.rs      — `spelunk link/unlink/autoclean` handlers
+      links.rs     — `spelunk links` handler
+      misc.rs      — `spelunk chunks` / `spelunk languages` handlers
+      plan.rs      — `spelunk plan` handler
+      search.rs    — `spelunk search` handler
+      snapshot.rs  — `spelunk snapshot` handler
+      spec.rs      — `spelunk spec` handler
+      status.rs    — `spelunk status` handler
+      verify.rs    — `spelunk verify` handler
+      ui.rs        — TUI helpers (private)
+      index/
+        mod.rs         — `spelunk index` entry point
+        embed_phase.rs — embedding phase of indexing
+        parse_phase.rs — parse/chunk phase of indexing
+        summaries.rs   — AI summary generation during index
+        worktree.rs    — git worktree handling for index
+      memory/
+        mod.rs         — `spelunk memory` dispatch
+        add.rs         — memory add subcommand
+        archive.rs     — memory archive subcommand
+        graph_cmd.rs   — memory graph subcommand
+        harvest.rs     — memory harvest (LLM extraction)
+        list.rs        — memory list subcommand
+        push.rs        — memory push subcommand
+        search.rs      — memory search subcommand
+        show.rs        — memory show subcommand
+        supersede.rs   — memory supersede subcommand
+        timeline.rs    — memory timeline subcommand
+      plumbing/
+        mod.rs         — PlumbingArgs/PlumbingCommand; dispatch; exit-2 on error
+        cat_chunks.rs  — emit indexed chunks for a file as NDJSON
+        embed_cmd.rs   — read stdin lines, emit embedding vectors as NDJSON
+        graph_edges.rs — emit code graph edges as NDJSON
+        hash_file.rs   — blake3 hash a file; check index currency
+        knn.rs         — KNN vector search, NDJSON output
+        ls_files.rs    — list indexed files as NDJSON; exit 1 if no results
+        parse_file.rs  — parse a file and emit chunks as NDJSON (no DB write)
+        read_memory.rs — emit memory entries as NDJSON
 
   embeddings/
     mod.rs         — EmbeddingBackend trait, vec_to_blob/blob_to_vec helpers
@@ -80,20 +131,40 @@ src/
   indexer/
     mod.rs         — re-exports Chunk, ChunkKind, SourceParser
     chunker.rs     — Chunk / ChunkKind structs; sliding_window fallback
-    parser.rs      — SourceParser (tree-sitter); detect_language; SUPPORTED_LANGUAGES
-    graph.rs       — EdgeExtractor: extract import/call/extends edges via tree-sitter
-    secrets.rs     — contains_secret(): regex-based scanner, drops chunks with credentials
+    docparser.rs   — document-level parsing helpers
+    pagerank.rs    — PageRank over the code graph
+    pdf.rs         — PDF text extraction
+    secrets.rs     — contains_secret(): regex scanner, drops credential chunks
+    summariser.rs  — LLM-based chunk summarisation
+    graph/
+      mod.rs       — re-exports EdgeExtractor
+      edges.rs     — EdgeExtractor: import/call/extends edges via tree-sitter
+      builtins.rs  — built-in symbol skip-list
+    parser/
+      mod.rs       — SourceParser; detect_language; SUPPORTED_LANGUAGES
+      text.rs      — plain-text / sliding-window parser
+      ts_walker.rs — tree-sitter AST walker
 
   storage/
     mod.rs         — re-exports Database
-    db.rs          — Database struct; open/migrate; typed CRUD + KNN search
+    db.rs          — Database struct; open/migrate; connection setup
+    files.rs       — file record CRUD (insert, lookup, delete)
+    chunks.rs      — chunk CRUD (insert, fetch, delete by file)
+    search.rs      — KNN search queries against sqlite-vec
+    graph.rs       — graph_edges CRUD
+    snapshots.rs   — snapshot save/restore
+    specs.rs       — spec record CRUD
+    stats.rs       — aggregate statistics queries
+    memory.rs      — NoteStore: memory entries CRUD + list_filtered
+    backend.rs     — StorageBackend trait (local vs remote)
+    remote.rs      — remote storage backend (HTTP)
 
   search/
     mod.rs         — SearchResult struct
-    rag.rs         — RagPipeline<E,L>: search + ask methods
-
-  registry.rs      — global project registry (~/.config/spelunk/registry.db)
-                     project auto-discovery, cross-project link/unlink
+    rag.rs         — RagPipeline<E,L>: search + ask (dead code, kept for future)
+    explore.rs     — interactive exploration pipeline
+    tokens.rs      — token-budget helpers
+    tools.rs       — tool-call helpers for LLM search
 
 migrations/
   001_initial.sql  — files, chunks tables
