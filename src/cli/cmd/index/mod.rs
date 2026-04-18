@@ -156,8 +156,39 @@ async fn run_phases_3_to_5(
     // Phase 4: auto-discover spec files
     run_spec_discovery(root_canonical, db, cfg)?;
 
-    // Phase 5: LLM summaries
-    summaries::generate_summaries(args, cfg, db).await?;
+    // Phase 5: LLM summaries — spawn a background thread so the caller
+    // returns immediately. The thread opens its own DB connection because
+    // `Database` (rusqlite::Connection) is not Send.
+    let no_summaries = args.no_summaries;
+    let summary_batch_size = args.summary_batch_size;
+    let summary_cfg = cfg.clone();
+    let summary_db_path = db_path.to_path_buf();
+    eprintln!("Generating summaries in background\u{2026}");
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build();
+        match rt {
+            Ok(rt) => rt.block_on(async move {
+                match crate::storage::Database::open(&summary_db_path) {
+                    Ok(bg_db) => {
+                        if let Err(e) = summaries::generate_summaries(
+                            no_summaries,
+                            summary_batch_size,
+                            &summary_cfg,
+                            &bg_db,
+                        )
+                        .await
+                        {
+                            eprintln!("summary error: {e}");
+                        }
+                    }
+                    Err(e) => eprintln!("summary error: {e}"),
+                }
+            }),
+            Err(e) => eprintln!("summary error: could not build runtime: {e}"),
+        }
+    });
 
     // Register / update this project in the global registry.
     if let Ok(reg) = Registry::open() {

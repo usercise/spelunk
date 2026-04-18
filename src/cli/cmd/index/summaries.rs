@@ -1,18 +1,18 @@
 use anyhow::{Context, Result};
 
-use super::super::super::IndexArgs;
 use crate::{config::Config, storage::Database};
 
 /// Run the optional LLM summary generation pass.
 ///
 /// Fetches chunks without summaries in batches, calls the LLM, and stores results.
-/// If no `llm_model` is configured or `--no-summaries` is set, prints a message and returns.
+/// If no `llm_model` is configured or `no_summaries` is true, returns early.
 pub(super) async fn generate_summaries(
-    args: &IndexArgs,
+    no_summaries: bool,
+    summary_batch_size: usize,
     cfg: &Config,
     db: &Database,
 ) -> Result<()> {
-    if args.no_summaries {
+    if no_summaries {
         return Ok(());
     }
 
@@ -22,7 +22,7 @@ pub(super) async fn generate_summaries(
     }
 
     // Count total chunks needing summaries for progress reporting.
-    let batch_size = args.summary_batch_size.max(1);
+    let batch_size = summary_batch_size.max(1);
     let first_batch = db.chunks_without_summaries(1)?;
     if first_batch.is_empty() {
         return Ok(());
