@@ -1,38 +1,63 @@
 //! Component tests for `spelunk plumbing embed`.
 //!
-//! Most tests are `#[ignore]` because they require a real embedding server
-//! at 127.0.0.1:1234.  One test exercises the stdin-is-terminal guard that
-//! exits 2 — this works without a server.
+//! Tests use a `wiremock::MockServer` that responds to `POST /v1/embeddings`
+//! with a fixed 768-dimensional zero vector, so no real embedding server is needed.
 
 mod plumbing_helpers;
 use plumbing_helpers::parse_ndjson;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use serde_json::json;
 use tempfile::TempDir;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
-// ── exit 2: no stdin piped (simulated via empty env) ─────────────────────────
-//
-// When stdin is a terminal, `embed` prints a usage hint and exits 2.
-// In test runners stdin is NOT a terminal, so we can't trigger this path
-// from `cargo test` without a PTY.  We instead verify the path is documented
-// via a dry-run with a pipe (which succeeds with 0 lines).
+/// Build a config.toml that points `api_base_url` at the given mock server URI.
+fn write_config(dir: &TempDir, mock_uri: &str) -> std::path::PathBuf {
+    let config = dir.path().join("config.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "api_base_url = \"{mock_uri}\"\n\
+             embedding_model = \"test-model\"\n"
+        ),
+    )
+    .unwrap();
+    config
+}
+
+/// Build a valid OpenAI-compatible embeddings response JSON with one embedding
+/// of `dims` dimensions (all zeros).
+fn embedding_response(dims: usize) -> serde_json::Value {
+    json!({
+        "object": "list",
+        "data": [
+            {
+                "object": "embedding",
+                "index": 0,
+                "embedding": vec![0.0f32; dims]
+            }
+        ],
+        "model": "test-model",
+        "usage": { "prompt_tokens": 5, "total_tokens": 5 }
+    })
+}
+
+// ── exit 0: no stdin piped (empty pipe) ──────────────────────────────────────
 
 #[test]
 fn embed_exits_0_with_empty_piped_stdin() {
-    // requires embedding server at 127.0.0.1:1234
-    // (Empty stdin: no embeddings to emit, but no error either.)
-    // NOTE: this test may fail if the server is unavailable; see #[ignore] tests below.
     let tmp = TempDir::new().unwrap();
+    // Config pointing at a port that won't be called (no input lines).
     let config = tmp.path().join("config.toml");
     std::fs::write(
         &config,
-        "llm_model = \"x\"\napi_base_url = \"http://127.0.0.1:1234\"\n",
+        "api_base_url = \"http://127.0.0.1:19998\"\nembedding_model = \"test-model\"\n",
     )
     .unwrap();
 
     // Pipe empty stdin — command should succeed (no lines to embed).
-    // This does NOT call the embedding server because there is no input.
     Command::cargo_bin("spelunk")
         .unwrap()
         .arg("--config")
@@ -45,18 +70,20 @@ fn embed_exits_0_with_empty_piped_stdin() {
         .stdout(predicate::str::is_empty());
 }
 
-// ── happy path: single line → one JSON embedding ─────────────────────────────
+// ── happy path: single line → one JSON embedding ──────────────────────────────
 
-#[test]
-#[ignore] // requires embedding server at 127.0.0.1:1234
-fn embed_document_mode_produces_ndjson_vector() {
+#[tokio::test]
+async fn embed_document_mode_produces_ndjson_vector() {
+    const DIMS: usize = 768;
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/embeddings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(embedding_response(DIMS)))
+        .mount(&mock)
+        .await;
+
     let tmp = TempDir::new().unwrap();
-    let config = tmp.path().join("config.toml");
-    std::fs::write(
-        &config,
-        "llm_model = \"x\"\napi_base_url = \"http://127.0.0.1:1234\"\nembedding_model = \"text-embedding-nomic-embed-text-v1.5\"\n",
-    )
-    .unwrap();
+    let config = write_config(&tmp, &mock.uri());
 
     let output = Command::cargo_bin("spelunk")
         .unwrap()
@@ -89,16 +116,18 @@ fn embed_document_mode_produces_ndjson_vector() {
     );
 }
 
-#[test]
-#[ignore] // requires embedding server at 127.0.0.1:1234
-fn embed_query_mode_produces_ndjson_vector() {
+#[tokio::test]
+async fn embed_query_mode_produces_ndjson_vector() {
+    const DIMS: usize = 768;
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/embeddings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(embedding_response(DIMS)))
+        .mount(&mock)
+        .await;
+
     let tmp = TempDir::new().unwrap();
-    let config = tmp.path().join("config.toml");
-    std::fs::write(
-        &config,
-        "llm_model = \"x\"\napi_base_url = \"http://127.0.0.1:1234\"\nembedding_model = \"text-embedding-nomic-embed-text-v1.5\"\n",
-    )
-    .unwrap();
+    let config = write_config(&tmp, &mock.uri());
 
     let output = Command::cargo_bin("spelunk")
         .unwrap()
@@ -119,16 +148,19 @@ fn embed_query_mode_produces_ndjson_vector() {
     assert!(rows[0].get("vector").is_some(), "missing 'vector'");
 }
 
-#[test]
-#[ignore] // requires embedding server at 127.0.0.1:1234
-fn embed_multiple_lines_produce_multiple_vectors() {
+#[tokio::test]
+async fn embed_multiple_lines_produce_multiple_vectors() {
+    const DIMS: usize = 768;
+    let mock = MockServer::start().await;
+    // The embed command embeds one line at a time, so we expect 3 POST calls.
+    Mock::given(method("POST"))
+        .and(path("/v1/embeddings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(embedding_response(DIMS)))
+        .mount(&mock)
+        .await;
+
     let tmp = TempDir::new().unwrap();
-    let config = tmp.path().join("config.toml");
-    std::fs::write(
-        &config,
-        "llm_model = \"x\"\napi_base_url = \"http://127.0.0.1:1234\"\nembedding_model = \"text-embedding-nomic-embed-text-v1.5\"\n",
-    )
-    .unwrap();
+    let config = write_config(&tmp, &mock.uri());
 
     let output = Command::cargo_bin("spelunk")
         .unwrap()
@@ -150,13 +182,12 @@ fn embed_multiple_lines_produce_multiple_vectors() {
 // ── error path: bad API URL ───────────────────────────────────────────────────
 
 #[test]
-#[ignore] // requires embedding server at 127.0.0.1:1234
 fn embed_exits_nonzero_when_server_unreachable() {
     let tmp = TempDir::new().unwrap();
     let config = tmp.path().join("config.toml");
     std::fs::write(
         &config,
-        "llm_model = \"x\"\napi_base_url = \"http://127.0.0.1:19999\"\n",
+        "api_base_url = \"http://127.0.0.1:19999\"\nembedding_model = \"test-model\"\n",
     )
     .unwrap();
 
