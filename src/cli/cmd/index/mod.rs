@@ -1,8 +1,44 @@
 use anyhow::{Context, Result};
+use clap::Args;
 use ignore::WalkBuilder;
 use indicatif::MultiProgress;
+use std::path::PathBuf;
 
-use super::super::IndexArgs;
+#[derive(Args, Debug)]
+pub struct IndexArgs {
+    /// Path to the codebase root to index
+    pub path: PathBuf,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+
+    /// Max concurrent embedding requests (default: 32)
+    #[arg(long, default_value = "32")]
+    pub batch_size: usize,
+
+    /// Force full re-index (ignore change detection)
+    #[arg(long)]
+    pub force: bool,
+
+    /// Backfill token_count for all existing chunks and exit (useful for upgrading old indexes)
+    #[arg(long)]
+    pub recount: bool,
+
+    /// Skip LLM summary generation even when llm_model is configured
+    #[arg(long)]
+    pub no_summaries: bool,
+
+    /// Number of chunks to send to the LLM per summary request (default: 10)
+    #[arg(long, default_value = "10")]
+    pub summary_batch_size: usize,
+
+    /// Internal: run only phases 3-5 (graph rank, spec discovery, summaries).
+    /// Used by the background process spawned after a large foreground index.
+    #[arg(long = "_background-phases", hide = true, default_value_t = false)]
+    pub background_phases: bool,
+}
+
 use crate::{config::Config, registry::Registry, storage::Database};
 
 mod embed_phase;

@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use futures_util::StreamExt as _;
 use indicatif::{MultiProgress, ProgressBar};
 
-use super::super::super::IndexArgs;
 use super::super::ui::{is_tty, progress_style};
+use super::IndexArgs;
 use crate::{
     config::Config,
     embeddings::{EmbeddingBackend as _, vec_to_blob},

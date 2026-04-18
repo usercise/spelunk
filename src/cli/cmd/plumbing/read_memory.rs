@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::super::super::PlumbingReadMemoryArgs;
+use super::PlumbingReadMemoryArgs;
 use crate::{config::Config, storage::open_memory_backend};
 
 pub(super) async fn read_memory(

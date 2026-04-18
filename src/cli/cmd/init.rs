@@ -1,6 +1,17 @@
 use anyhow::Result;
+use clap::Args;
 
-use super::super::InitArgs;
+#[derive(Args, Debug)]
+pub struct InitArgs {
+    /// Also install the post-commit git hook
+    #[arg(long)]
+    pub hook: bool,
+
+    /// Skip the initial index run
+    #[arg(long)]
+    pub no_index: bool,
+}
+
 use crate::{config::Config, registry::Registry, storage::Database};
 
 pub async fn init(args: InitArgs, cfg: Config) -> Result<()> {
@@ -81,7 +92,7 @@ pub async fn init(args: InitArgs, cfg: Config) -> Result<()> {
         }
     } else {
         // Delegate to the real index command logic.
-        let index_args = super::super::IndexArgs {
+        let index_args = super::index::IndexArgs {
             path: project_root.clone(),
             db: None,
             batch_size: 32,

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use super::super::super::MemoryPushArgs;
+use super::MemoryPushArgs;
 use crate::{
     config::Config,
     storage::{NoteInput, open_memory_backend},

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use super::super::super::PlumbingHashFileArgs;
+use super::PlumbingHashFileArgs;
 use crate::storage::Database;
 
 #[derive(Serialize)]

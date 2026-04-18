@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 
-use super::super::super::MemoryTimelineArgs;
 use super::super::helpers::embed_query;
 use super::super::status::format_age;
+use super::MemoryTimelineArgs;
 use crate::{config::Config, storage::open_memory_backend};
 
 pub(super) async fn memory_timeline(

@@ -1,6 +1,211 @@
 use anyhow::{Context, Result};
+use clap::{Args, Subcommand};
+use std::path::PathBuf;
 
-use super::super::{MemoryArgs, MemoryCommand};
+#[derive(Args, Debug)]
+pub struct MemoryArgs {
+    #[command(subcommand)]
+    pub command: MemoryCommand,
+
+    /// Path to the memory database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MemoryCommand {
+    /// Store a decision, context, requirement, note, question, answer, or handoff
+    Add(MemoryAddArgs),
+    /// Semantic search over stored memory
+    Search(MemorySearchArgs),
+    /// List memory entries (newest first)
+    List(MemoryListArgs),
+    /// Show the full content of a memory entry
+    Show(MemoryShowArgs),
+    /// Auto-harvest memory entries from git commit messages using the LLM
+    Harvest(MemoryHarvestArgs),
+    /// Archive a memory entry (hidden from search and ask, but preserved)
+    Archive(MemoryArchiveArgs),
+    /// Archive an entry and mark it as superseded by a newer entry
+    Supersede(MemorySupersededArgs),
+    /// Push all local memory entries to the configured memory server
+    Push(MemoryPushArgs),
+    /// Show how the team's understanding of a topic evolved over time
+    Timeline(MemoryTimelineArgs),
+    /// Show the relationship graph for a memory entry
+    Graph(MemoryGraphArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryGraphArgs {
+    /// Entry ID to show the relationship graph for
+    pub id: i64,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryTimelineArgs {
+    /// Topic to trace through time
+    pub query: String,
+
+    /// Number of entries to retrieve before timeline construction
+    #[arg(short, long, default_value = "20")]
+    pub limit: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryAddArgs {
+    /// Short title summarising the entry (inferred from URL if --from-url is used)
+    #[arg(short, long)]
+    pub title: Option<String>,
+
+    /// Full body text (omit to open $EDITOR)
+    #[arg(short, long)]
+    pub body: Option<String>,
+
+    /// Fetch content from a URL (GitHub issue, Linear ticket, or any web page)
+    #[arg(long)]
+    pub from_url: Option<String>,
+
+    /// Kind: decision, context, requirement, note, question, answer, handoff
+    #[arg(short, long, default_value = "note")]
+    pub kind: String,
+
+    /// Comma-separated tags (e.g. auth,database)
+    #[arg(long)]
+    pub tags: Option<String>,
+
+    /// Comma-separated file paths this entry relates to
+    #[arg(long)]
+    pub files: Option<String>,
+
+    /// When this entry became valid (ISO 8601, e.g. 2026-03-15 or 2026-03-15T10:00:00).
+    /// Defaults to now (created_at) when omitted.
+    #[arg(long, value_name = "DATE")]
+    pub valid_at: Option<String>,
+
+    /// ID of an existing entry that this new entry supersedes.
+    /// The old entry's invalid_at is set to now atomically in the same transaction.
+    #[arg(long, value_name = "ID")]
+    pub supersedes: Option<i64>,
+
+    /// ID of an existing entry this entry relates to (creates a relates_to edge).
+    #[arg(long, value_name = "ID")]
+    pub relates_to: Option<i64>,
+}
+
+#[derive(Args, Debug)]
+pub struct MemorySearchArgs {
+    /// Natural language query
+    pub query: String,
+
+    /// Number of results to return
+    #[arg(short, long, default_value = "10")]
+    pub limit: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Search mode: hybrid (default), semantic, text
+    #[arg(long, default_value = "hybrid")]
+    pub mode: String,
+
+    /// Return only entries valid at this point in time (ISO 8601, e.g. 2026-03-15 or 2026-03-15T10:00:00)
+    #[arg(long, value_name = "DATE")]
+    pub as_of: Option<String>,
+
+    /// Expand results by 1 hop along relates_to edges
+    #[arg(long)]
+    pub expand_graph: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryListArgs {
+    /// Filter by kind: decision, context, requirement, note
+    #[arg(short, long)]
+    pub kind: Option<String>,
+
+    /// Filter by commit SHA (exact or prefix match against source_ref)
+    #[arg(long)]
+    pub source_ref: Option<String>,
+
+    /// Number of entries to show
+    #[arg(short, long, default_value = "20")]
+    pub limit: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Include archived entries
+    #[arg(long)]
+    pub archived: bool,
+
+    /// Return only entries valid at this point in time (ISO 8601, e.g. 2026-03-15 or 2026-03-15T10:00:00)
+    #[arg(long, value_name = "DATE")]
+    pub as_of: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryShowArgs {
+    /// Entry ID (from list or search output)
+    pub id: i64,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryHarvestArgs {
+    /// Git revision range to analyse, e.g. `HEAD~10..HEAD` or `v0.1.0..HEAD`.
+    /// Mutually exclusive with --branch.
+    #[arg(long, default_value = "HEAD~10..HEAD", conflicts_with = "branch")]
+    pub git_range: String,
+
+    /// Harvest the entire commit history of a branch, e.g. `main` or `master`.
+    /// Mutually exclusive with --git-range.
+    #[arg(long, conflicts_with = "git_range")]
+    pub branch: Option<String>,
+
+    /// Number of commits to send to the LLM in each request.
+    /// Smaller values are more stable; larger values risk hitting context-window limits.
+    #[arg(long, default_value_t = 3)]
+    pub batch_size: usize,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryPushArgs {
+    /// Local memory.db to push from (default: same as --db)
+    #[arg(long)]
+    pub source: Option<std::path::PathBuf>,
+    /// Push archived entries too
+    #[arg(long)]
+    pub include_archived: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryArchiveArgs {
+    /// ID of the entry to archive (from `spelunk memory list`)
+    pub id: i64,
+}
+
+#[derive(Args, Debug)]
+pub struct MemorySupersededArgs {
+    /// ID of the entry to archive (the outdated one)
+    pub old_id: i64,
+    /// ID of the entry that replaces it (the new one)
+    pub new_id: i64,
+}
+
 use super::status::format_age;
 
 mod add;

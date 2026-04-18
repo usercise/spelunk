@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
-use super::super::super::MemorySearchArgs;
 use super::super::helpers::embed_query;
+use super::MemorySearchArgs;
 use super::{parse_as_of, print_note_summary};
 use crate::{config::Config, storage::open_memory_backend};
 

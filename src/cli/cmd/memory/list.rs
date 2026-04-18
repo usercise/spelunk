@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::super::super::MemoryListArgs;
+use super::MemoryListArgs;
 use super::{parse_as_of, print_note_summary};
 use crate::{config::Config, storage::open_memory_backend};
 

@@ -1,6 +1,21 @@
 use anyhow::{Context, Result};
+use clap::Args;
 
-use super::super::StatusArgs;
+#[derive(Args, Debug)]
+pub struct StatusArgs {
+    /// Show stats for all registered projects, not just the current one
+    #[arg(short, long)]
+    pub all: bool,
+
+    /// Brief list format (one line per project) — implies --all
+    #[arg(short, long)]
+    pub list: bool,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
 use super::search::resolve_project_and_deps;
 use crate::{
     config::{Config, resolve_db},

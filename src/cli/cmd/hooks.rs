@@ -1,6 +1,26 @@
 use anyhow::{Context, Result};
+use clap::{Args, Subcommand};
 
-use super::super::{HooksArgs, HooksCommand};
+#[derive(Args, Debug)]
+pub struct HooksArgs {
+    #[command(subcommand)]
+    pub command: HooksCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum HooksCommand {
+    /// Install a post-commit hook that auto-indexes and harvests memory
+    Install(HooksInstallArgs),
+    /// Remove the spelunk post-commit hook
+    Uninstall,
+}
+
+#[derive(Args, Debug)]
+pub struct HooksInstallArgs {
+    /// Print a GitHub Actions workflow step instead of writing a git hook
+    #[arg(long)]
+    pub ci: bool,
+}
 
 pub fn hooks(args: HooksArgs) -> Result<()> {
     match args.command {
@@ -45,7 +65,7 @@ fn find_git_dir() -> Result<std::path::PathBuf> {
     Ok(std::path::PathBuf::from(path.trim()))
 }
 
-fn hooks_install(args: super::super::HooksInstallArgs) -> Result<()> {
+fn hooks_install(args: HooksInstallArgs) -> Result<()> {
     if args.ci {
         print!("{CI_STEP}");
         return Ok(());

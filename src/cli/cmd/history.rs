@@ -1,6 +1,21 @@
 use anyhow::{Context, Result};
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::HistoryArgs;
+#[derive(Args, Debug)]
+pub struct HistoryArgs {
+    /// Symbol name to trace (function, struct, class, etc.)
+    pub symbol: String,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
 use super::status::format_age;
 use crate::{
     config::{Config, resolve_db},

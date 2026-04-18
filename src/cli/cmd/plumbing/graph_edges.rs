@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 
-use super::super::super::PlumbingGraphEdgesArgs;
+use super::PlumbingGraphEdgesArgs;
 use crate::storage::Database;
 
 pub(super) fn graph_edges(args: PlumbingGraphEdgesArgs, db: &Database) -> Result<()> {

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use super::super::super::MemoryAddArgs;
+use super::MemoryAddArgs;
 use crate::{
     config::Config,
     embeddings::{EmbeddingBackend as _, vec_to_blob},

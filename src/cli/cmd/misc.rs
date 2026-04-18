@@ -1,6 +1,21 @@
 use anyhow::Result;
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::ChunksArgs;
+#[derive(Args, Debug)]
+pub struct ChunksArgs {
+    /// File path (exact or suffix match against indexed paths)
+    pub path: String,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
 use super::helpers::open_project_db;
 use super::ui::print_chunks_text;
 use crate::config::Config;

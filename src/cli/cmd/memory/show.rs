@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use super::super::super::MemoryShowArgs;
 use super::super::status::format_age;
+use super::MemoryShowArgs;
 use crate::{config::Config, storage::open_memory_backend};
 
 pub(super) async fn memory_show(

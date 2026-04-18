@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::super::super::MemoryGraphArgs;
+use super::MemoryGraphArgs;
 use crate::{config::Config, storage::open_memory_backend};
 
 pub(super) async fn memory_graph(

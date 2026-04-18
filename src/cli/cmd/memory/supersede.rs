@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::super::super::MemorySupersededArgs;
+use super::MemorySupersededArgs;
 use crate::{config::Config, storage::open_memory_backend};
 
 pub(super) async fn memory_supersede(

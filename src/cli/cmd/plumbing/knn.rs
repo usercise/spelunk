@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::io::Read as _;
 
-use super::super::super::PlumbingKnnArgs;
+use super::PlumbingKnnArgs;
 use crate::{embeddings::vec_to_blob, storage::Database};
 
 pub(super) async fn knn(args: PlumbingKnnArgs, db: &Database) -> Result<()> {

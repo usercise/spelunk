@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar};
 
-use super::super::super::IndexArgs;
 use super::super::ui::{is_tty, progress_style, short_path};
+use super::IndexArgs;
 #[cfg(feature = "rich-formats")]
 use crate::indexer::docparser::parse_doc;
 use crate::{

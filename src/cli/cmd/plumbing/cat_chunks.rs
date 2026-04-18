@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::super::super::PlumbingCatChunksArgs;
+use super::PlumbingCatChunksArgs;
 use crate::{config::Config, storage::Database};
 
 pub(super) fn cat_chunks(args: PlumbingCatChunksArgs, db: &Database, _cfg: &Config) -> Result<()> {

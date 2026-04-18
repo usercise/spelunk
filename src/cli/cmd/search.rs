@@ -1,6 +1,53 @@
 use anyhow::{Context, Result};
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::SearchArgs;
+#[derive(Args, Debug)]
+pub struct SearchArgs {
+    /// Natural language search query
+    pub query: String,
+
+    /// Number of results to return (max 100)
+    #[arg(short, long, default_value = "10", conflicts_with = "budget")]
+    pub limit: usize,
+
+    /// Return best chunks fitting within this token budget (mutually exclusive with --limit)
+    #[arg(long, conflicts_with = "limit")]
+    pub budget: Option<usize>,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Enrich results with 1-hop call-graph neighbours (callers + callees)
+    #[arg(short, long)]
+    pub graph: bool,
+
+    /// Maximum number of graph-expanded results to add (when --graph is set)
+    #[arg(long, default_value = "10")]
+    pub graph_limit: usize,
+
+    /// Search mode: hybrid (default), semantic, text
+    #[arg(long, default_value = "hybrid")]
+    pub mode: String,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+
+    /// Skip the lightweight staleness probe (suppress stale-index warning)
+    #[arg(long)]
+    pub no_stale_check: bool,
+
+    /// Search only the primary project index, skipping all linked project DBs
+    #[arg(long)]
+    pub local_only: bool,
+
+    /// Search against this snapshot instead of the live index (full or short commit SHA)
+    #[arg(long, value_name = "SHA")]
+    pub as_of: Option<String>,
+}
+
 use super::helpers::project_display_name;
 use super::ui::{print_results_text, spinner};
 use crate::{

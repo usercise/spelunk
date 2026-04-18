@@ -1,9 +1,29 @@
 use clap::{Parser, Subcommand};
 
-mod args;
 pub mod cmd;
 
-pub use args::*;
+// Re-export top-level Args types so callers can use `crate::cli::XxxArgs`.
+// Sub-command Args types (Memory*Args, Plumbing*Args, etc.) are accessed via
+// their owning modules (e.g. `crate::cli::cmd::memory::MemoryAddArgs`) when needed.
+pub use cmd::ask::AskArgs;
+pub use cmd::check::CheckArgs;
+pub use cmd::explore::ExploreArgs;
+pub use cmd::graph::GraphArgs;
+pub use cmd::history::HistoryArgs;
+pub use cmd::hooks::HooksArgs;
+pub use cmd::index::IndexArgs;
+pub use cmd::init::InitArgs;
+pub use cmd::link::{LinkArgs, UnlinkArgs};
+pub use cmd::links::LinksArgs;
+pub use cmd::memory::MemoryArgs;
+pub use cmd::misc::ChunksArgs;
+pub use cmd::plan::PlanArgs;
+pub use cmd::plumbing::PlumbingArgs;
+pub use cmd::search::SearchArgs;
+pub use cmd::snapshot::SnapshotArgs;
+pub use cmd::spec::SpecArgs;
+pub use cmd::status::StatusArgs;
+pub use cmd::verify::VerifyArgs;
 
 /// spelunk — local code intelligence
 #[derive(Parser, Debug)]
