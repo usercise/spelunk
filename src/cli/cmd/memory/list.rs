@@ -1,7 +1,6 @@
 use anyhow::Result;
 
-use super::super::super::{MemoryListArgs, MemoryShowArgs};
-use super::super::status::format_age;
+use super::super::super::MemoryListArgs;
 use super::{parse_as_of, print_note_summary};
 use crate::{config::Config, storage::open_memory_backend};
 
@@ -34,86 +33,6 @@ pub(super) async fn memory_list(
                 print_note_summary(n);
             }
         }
-    }
-    Ok(())
-}
-
-pub(super) async fn memory_show(
-    args: MemoryShowArgs,
-    mem_path: &std::path::Path,
-    cfg: &Config,
-) -> Result<()> {
-    let backend = open_memory_backend(cfg, mem_path)?;
-    match backend.get(args.id).await? {
-        None => anyhow::bail!("No memory entry with id {}.", args.id),
-        Some(n) => match crate::utils::effective_format(&args.format) {
-            "json" => println!("{}", serde_json::to_string_pretty(&n)?),
-            _ => {
-                println!("\x1b[1m#{} [{}] {}\x1b[0m", n.id, n.kind, n.title);
-                println!("\x1b[2m{}\x1b[0m", format_age(n.created_at));
-                let effective_valid_at = n.valid_at.unwrap_or(n.created_at);
-                if n.valid_at.is_some() || effective_valid_at != n.created_at {
-                    println!("valid_at:   {}", format_age(effective_valid_at));
-                } else {
-                    println!("valid_at:   (same as created_at)");
-                }
-                if let Some(inv) = n.invalid_at {
-                    println!("invalid_at: {}", format_age(inv));
-                }
-                if !n.tags.is_empty() {
-                    println!("tags: {}", n.tags.join(", "));
-                }
-                if !n.linked_files.is_empty() {
-                    println!("files: {}", n.linked_files.join(", "));
-                }
-                if let Some(ref sha) = n.source_ref {
-                    let short = &sha[..sha.len().min(8)];
-                    if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-                        println!(
-                            "source:  \x1b[36mgit show {sha}\x1b[0m  \x1b[2m(SHA: {short})\x1b[0m"
-                        );
-                    } else {
-                        println!("source:  {sha}");
-                    }
-                }
-                println!();
-                println!("{}", n.body);
-
-                let (outgoing, incoming) = backend.get_edges(n.id).await?;
-                if !outgoing.is_empty() || !incoming.is_empty() {
-                    println!();
-                    println!("\x1b[2m── relationships ──\x1b[0m");
-                    for e in &outgoing {
-                        let label = match e.kind.as_str() {
-                            "supersedes" => "\x1b[33m→ supersedes\x1b[0m",
-                            "relates_to" => "\x1b[36m→ relates_to\x1b[0m",
-                            "contradicts" => "\x1b[31m→ contradicts\x1b[0m",
-                            _ => "→",
-                        };
-                        let target_title = backend
-                            .get(e.to_id)
-                            .await?
-                            .map(|n| n.title)
-                            .unwrap_or_else(|| "(deleted)".to_string());
-                        println!("  {label}  #{} {target_title}", e.to_id);
-                    }
-                    for e in &incoming {
-                        let label = match e.kind.as_str() {
-                            "supersedes" => "\x1b[33m← superseded by\x1b[0m",
-                            "relates_to" => "\x1b[36m← related from\x1b[0m",
-                            "contradicts" => "\x1b[31m← contradicted by\x1b[0m",
-                            _ => "←",
-                        };
-                        let src_title = backend
-                            .get(e.from_id)
-                            .await?
-                            .map(|n| n.title)
-                            .unwrap_or_else(|| "(deleted)".to_string());
-                        println!("  {label}  #{} {src_title}", e.from_id);
-                    }
-                }
-            }
-        },
     }
     Ok(())
 }

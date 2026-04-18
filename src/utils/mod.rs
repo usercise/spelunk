@@ -1,3 +1,5 @@
+pub mod dates;
+
 /// Returns true when the process is running in agent mode (`AGENT=true`).
 ///
 /// In agent mode all output defaults to structured JSON and progress spinners

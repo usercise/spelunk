@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use super::super::super::{MemoryArchiveArgs, MemoryPushArgs, MemorySupersededArgs};
+use super::super::super::MemoryPushArgs;
 use crate::{
     config::Config,
     storage::{NoteInput, open_memory_backend},
@@ -61,40 +61,5 @@ pub(super) async fn memory_push(
         }
     }
     println!("Done. Pushed: {pushed}, skipped: {skipped}.");
-    Ok(())
-}
-
-pub(super) async fn memory_archive(
-    args: MemoryArchiveArgs,
-    mem_path: &std::path::Path,
-    cfg: &Config,
-) -> Result<()> {
-    let backend = open_memory_backend(cfg, mem_path)?;
-    if backend.archive(args.id).await? {
-        println!("Archived memory entry #{}.", args.id);
-    } else {
-        anyhow::bail!("No active memory entry with id {}.", args.id);
-    }
-    Ok(())
-}
-
-pub(super) async fn memory_supersede(
-    args: MemorySupersededArgs,
-    mem_path: &std::path::Path,
-    cfg: &Config,
-) -> Result<()> {
-    let backend = open_memory_backend(cfg, mem_path)?;
-    if backend.get(args.new_id).await?.is_none() {
-        anyhow::bail!("No memory entry with id {} (new).", args.new_id);
-    }
-    if backend.supersede(args.old_id, args.new_id).await? {
-        println!(
-            "Archived #{old} → superseded by #{new}.",
-            old = args.old_id,
-            new = args.new_id
-        );
-    } else {
-        anyhow::bail!("No active memory entry with id {} (old).", args.old_id);
-    }
     Ok(())
 }
