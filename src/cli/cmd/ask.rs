@@ -1,7 +1,30 @@
 use anyhow::{Context, Result};
+use clap::Args;
 use std::io::Write;
+use std::path::PathBuf;
 
-use super::super::AskArgs;
+#[derive(Args, Debug)]
+pub struct AskArgs {
+    /// Question to answer using the indexed codebase
+    pub question: String,
+
+    /// Number of chunks to retrieve as context (max 100)
+    #[arg(long, default_value = "20")]
+    pub context_chunks: usize,
+
+    /// Return structured JSON: { answer, relevant_files, confidence }
+    #[arg(long)]
+    pub json: bool,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+
+    /// Skip the lightweight staleness probe (suppress stale-index warning)
+    #[arg(long)]
+    pub no_stale_check: bool,
+}
+
 use super::helpers::{embed_query, load_llm};
 use super::search::{maybe_warn_stale, resolve_project_and_deps, search_all_dbs};
 use super::ui::spinner;

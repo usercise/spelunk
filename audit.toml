@@ -1,2 +1,6 @@
 [advisories]
-ignore = []
+ignore = [
+    # RUSTSEC-2026-0097: affects rand 0.10.0 via lopdf 0.40.0 (PDF parsing, optional feature).
+    # lopdf is at the latest release and has no patched version available yet.
+    "RUSTSEC-2026-0097",
+]

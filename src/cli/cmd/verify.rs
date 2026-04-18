@@ -1,6 +1,25 @@
 use anyhow::{Context, Result};
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::VerifyArgs;
+#[derive(Args, Debug)]
+pub struct VerifyArgs {
+    /// File path or symbol name to verify
+    pub target: String,
+
+    /// Number of nearest neighbours to show per chunk
+    #[arg(long, default_value = "3")]
+    pub neighbours: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
 use super::helpers::load_embedder;
 use super::search::resolve_project_and_deps;
 use super::ui::spinner;

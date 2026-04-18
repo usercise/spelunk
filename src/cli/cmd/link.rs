@@ -1,6 +1,27 @@
 use anyhow::{Context, Result};
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::{LinkArgs, UnlinkArgs};
+#[derive(Args, Debug)]
+pub struct LinkArgs {
+    /// Path to the project to add as a dependency
+    pub path: PathBuf,
+
+    /// Path to the SQLite database for the current project (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct UnlinkArgs {
+    /// Path to the project to remove as a dependency
+    pub path: PathBuf,
+
+    /// Path to the SQLite database for the current project (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+}
+
 use crate::{config::Config, registry::Registry};
 
 pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {

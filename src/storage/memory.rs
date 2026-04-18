@@ -381,6 +381,9 @@ impl MemoryStore {
             "AND status = 'active'"
         };
 
+        // Safety: only string literals and bind-param placeholders are appended to
+        // `conditions`; all user-supplied values (kind, source_ref, as_of) are bound
+        // via rusqlite params![...], never interpolated into the query string.
         let mut conditions = format!("WHERE 1=1 {status_clause}");
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
 

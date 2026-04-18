@@ -1,8 +1,53 @@
 use anyhow::{Context, Result};
+use clap::{Args, Subcommand};
 use futures_util::StreamExt as _;
 use ignore::WalkBuilder;
+use std::path::PathBuf;
 
-use super::super::{SnapshotArgs, SnapshotCommand};
+#[derive(Args, Debug)]
+pub struct SnapshotArgs {
+    #[command(subcommand)]
+    pub command: SnapshotCommand,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SnapshotCommand {
+    /// Index the codebase at a specific commit and store as a named snapshot
+    Create(SnapshotCreateArgs),
+    /// List all stored snapshots
+    List(SnapshotListArgs),
+    /// Delete a snapshot and its data
+    Delete(SnapshotDeleteArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SnapshotCreateArgs {
+    /// Git commit SHA or ref to snapshot (defaults to HEAD)
+    #[arg(default_value = "HEAD")]
+    pub commit: String,
+
+    /// Max concurrent embedding requests
+    #[arg(long, default_value = "32")]
+    pub batch_size: usize,
+}
+
+#[derive(Args, Debug)]
+pub struct SnapshotListArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SnapshotDeleteArgs {
+    /// Commit SHA of the snapshot to delete (full or short)
+    pub sha: String,
+}
+
 use super::status::format_age;
 use super::ui::{is_tty, progress_style};
 use crate::{
@@ -29,7 +74,7 @@ pub async fn snapshot(args: SnapshotArgs, cfg: Config) -> Result<()> {
 }
 
 async fn snapshot_create(
-    args: super::super::SnapshotCreateArgs,
+    args: SnapshotCreateArgs,
     db_path: &std::path::Path,
     cfg: &Config,
 ) -> Result<()> {
@@ -295,7 +340,7 @@ async fn do_snapshot_index(
     Ok(())
 }
 
-fn snapshot_list(args: super::super::SnapshotListArgs, db_path: &std::path::Path) -> Result<()> {
+fn snapshot_list(args: SnapshotListArgs, db_path: &std::path::Path) -> Result<()> {
     let db = Database::open(db_path)?;
     let snapshots = db.list_snapshots()?;
 
@@ -326,10 +371,7 @@ fn snapshot_list(args: super::super::SnapshotListArgs, db_path: &std::path::Path
     Ok(())
 }
 
-fn snapshot_delete(
-    args: super::super::SnapshotDeleteArgs,
-    db_path: &std::path::Path,
-) -> Result<()> {
+fn snapshot_delete(args: SnapshotDeleteArgs, db_path: &std::path::Path) -> Result<()> {
     let db = Database::open(db_path)?;
 
     // Find by prefix.

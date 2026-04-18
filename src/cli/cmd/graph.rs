@@ -1,6 +1,29 @@
 use anyhow::Result;
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::GraphArgs;
+#[derive(Args, Debug)]
+pub struct GraphArgs {
+    /// Symbol name or file path to look up in the graph
+    pub symbol: String,
+
+    /// Filter to a specific edge kind: imports, calls, extends, implements
+    #[arg(long)]
+    pub kind: Option<String>,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+
+    /// Skip the lightweight staleness probe (suppress stale-index warning)
+    #[arg(long)]
+    pub no_stale_check: bool,
+}
+
 use super::helpers::open_project_db;
 use super::search::maybe_warn_stale;
 use crate::config::Config;
@@ -46,7 +69,7 @@ pub fn graph(args: GraphArgs, cfg: Config) -> Result<()> {
     Ok(())
 }
 
-fn print_edges(edges: &[crate::storage::db::GraphEdge], query: &str) {
+fn print_edges(edges: &[crate::storage::GraphEdge], query: &str) {
     // Group into outgoing (source) and incoming (target) edges.
     let outgoing: Vec<_> = edges
         .iter()
