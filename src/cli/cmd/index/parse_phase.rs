@@ -101,7 +101,7 @@ pub(super) fn run_parse_phase(
         acc.indexed, acc.skipped, acc.indexed
     ));
 
-    let removed = remove_stale_files(&files, root, db)?;
+    let removed = cleanup_stale(&files, root, db)?;
     let ParseAcc {
         out: chunk_ids_and_texts,
         indexed,
@@ -191,29 +191,7 @@ fn process_doc_file(
     let file_id = db.upsert_file(path_str, Some(doc_lang), &hash)?;
     db.delete_embeddings_for_file(file_id)?;
     db.delete_chunks_for_file(file_id)?;
-    for chunk in &chunks {
-        if crate::indexer::secrets::contains_secret(&chunk.content) {
-            tracing::warn!(
-                "skipping chunk '{}' in {path_str} (possible secret detected)",
-                chunk.name.as_deref().unwrap_or("<anonymous>"),
-            );
-            continue;
-        }
-        let metadata =
-            serde_json::json!({ "docstring": chunk.docstring, "parent_scope": chunk.parent_scope });
-        let tc = estimate_tokens(&chunk.content);
-        let chunk_id = db.insert_chunk(
-            file_id,
-            &chunk.kind.to_string(),
-            chunk.name.as_deref(),
-            chunk.start_line,
-            chunk.end_line,
-            &chunk.content,
-            Some(&metadata.to_string()),
-            tc,
-        )?;
-        acc.out.push((chunk_id, chunk.embedding_text()));
-    }
+    store_chunks(&chunks, path_str, file_id, db, acc)?;
     acc.indexed += 1;
     Ok(true)
 }
@@ -245,39 +223,8 @@ fn process_pdf_file(
             let file_id = db.upsert_file(path_str, Some("pdf"), &hash)?;
             db.delete_embeddings_for_file(file_id)?;
             db.delete_chunks_for_file(file_id)?;
-            for (page_num, text) in pages {
-                if crate::indexer::secrets::contains_secret(&text) {
-                    tracing::warn!(
-                        "skipping PDF page {page_num} in {path_str} (possible secret detected)",
-                    );
-                    continue;
-                }
-                let chunk = crate::indexer::Chunk {
-                    file_path: path_str.to_string(),
-                    language: "pdf".to_string(),
-                    kind: crate::indexer::ChunkKind::Section,
-                    name: Some(format!("page {page_num}")),
-                    start_line: page_num as usize,
-                    end_line: page_num as usize,
-                    content: text,
-                    docstring: None,
-                    parent_scope: None,
-                    summary: None,
-                };
-                let metadata = serde_json::json!({ "docstring": chunk.docstring, "parent_scope": chunk.parent_scope });
-                let tc = estimate_tokens(&chunk.content);
-                let chunk_id = db.insert_chunk(
-                    file_id,
-                    &chunk.kind.to_string(),
-                    chunk.name.as_deref(),
-                    chunk.start_line,
-                    chunk.end_line,
-                    &chunk.content,
-                    Some(&metadata.to_string()),
-                    tc,
-                )?;
-                acc.out.push((chunk_id, chunk.embedding_text()));
-            }
+            let chunks = pages_to_chunks(pages, path_str);
+            store_chunks(&chunks, path_str, file_id, db, acc)?;
             acc.indexed += 1;
         }
         Err(e) => {
@@ -285,6 +232,25 @@ fn process_pdf_file(
         }
     }
     Ok(true)
+}
+
+#[cfg(feature = "rich-formats")]
+fn pages_to_chunks(pages: Vec<(u32, String)>, path_str: &str) -> Vec<crate::indexer::Chunk> {
+    pages
+        .into_iter()
+        .map(|(page_num, text)| crate::indexer::Chunk {
+            file_path: path_str.to_string(),
+            language: "pdf".to_string(),
+            kind: crate::indexer::ChunkKind::Section,
+            name: Some(format!("page {page_num}")),
+            start_line: page_num as usize,
+            end_line: page_num as usize,
+            content: text,
+            docstring: None,
+            parent_scope: None,
+            summary: None,
+        })
+        .collect()
 }
 
 fn process_text_file(
@@ -336,7 +302,20 @@ fn process_text_file(
         Err(e) => tracing::warn!("graph extraction failed for {path_str}: {e}"),
     }
 
-    for chunk in &chunks {
+    store_chunks(&chunks, path_str, file_id, db, acc)?;
+    acc.indexed += 1;
+    Ok(())
+}
+
+/// Insert a slice of parsed chunks into the DB and record their embedding texts.
+fn store_chunks(
+    chunks: &[crate::indexer::Chunk],
+    path_str: &str,
+    file_id: i64,
+    db: &Database,
+    acc: &mut ParseAcc,
+) -> Result<()> {
+    for chunk in chunks {
         if crate::indexer::secrets::contains_secret(&chunk.content) {
             tracing::warn!(
                 "skipping chunk '{}' in {path_str} (possible secret detected)",
@@ -359,18 +338,12 @@ fn process_text_file(
         )?;
         acc.out.push((chunk_id, chunk.embedding_text()));
     }
-
-    acc.indexed += 1;
     Ok(())
 }
 
 // ── Stale file cleanup ────────────────────────────────────────────────────────
 
-fn remove_stale_files(
-    files: &[ignore::DirEntry],
-    root: &std::path::Path,
-    db: &Database,
-) -> Result<u64> {
+fn cleanup_stale(files: &[ignore::DirEntry], root: &std::path::Path, db: &Database) -> Result<u64> {
     // Paths in the DB are root-relative, so visited uses the same relative form.
     let visited: std::collections::HashSet<String> = files
         .iter()
