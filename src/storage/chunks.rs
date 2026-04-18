@@ -44,10 +44,12 @@ impl Database {
         let count = pairs.len();
         for (id, content) in &pairs {
             let tc = crate::search::tokens::estimate_tokens(content) as i64;
-            self.conn.execute(
-                "UPDATE chunks SET token_count = ?1 WHERE id = ?2",
-                rusqlite::params![tc, id],
-            )?;
+            if tc > 0 {
+                self.conn.execute(
+                    "UPDATE chunks SET token_count = ?1 WHERE id = ?2",
+                    rusqlite::params![tc, id],
+                )?;
+            }
         }
         Ok(count)
     }

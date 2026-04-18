@@ -88,7 +88,7 @@ pub(super) async fn memory_add(
 
 async fn fetch_url_content(url: &str) -> Result<(String, String)> {
     let gh_issue_re =
-        regex::Regex::new(r"https?://github\.com/([^/]+)/([^/]+)/issues/(\d+)").unwrap();
+        regex::Regex::new(r"https?://github\.com/([^/]+)/([^/]+)/(?:issues|pull)/(\d+)").unwrap();
 
     if let Some(caps) = gh_issue_re.captures(url) {
         let owner = &caps[1];
@@ -129,7 +129,7 @@ async fn fetch_url_content(url: &str) -> Result<(String, String)> {
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("spelunk/0.1")
+        .user_agent(concat!("spelunk/", env!("CARGO_PKG_VERSION")))
         .build()?;
     let html = client.get(url).send().await?.text().await?;
 
