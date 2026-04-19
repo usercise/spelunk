@@ -3,6 +3,11 @@ use clap::Args;
 use std::io::Write;
 use std::path::PathBuf;
 
+/// Escape `<` and `>` in untrusted DB content before XML template interpolation.
+fn escape_xml(s: &str) -> String {
+    s.replace('<', "&lt;").replace('>', "&gt;")
+}
+
 #[derive(Args, Debug)]
 pub struct AskArgs {
     /// Question to answer using the indexed codebase
@@ -91,16 +96,16 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     let code_context = results
         .iter()
         .map(|r| {
-            let name = r.name.as_deref().unwrap_or("<anonymous>");
+            let name = escape_xml(r.name.as_deref().unwrap_or("anonymous"));
             format!(
                 "### {path}  [{kind}: {name}, lines {start}–{end}]\n```{lang}\n{code}\n```",
-                path = r.file_path,
-                kind = r.node_type,
+                path = escape_xml(&r.file_path),
+                kind = escape_xml(&r.node_type),
                 name = name,
                 start = r.start_line,
                 end = r.end_line,
-                lang = r.language,
-                code = r.content,
+                lang = escape_xml(&r.language),
+                code = escape_xml(&r.content),
             )
         })
         .collect::<Vec<_>>()
@@ -131,7 +136,10 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
                     } else {
                         format!("{title} ({spec_path})")
                     };
-                    sections.push(format!("### Spec: {display}\n{text}"));
+                    sections.push(format!(
+                        "### Spec: {display}\n{text}",
+                        text = escape_xml(&text)
+                    ));
                 }
             }
             if sections.is_empty() {
@@ -159,10 +167,10 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
                         };
                         format!(
                             "### [{kind}] {title}{tags}\n{body}",
-                            kind = n.kind,
-                            title = n.title,
-                            tags = tags,
-                            body = n.body
+                            kind = escape_xml(&n.kind),
+                            title = escape_xml(&n.title),
+                            tags = escape_xml(&tags),
+                            body = escape_xml(&n.body)
                         )
                     })
                     .collect::<Vec<_>>()

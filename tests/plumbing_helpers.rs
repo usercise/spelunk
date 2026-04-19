@@ -92,6 +92,11 @@ pub fn index_fixture_project() -> (TempDir, PathBuf, PathBuf) {
     (tmp, db_path, config_path)
 }
 
+/// Absolute path to the fixture project used by `index_fixture_project()`.
+pub fn fixture_path() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE_DIR)
+}
+
 /// Parse every line of `stdout` as JSON; return the parsed values.
 /// Panics if any line is not valid JSON.
 pub fn parse_ndjson(stdout: &[u8]) -> Vec<serde_json::Value> {
