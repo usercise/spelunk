@@ -93,6 +93,22 @@ fn ls_files_stale_flag_returns_subset_or_empty() {
     }
 }
 
+// ── stale exit-1: freshly indexed project has no stale files ─────────────────
+
+#[test]
+fn ls_files_stale_exits_1_when_no_stale_files() {
+    // `index_fixture_project` indexes the fixture and immediately returns.
+    // Because no on-disk files have changed since indexing, every stored hash
+    // matches → --stale emits nothing → ls_files calls std::process::exit(1).
+    let (_tmp, db_path, config_path) = index_fixture_project();
+
+    spelunk_cmd(&db_path, &config_path)
+        .arg("ls-files")
+        .arg("--stale")
+        .assert()
+        .code(1);
+}
+
 // ── error path: missing DB ────────────────────────────────────────────────────
 
 #[test]
@@ -117,5 +133,35 @@ fn ls_files_exits_nonzero_when_db_missing() {
         .arg("ls-files")
         .assert()
         .failure()
+        .stderr(predicate::str::contains("No index found"));
+}
+
+// ── exit-2 path: plumbing errors route through main.rs std::process::exit(2) ─
+
+#[test]
+fn plumbing_exits_2_on_error() {
+    // When the plumbing dispatcher returns Err (e.g. missing DB),
+    // main.rs intercepts it and calls std::process::exit(2).
+    // This test asserts the exact exit code, not just non-zero.
+    let tmp = TempDir::new().unwrap();
+    let config_path = tmp.path().join("config.toml");
+    let db_path = tmp.path().join("nonexistent.db");
+
+    std::fs::write(
+        &config_path,
+        format!("db_path = {:?}\nllm_model = \"x\"\n", db_path),
+    )
+    .unwrap();
+
+    Command::cargo_bin("spelunk")
+        .unwrap()
+        .arg("--config")
+        .arg(&config_path)
+        .arg("plumbing")
+        .arg("--db")
+        .arg(&db_path)
+        .arg("ls-files")
+        .assert()
+        .code(2)
         .stderr(predicate::str::contains("No index found"));
 }
