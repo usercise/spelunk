@@ -131,11 +131,12 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
                         .map(|(_, t)| t.as_str())
                         .collect::<Vec<_>>()
                         .join("\n\n");
-                    let display = if title.is_empty() {
+                    let display_raw = if title.is_empty() {
                         spec_path.clone()
                     } else {
                         format!("{title} ({spec_path})")
                     };
+                    let display = escape_xml(&display_raw);
                     sections.push(format!(
                         "### Spec: {display}\n{text}",
                         text = escape_xml(&text)
