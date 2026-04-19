@@ -17,8 +17,12 @@ pub struct AskArgs {
     #[arg(long, default_value = "20")]
     pub context_chunks: usize,
 
-    /// Return structured JSON: { answer, relevant_files, confidence }
-    #[arg(long)]
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Return structured JSON (deprecated — use --format json)
+    #[arg(long, hide = true)]
     pub json: bool,
 
     /// Path to the SQLite database (overrides config)
@@ -220,7 +224,12 @@ You have up to three sources of context:\n\
 Use all available sources together to give accurate, grounded answers. \
 If the answer cannot be determined from the provided context, say so clearly rather than guessing.";
 
-    let use_json = args.json || crate::utils::is_agent_mode();
+    let fmt = if args.json {
+        "json".to_string()
+    } else {
+        args.format.clone()
+    };
+    let use_json = crate::utils::effective_format(&fmt) == "json" || crate::utils::is_agent_mode();
     let (system_prompt, json_schema) = if use_json {
         (
             concat!(
@@ -325,4 +334,35 @@ fn ask_json_schema() -> serde_json::Value {
             "additionalProperties": false
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_xml;
+
+    #[test]
+    fn escape_xml_less_than() {
+        assert_eq!(escape_xml("<"), "&lt;");
+    }
+
+    #[test]
+    fn escape_xml_greater_than() {
+        assert_eq!(escape_xml(">"), "&gt;");
+    }
+
+    #[test]
+    fn escape_xml_both_present() {
+        assert_eq!(escape_xml("a < b > c"), "a &lt; b &gt; c");
+    }
+
+    #[test]
+    fn escape_xml_closing_tag() {
+        assert_eq!(escape_xml("</code_context>"), "&lt;/code_context&gt;");
+    }
+
+    #[test]
+    fn escape_xml_no_angle_brackets_unchanged() {
+        let clean = "no special characters here";
+        assert_eq!(escape_xml(clean), clean);
+    }
 }

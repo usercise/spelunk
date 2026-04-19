@@ -15,7 +15,7 @@ pub struct SearchArgs {
     #[arg(long, conflicts_with = "limit")]
     pub budget: Option<usize>,
 
-    /// Output format: text or json
+    /// Output format: text, json, or ndjson
     #[arg(long, default_value = "text")]
     pub format: String,
 
@@ -212,6 +212,11 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
                 };
                 println!("{}", serde_json::to_string_pretty(&resp)?);
             }
+            "ndjson" => {
+                for item in &packed {
+                    println!("{}", serde_json::to_string(item)?);
+                }
+            }
             _ => {
                 print_results_text(&packed);
                 println!("tokens used: {tokens_used}/{budget}");
@@ -222,6 +227,11 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
 
     match crate::utils::effective_format(&args.format) {
         "json" => println!("{}", serde_json::to_string_pretty(&results)?),
+        "ndjson" => {
+            for item in &results {
+                println!("{}", serde_json::to_string(item)?);
+            }
+        }
         _ => print_results_text(&results),
     }
 
