@@ -429,26 +429,45 @@ impl MemoryStore {
     /// Archive `old_id` and link it to `new_id` as its replacement.
     /// Sets `invalid_at` to now if not already set.
     pub fn supersede(&self, old_id: i64, new_id: i64) -> Result<bool> {
-        let changed = self.conn.execute(
-            "UPDATE notes
-             SET    status = 'archived',
-                    superseded_by = ?2,
-                    invalid_at = CASE WHEN invalid_at IS NULL THEN unixepoch() ELSE invalid_at END
-             WHERE  id = ?1 AND status = 'active'",
-            rusqlite::params![old_id, new_id],
-        )?;
-        if changed > 0 {
-            self.conn.execute(
-                "INSERT OR IGNORE INTO memory_edges (from_id, to_id, kind) VALUES (?1, ?2, 'supersedes')",
-                rusqlite::params![new_id, old_id],
+        self.conn.execute_batch("BEGIN")?;
+        let result = (|| -> Result<bool> {
+            let changed = self.conn.execute(
+                "UPDATE notes
+                 SET    status = 'archived',
+                        superseded_by = ?2,
+                        invalid_at = CASE WHEN invalid_at IS NULL THEN unixepoch() ELSE invalid_at END
+                 WHERE  id = ?1 AND status = 'active'",
+                rusqlite::params![old_id, new_id],
             )?;
+            if changed > 0 {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO memory_edges (from_id, to_id, kind) VALUES (?1, ?2, 'supersedes')",
+                    rusqlite::params![new_id, old_id],
+                )?;
+            }
+            Ok(changed > 0)
+        })();
+        match result {
+            Ok(v) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
         }
-        Ok(changed > 0)
     }
 
     /// Insert a directed edge between two notes.
     /// `kind` must be one of: supersedes, relates_to, contradicts.
     pub fn add_edge(&self, from_id: i64, to_id: i64, kind: &str) -> Result<()> {
+        const VALID_KINDS: &[&str] = &["supersedes", "relates_to", "contradicts"];
+        if !VALID_KINDS.contains(&kind) {
+            anyhow::bail!(
+                "invalid edge kind '{kind}'; must be one of: supersedes, relates_to, contradicts"
+            );
+        }
         self.conn.execute(
             "INSERT OR IGNORE INTO memory_edges (from_id, to_id, kind) VALUES (?1, ?2, ?3)",
             rusqlite::params![from_id, to_id, kind],

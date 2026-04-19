@@ -96,7 +96,6 @@ fn ls_files_stale_flag_returns_subset_or_empty() {
 // ── stale exit-1: freshly indexed project has no stale files ─────────────────
 
 #[test]
-#[ignore = "bug #145: --stale uses relative paths; fails when CWD != project root"]
 fn ls_files_stale_exits_1_when_no_stale_files() {
     // `index_fixture_project` indexes the fixture and immediately returns.
     // Because no on-disk files have changed since indexing, every stored hash
@@ -106,6 +105,8 @@ fn ls_files_stale_exits_1_when_no_stale_files() {
     spelunk_cmd(&db_path, &config_path)
         .arg("ls-files")
         .arg("--stale")
+        .arg("--root")
+        .arg(plumbing_helpers::fixture_path())
         .assert()
         .code(1);
 }

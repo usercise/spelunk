@@ -46,6 +46,10 @@ pub struct PlumbingLsFilesArgs {
     /// Only emit files where on-disk hash differs from stored hash
     #[arg(long)]
     pub stale: bool,
+
+    /// Project root for resolving relative paths stored in the index (defaults to CWD)
+    #[arg(long)]
+    pub root: Option<std::path::PathBuf>,
 }
 
 #[derive(Args, Debug)]

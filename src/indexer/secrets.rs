@@ -36,6 +36,16 @@ fn patterns() -> &'static Vec<Regex> {
             r"xox[baprs]-[0-9A-Za-z\-]{10,}",
             // Generic JWT (three base64url segments)
             r"ey[A-Za-z0-9\-_]{10,}\.ey[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}",
+            // OpenAI API keys (sk- followed by 48+ alphanumeric/dash/underscore chars)
+            r"sk-[A-Za-z0-9\-_]{48,}",
+            // Anthropic API keys
+            r"sk-ant-[A-Za-z0-9\-_]{40,}",
+            // Stripe secret/test keys
+            r"sk_(?:live|test)_[A-Za-z0-9]{24,}",
+            // NPM automation tokens
+            r"npm_[A-Za-z0-9]{36,}",
+            // Database URLs with embedded passwords (postgres, mysql, mongodb)
+            r"(?i)(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?)://[^:@\s]+:[^@\s]{8,}@",
         ];
         raw.iter()
             .map(|p| Regex::new(p).expect("invalid secret pattern"))
@@ -86,5 +96,59 @@ mod tests {
     #[test]
     fn placeholder_not_flagged() {
         assert!(!contains_secret("api_key = \"your_api_key_here\""));
+    }
+
+    #[test]
+    fn detects_openai_key() {
+        assert!(contains_secret(
+            "OPENAI_API_KEY=sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"
+        ));
+    }
+
+    #[test]
+    fn detects_anthropic_key() {
+        assert!(contains_secret(
+            "key = sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl"
+        ));
+    }
+
+    #[test]
+    fn detects_stripe_live_key() {
+        // Concatenate to avoid triggering push-protection on an obviously fake key.
+        let key = format!("stripe_key = sk_live_{}", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcd");
+        assert!(contains_secret(&key));
+    }
+
+    #[test]
+    fn detects_stripe_test_key() {
+        let key = format!("stripe_key = sk_test_{}", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcd");
+        assert!(contains_secret(&key));
+    }
+
+    #[test]
+    fn detects_npm_token() {
+        assert!(contains_secret(
+            "NPM_TOKEN=npm_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk"
+        ));
+    }
+
+    #[test]
+    fn detects_postgres_url_with_password() {
+        assert!(contains_secret(
+            "DATABASE_URL=postgresql://admin:s3cr3tpass@db.example.com/mydb"
+        ));
+    }
+
+    #[test]
+    fn detects_mongodb_url_with_password() {
+        assert!(contains_secret(
+            "url = mongodb+srv://user:mypassword123@cluster.mongodb.net/db"
+        ));
+    }
+
+    #[test]
+    fn db_url_without_password_not_flagged() {
+        // No password segment (no colon before @)
+        assert!(!contains_secret("postgresql://localhost/mydb"));
     }
 }

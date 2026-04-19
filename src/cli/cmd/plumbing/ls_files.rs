@@ -14,6 +14,10 @@ struct FileEntry {
 }
 
 pub(super) fn ls_files(args: PlumbingLsFilesArgs, db: &Database) -> Result<()> {
+    let root = args
+        .root
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let prefix = args.prefix.as_deref().unwrap_or("");
     let records = db.file_records_under(prefix)?;
 
@@ -23,8 +27,9 @@ pub(super) fn ls_files(args: PlumbingLsFilesArgs, db: &Database) -> Result<()> {
 
     let mut emitted = false;
     for record in records {
-        // Compute staleness by hashing the on-disk file.
-        let stale = match std::fs::read(&record.path) {
+        // Paths in the DB are relative to the project root; join before hashing.
+        let on_disk = root.join(&record.path);
+        let stale = match std::fs::read(&on_disk) {
             Ok(bytes) => format!("{}", blake3::hash(&bytes)) != record.hash,
             Err(_) => true, // file missing on disk — treat as stale
         };
