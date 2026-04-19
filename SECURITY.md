@@ -14,8 +14,6 @@
 Report security issues privately via GitHub's built-in private vulnerability reporting:
 **Security → Report a vulnerability** on the [spelunk repository](https://github.com/usercise/spelunk/security/advisories/new).
 
-Alternatively, email: **security@usercise.com**
-
 ### What to include
 
 - Description of the vulnerability and its impact
