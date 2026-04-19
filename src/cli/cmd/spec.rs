@@ -1,22 +1,79 @@
 use anyhow::{Context, Result};
+use clap::{Args, Subcommand};
+use std::path::PathBuf;
+
+#[derive(Args, Debug)]
+pub struct SpecArgs {
+    #[command(subcommand)]
+    pub command: SpecCommand,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SpecCommand {
+    /// Link a spec file to one or more code paths it governs
+    Link(SpecLinkArgs),
+    /// Remove a link between a spec and a code path
+    Unlink(SpecUnlinkArgs),
+    /// List all registered spec files and their links
+    List(SpecListArgs),
+    /// Show specs whose linked code has been re-indexed since the spec was last indexed
+    Check(SpecCheckArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct SpecLinkArgs {
+    /// Path to the spec file (markdown)
+    pub spec: PathBuf,
+
+    /// One or more file paths or directory prefixes this spec governs
+    #[arg(required = true)]
+    pub paths: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct SpecUnlinkArgs {
+    /// Path to the spec file
+    pub spec: PathBuf,
+
+    /// Path prefix to remove (leave empty to remove all links for this spec)
+    pub path: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct SpecListArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SpecCheckArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
 
 use crate::{
     config::{Config, resolve_db},
     storage::Database,
 };
 
-pub fn spec(args: super::super::SpecArgs, cfg: Config) -> Result<()> {
+pub fn spec(args: SpecArgs, cfg: Config) -> Result<()> {
     let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
     let db = Database::open(&db_path)?;
     match args.command {
-        super::super::SpecCommand::Link(a) => spec_link(a, &db),
-        super::super::SpecCommand::Unlink(a) => spec_unlink(a, &db),
-        super::super::SpecCommand::List(a) => spec_list(a, &db),
-        super::super::SpecCommand::Check(a) => spec_check(a, &db),
+        SpecCommand::Link(a) => spec_link(a, &db),
+        SpecCommand::Unlink(a) => spec_unlink(a, &db),
+        SpecCommand::List(a) => spec_list(a, &db),
+        SpecCommand::Check(a) => spec_check(a, &db),
     }
 }
 
-fn spec_link(args: super::super::SpecLinkArgs, db: &Database) -> Result<()> {
+fn spec_link(args: SpecLinkArgs, db: &Database) -> Result<()> {
     let spec_path = args
         .spec
         .to_str()
@@ -33,7 +90,7 @@ fn spec_link(args: super::super::SpecLinkArgs, db: &Database) -> Result<()> {
     Ok(())
 }
 
-fn spec_unlink(args: super::super::SpecUnlinkArgs, db: &Database) -> Result<()> {
+fn spec_unlink(args: SpecUnlinkArgs, db: &Database) -> Result<()> {
     let spec_path = args
         .spec
         .to_str()
@@ -57,7 +114,7 @@ fn spec_unlink(args: super::super::SpecUnlinkArgs, db: &Database) -> Result<()> 
     Ok(())
 }
 
-fn spec_list(args: super::super::SpecListArgs, db: &Database) -> Result<()> {
+fn spec_list(args: SpecListArgs, db: &Database) -> Result<()> {
     let specs = db.all_specs()?;
 
     if specs.is_empty() {
@@ -114,7 +171,7 @@ fn spec_list(args: super::super::SpecListArgs, db: &Database) -> Result<()> {
     Ok(())
 }
 
-fn spec_check(args: super::super::SpecCheckArgs, db: &Database) -> Result<()> {
+fn spec_check(args: SpecCheckArgs, db: &Database) -> Result<()> {
     let stale = db.stale_specs()?;
 
     if stale.is_empty() {

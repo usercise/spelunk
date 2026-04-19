@@ -1,5 +1,0 @@
-# AGENTS.md — spelunk
-
-This project uses [CLAUDE.md](./CLAUDE.md) as the central source of truth for AI agent guidelines, project structure, and workflows.
-
-**Please read and follow the instructions in CLAUDE.md for all tasks.**

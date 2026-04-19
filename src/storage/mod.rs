@@ -3,10 +3,24 @@ pub mod db;
 pub mod memory;
 pub mod remote;
 
+// Storage sub-modules: each holds impl blocks for Database or standalone types.
+mod chunks;
+mod files;
+mod graph;
+mod search;
+mod snapshots;
+mod specs;
+mod stats;
+
 pub use backend::{LocalMemoryBackend, MemoryBackend, NoteInput};
-pub use db::{Database, record_usage_at};
+pub use db::Database;
+pub use files::FileRecord;
+pub use graph::GraphEdge;
 pub use memory::{MemoryEdge, MemoryStore};
 pub use remote::RemoteMemoryBackend;
+pub use snapshots::{Snapshot, SymbolVersion};
+pub use specs::{SpecRecord, StaleSpec};
+pub use stats::{DriftCandidate, IndexStats, StalenessReport, record_usage_at};
 
 use anyhow::Result;
 use std::path::Path;

@@ -1,7 +1,30 @@
 use anyhow::{Context, Result};
+use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use super::super::{LinksArgs, LinksCommand};
+#[derive(Args, Debug)]
+/// Manage and inspect cross-project links.
+/// Use `spelunk link <path>` / `spelunk unlink <path>` to add or remove links.
+pub struct LinksArgs {
+    #[command(subcommand)]
+    pub command: LinksCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum LinksCommand {
+    /// List all linked projects with their status
+    List(LinksListArgs),
+    /// Check all linked project indexes are fresh (exit 1 if any are stale or missing)
+    Check,
+}
+
+#[derive(Args, Debug)]
+pub struct LinksListArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
 use super::helpers::project_display_name;
 use crate::{config::Config, registry::Registry, storage::Database};
 

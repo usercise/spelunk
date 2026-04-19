@@ -1,6 +1,45 @@
 use anyhow::{Context, Result};
+use clap::{Args, Subcommand};
+use std::path::PathBuf;
 
-use super::super::{PlanArgs, PlanCommand};
+#[derive(Args, Debug)]
+pub struct PlanArgs {
+    #[command(subcommand)]
+    pub command: PlanCommand,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PlanCommand {
+    /// Create a new plan from a description (queries codebase + memory)
+    Create(PlanCreateArgs),
+    /// Show completion status of plans in docs/plans/
+    Status(PlanStatusArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct PlanCreateArgs {
+    /// Description of the task to plan
+    pub description: String,
+
+    /// Override the auto-generated filename slug
+    #[arg(long)]
+    pub name: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct PlanStatusArgs {
+    /// Show only this plan (by filename stem, e.g. add-rate-limiting)
+    pub name: Option<String>,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
 use super::helpers::embed_query;
 use super::search::{resolve_project_and_deps, search_all_dbs};
 use super::ui::spinner;
@@ -17,7 +56,7 @@ pub async fn plan(args: PlanArgs, cfg: Config) -> Result<()> {
 }
 
 async fn plan_create(
-    args: super::super::PlanCreateArgs,
+    args: PlanCreateArgs,
     explicit_db: Option<&std::path::PathBuf>,
     cfg: &Config,
 ) -> Result<()> {
@@ -209,7 +248,7 @@ async fn plan_create(
     Ok(())
 }
 
-fn plan_status(args: super::super::PlanStatusArgs, cfg: &Config) -> Result<()> {
+fn plan_status(args: PlanStatusArgs, cfg: &Config) -> Result<()> {
     use crate::utils::effective_format;
     let fmt = effective_format(&args.format);
 
@@ -290,7 +329,7 @@ fn plan_status(args: super::super::PlanStatusArgs, cfg: &Config) -> Result<()> {
                 "file": path.display().to_string(),
             }));
         } else {
-            let pct = if total > 0 { done * 100 / total } else { 0 };
+            let pct = (done * 100).checked_div(total).unwrap_or(0);
             let bar = {
                 let filled = pct / 10;
                 format!("[{}{}]", "#".repeat(filled), ".".repeat(10 - filled))

@@ -1,6 +1,29 @@
 use anyhow::Result;
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::ExploreArgs;
+#[derive(Args, Debug)]
+pub struct ExploreArgs {
+    /// The question to answer about the codebase
+    pub question: String,
+
+    /// Path to the SQLite database (overrides config)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+
+    /// Maximum number of tool-call steps before forcing a final answer
+    #[arg(long, default_value_t = 10)]
+    pub max_steps: usize,
+
+    /// Print each tool call and result to stderr as they happen
+    #[arg(long)]
+    pub verbose: bool,
+
+    /// Output result as JSON (answer + sources + step log)
+    #[arg(long)]
+    pub json: bool,
+}
+
 use super::helpers::open_project_db;
 use super::search::maybe_warn_stale;
 use super::ui::spinner;

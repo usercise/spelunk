@@ -1,6 +1,26 @@
 use anyhow::Result;
+use clap::Args;
+use std::path::PathBuf;
 
-use super::super::CheckArgs;
+#[derive(Args, Debug)]
+pub struct CheckArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Path to the SQLite database (overrides auto-detect)
+    #[arg(short, long)]
+    pub db: Option<PathBuf>,
+
+    /// List the stale file paths (one per line) in addition to the summary
+    #[arg(long)]
+    pub files: bool,
+
+    /// Machine-readable output: `stale=N total=M last_indexed=T`
+    #[arg(long)]
+    pub porcelain: bool,
+}
+
 use crate::{
     config::{Config, resolve_db},
     storage::Database,
