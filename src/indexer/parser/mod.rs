@@ -159,6 +159,7 @@ impl SourceParser {
             &specs,
             None,
             &mut chunks,
+            0,
         );
 
         if chunks.is_empty() {

@@ -141,6 +141,10 @@ pub(super) fn node_specs(language: &str) -> Vec<NodeSpec> {
     }
 }
 
+/// Maximum AST recursion depth.  Deeply-nested or pathological parse trees
+/// (common with fuzz inputs) would otherwise overflow the stack.
+const MAX_WALK_DEPTH: usize = 512;
+
 pub(super) fn walk_node(
     node: tree_sitter::Node<'_>,
     src: &[u8],
@@ -149,7 +153,11 @@ pub(super) fn walk_node(
     specs: &[NodeSpec],
     parent_scope: Option<&str>,
     out: &mut Vec<Chunk>,
+    depth: usize,
 ) {
+    if depth >= MAX_WALK_DEPTH {
+        return;
+    }
     if let Some(spec) = specs.iter().find(|s| s.kind == node.kind()) {
         // Skip keyword leaf tokens: grammars like proto reuse the node kind
         // name for both the keyword token ("message") and the structural block.
@@ -157,7 +165,7 @@ pub(super) fn walk_node(
         if node.named_child_count() == 0 {
             for i in 0..node.child_count() {
                 if let Some(child) = node.child(i as u32) {
-                    walk_node(child, src, file_path, language, specs, parent_scope, out);
+                    walk_node(child, src, file_path, language, specs, parent_scope, out, depth + 1);
                 }
             }
             return;
@@ -202,6 +210,7 @@ pub(super) fn walk_node(
                     specs,
                     scope_label.as_deref(),
                     out,
+                    depth + 1,
                 );
             }
         }
@@ -209,7 +218,7 @@ pub(super) fn walk_node(
         // Not a target node — recurse with same parent scope
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i as u32) {
-                walk_node(child, src, file_path, language, specs, parent_scope, out);
+                walk_node(child, src, file_path, language, specs, parent_scope, out, depth + 1);
             }
         }
     }
@@ -317,13 +326,23 @@ fn c_function_name<'a>(node: &tree_sitter::Node<'a>, src: &'a [u8]) -> Option<St
     find_identifier(decl, src)
 }
 
+/// Maximum recursion depth for identifier search inside declarator subtrees.
+const MAX_IDENT_DEPTH: usize = 64;
+
 pub(super) fn find_identifier(node: tree_sitter::Node<'_>, src: &[u8]) -> Option<String> {
+    find_identifier_inner(node, src, 0)
+}
+
+fn find_identifier_inner(node: tree_sitter::Node<'_>, src: &[u8], depth: usize) -> Option<String> {
+    if depth >= MAX_IDENT_DEPTH {
+        return None;
+    }
     if node.kind() == "identifier" || node.kind() == "field_identifier" {
         return node.utf8_text(src).ok().map(str::to_owned);
     }
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i as u32)
-            && let Some(name) = find_identifier(child, src)
+            && let Some(name) = find_identifier_inner(child, src, depth + 1)
         {
             return Some(name);
         }
