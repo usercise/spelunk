@@ -1,0 +1,107 @@
+use anyhow::{Context, Result};
+use rusqlite::Connection;
+use serde::Serialize;
+use std::path::Path;
+
+mod edges;
+mod notes;
+mod search;
+
+#[cfg(test)]
+mod tests;
+
+pub struct MemoryStore {
+    pub(super) conn: Connection,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MemoryEdge {
+    pub from_id: i64,
+    pub to_id: i64,
+    pub kind: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Note {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub linked_files: Vec<String>,
+    pub created_at: i64,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<i64>,
+    /// Git commit SHA for harvested entries; NULL for manually created entries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<String>,
+    /// When this entry became valid (unix epoch). None = treat as created_at.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub valid_at: Option<i64>,
+    /// When this entry was invalidated/superseded (unix epoch). None = still valid.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invalid_at: Option<i64>,
+    /// Semantic distance — only populated by search(), None otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance: Option<f64>,
+    /// Fused relevance score — only populated by hybrid search, None otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+}
+
+impl MemoryStore {
+    pub fn open(path: &Path) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating directory {}", parent.display()))?;
+        }
+        let conn = Connection::open(path)
+            .with_context(|| format!("opening memory DB at {}", path.display()))?;
+        let store = Self { conn };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    fn migrate(&self) -> Result<()> {
+        self.conn
+            .execute_batch(include_str!("../../../migrations/004_memory.sql"))
+            .context("running memory migrations")?;
+        // Migration 005: lifecycle columns — ALTER TABLE doesn't support IF NOT EXISTS,
+        // so we ignore "duplicate column name" errors (idempotent re-open).
+        for stmt in [
+            "ALTER TABLE notes ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+            "ALTER TABLE notes ADD COLUMN superseded_by INTEGER REFERENCES notes(id)",
+            // Migration 012: commit provenance
+            "ALTER TABLE notes ADD COLUMN source_ref TEXT",
+        ] {
+            match self.conn.execute_batch(stmt) {
+                Ok(_) => {}
+                Err(e) if e.to_string().contains("duplicate column name") => {}
+                Err(e) => return Err(e).context("running memory lifecycle migration"),
+            }
+        }
+        // Migration 012: FTS5 full-text index for memory notes.
+        self.conn
+            .execute_batch(include_str!("../../../migrations/012_memory_fts.sql"))
+            .context("running memory FTS migration")?;
+        // Migration 014: temporal fields — valid_at and invalid_at.
+        for stmt in [
+            "ALTER TABLE notes ADD COLUMN valid_at INTEGER",
+            "ALTER TABLE notes ADD COLUMN invalid_at INTEGER",
+            "CREATE INDEX IF NOT EXISTS idx_memory_invalid_at ON notes(invalid_at)",
+        ] {
+            match self.conn.execute_batch(stmt) {
+                Ok(_) => {}
+                Err(e) if e.to_string().contains("duplicate column name") => {}
+                Err(e) => return Err(e).context("running memory temporal migration"),
+            }
+        }
+        // Migration 015: memory edge table.
+        self.conn
+            .execute_batch(include_str!("../../../migrations/015_memory_edges.sql"))
+            .context("running memory edges migration")?;
+        Ok(())
+    }
+}
