@@ -341,28 +341,38 @@ mod tests {
     use super::escape_xml;
 
     #[test]
-    fn escape_xml_less_than() {
+    fn escapes_lt() {
         assert_eq!(escape_xml("<"), "&lt;");
     }
 
     #[test]
-    fn escape_xml_greater_than() {
+    fn escapes_gt() {
         assert_eq!(escape_xml(">"), "&gt;");
     }
 
     #[test]
-    fn escape_xml_both_present() {
+    fn escapes_both_in_same_string() {
         assert_eq!(escape_xml("a < b > c"), "a &lt; b &gt; c");
     }
 
     #[test]
-    fn escape_xml_closing_tag() {
+    fn escapes_full_closing_tag() {
         assert_eq!(escape_xml("</code_context>"), "&lt;/code_context&gt;");
     }
 
     #[test]
-    fn escape_xml_no_angle_brackets_unchanged() {
-        let clean = "no special characters here";
-        assert_eq!(escape_xml(clean), clean);
+    fn clean_string_unchanged() {
+        // & and other non-angle-bracket chars are not escaped.
+        let s = "fn verify_token(tok: &str) -> bool { !tok.is_empty() }";
+        assert_eq!(
+            escape_xml(s),
+            "fn verify_token(tok: &str) -&gt; bool { !tok.is_empty() }"
+        );
+    }
+
+    #[test]
+    fn non_angle_chars_pass_through() {
+        let s = "x && y || !z";
+        assert_eq!(escape_xml(s), s);
     }
 }
