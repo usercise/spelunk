@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::io::{BufRead as _, IsTerminal as _};
 
-use crate::{config::Config, embeddings::EmbeddingBackend as _};
+use crate::{
+    cli::cmd::helpers::embed_query_vec, config::Config, embeddings::EmbeddingBackend as _,
+};
 
 #[derive(Serialize)]
 struct EmbedOutput {
@@ -31,16 +33,18 @@ pub(super) async fn embed_cmd(cfg: &Config, query_mode: bool) -> Result<()> {
         if text.trim().is_empty() {
             continue;
         }
-        let input = if query_mode {
-            format!("task: code retrieval | query: {text}")
+        let vector = if query_mode {
+            embed_query_vec(&embedder, "code retrieval", &text)
+                .await
+                .with_context(|| format!("embedding line {idx}"))?
         } else {
-            format!("title: none | text: {text}")
+            let input = format!("title: none | text: {text}");
+            let mut vecs = embedder
+                .embed(&[input.as_str()])
+                .await
+                .with_context(|| format!("embedding line {idx}"))?;
+            vecs.remove(0)
         };
-        let mut vecs = embedder
-            .embed(&[input.as_str()])
-            .await
-            .with_context(|| format!("embedding line {idx}"))?;
-        let vector = vecs.remove(0);
         let dimensions = vector.len();
         println!(
             "{}",

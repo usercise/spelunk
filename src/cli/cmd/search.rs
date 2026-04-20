@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
 
@@ -48,11 +48,11 @@ pub struct SearchArgs {
     pub as_of: Option<String>,
 }
 
-use super::helpers::project_display_name;
+use super::helpers::{embed_query_vec, load_embedder, project_display_name};
 use super::ui::{print_results_text, spinner};
 use crate::{
     config::{Config, resolve_db},
-    embeddings::{EmbeddingBackend as _, vec_to_blob},
+    embeddings::vec_to_blob,
     registry::{Project, Registry},
     search::SearchResult,
     storage::Database,
@@ -105,14 +105,10 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
     } else {
         // semantic, hybrid, or snapshot search: need an embedding.
         let sp = spinner("Loading model…");
-        let embedder = crate::backends::ActiveEmbedder::load(&cfg)
-            .await
-            .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
+        let embedder = load_embedder(&cfg).await?;
 
         sp.set_message("Embedding query…");
-        let query_text = format!("task: code retrieval | query: {}", args.query);
-        let vecs = embedder.embed(&[&query_text]).await?;
-        let query_vec = vecs.first().context("no embedding returned")?.clone();
+        let query_vec = embed_query_vec(&embedder, "code retrieval", &args.query).await?;
         let query_blob = vec_to_blob(&query_vec);
 
         // Budget mode overfetches a candidate pool; limit is applied after packing.
