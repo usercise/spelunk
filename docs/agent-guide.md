@@ -198,6 +198,238 @@ spelunk check || { echo "Run spelunk index"; exit 1; }
 spelunk hooks install --ci
 ```
 
+## Plumbing Commands
+
+Plumbing commands emit NDJSON to stdout and follow a strict exit-code convention, making them safe to use in scripts and pipelines. See [Plumbing and Porcelain](plumbing-and-porcelain.md) for a full explanation of the design philosophy.
+
+Exit codes across all plumbing commands:
+- **0** — success, results emitted
+- **1** — no results (empty set, not an error)
+- **2** — hard error (bad flags, missing DB, I/O failure) — diagnostics on stderr
+
+### cat-chunks
+
+```
+spelunk plumbing cat-chunks <file>
+```
+
+Emit all indexed chunks for a given file as NDJSON.
+
+| Flag | Description |
+|------|-------------|
+| `<file>` | Project-relative path of the file to retrieve chunks for (required). |
+
+Exit codes: `0` = chunks found, `1` = file has no indexed chunks, `2` = error.
+
+Example:
+
+```bash
+spelunk plumbing cat-chunks src/indexer/chunker.rs \
+  | jq '{name: .name, lines: "\(.start_line)-\(.end_line)"}'
+```
+
+```json
+{"name":"sliding_window","lines":"45-78"}
+{"name":"Chunk","lines":"12-32"}
+```
+
+---
+
+### ls-files
+
+```
+spelunk plumbing ls-files [--prefix <prefix>] [--stale] [--root <dir>]
+```
+
+List every indexed file as NDJSON. With `--stale`, only files whose on-disk blake3 hash differs from the stored hash are emitted.
+
+| Flag | Description |
+|------|-------------|
+| `--prefix <prefix>` | Restrict output to files whose path starts with this string. |
+| `--stale` | Only emit files that are out of date (on-disk hash ≠ stored hash). |
+| `--root <dir>` | Project root for resolving relative paths (defaults to CWD). |
+
+Exit codes: `0` = at least one file emitted, `1` = no files matched, `2` = error.
+
+Example:
+
+```bash
+spelunk plumbing ls-files --stale --root .
+```
+
+```json
+{"path":"src/indexer/chunker.rs","language":"rust","chunk_count":12,"indexed_at":1713528000,"stale":true}
+```
+
+---
+
+### parse-file
+
+```
+spelunk plumbing parse-file <file>
+```
+
+Parse a file with tree-sitter and emit chunks as NDJSON without writing anything to the index. Useful for previewing how spelunk will chunk a file.
+
+| Flag | Description |
+|------|-------------|
+| `<file>` | Path to the file to parse (required). |
+
+Exit codes: `0` = chunks emitted, `1` = unsupported file type or empty parse result, `2` = read error.
+
+Example:
+
+```bash
+spelunk plumbing parse-file src/config.rs | jq '{kind, name, start_line}'
+```
+
+```json
+{"kind":"struct","name":"Config","start_line":8}
+{"kind":"impl","name":"Config","start_line":42}
+```
+
+---
+
+### hash-file
+
+```
+spelunk plumbing hash-file <file>
+```
+
+Compute the blake3 hash of a file and check whether it matches the hash stored in the index, emitting a single JSON object.
+
+| Flag | Description |
+|------|-------------|
+| `<file>` | Path to the file to hash (required). |
+
+Exit codes: `0` = always (unless read error), `2` = file not readable.
+
+Example:
+
+```bash
+spelunk plumbing hash-file src/config.rs
+```
+
+```json
+{"path":"src/config.rs","hash":"a3f1...","indexed_hash":"a3f1...","is_current":true}
+```
+
+---
+
+### knn
+
+```
+spelunk plumbing knn [--limit N] [--min-score F] [--lang <lang>]
+```
+
+Read a JSON embedding object from stdin (as produced by `spelunk plumbing embed`) and return the *N* nearest indexed chunks by cosine similarity.
+
+| Flag | Description |
+|------|-------------|
+| `--limit N` | Maximum number of results (default: `10`). |
+| `--min-score F` | Drop results with cosine similarity below this threshold (0.0–1.0, default: `0.0`). |
+| `--lang <lang>` | Restrict results to chunks from files of this language (e.g. `rust`, `python`). |
+
+Exit codes: `0` = results found, `1` = no results pass the filters, `2` = error.
+
+Compose with `embed` for a full semantic search pipeline:
+
+```bash
+echo "authentication" | spelunk plumbing embed --query | spelunk plumbing knn --limit 5
+```
+
+Example output:
+
+```json
+{"chunk_id":42,"file_path":"src/auth/middleware.rs","language":"rust","node_type":"function","name":"validate_token","start_line":18,"end_line":54,"content":"...","distance":0.12,"score":0.88}
+```
+
+---
+
+### embed
+
+```
+spelunk plumbing embed [--query]
+```
+
+Read lines from stdin and emit one NDJSON embedding vector per line. Each output object contains the model name, vector dimensionality, and the float vector.
+
+| Flag | Description |
+|------|-------------|
+| `--query` | Apply the query retrieval prefix (`task: code retrieval | query: …`). Use this flag when the output will be piped into `knn`. Omit it when embedding document text for storage. |
+
+Exit codes: `0` = at least one vector emitted, `2` = stdin is a terminal (not a pipe) or embedding backend unreachable.
+
+Compose with `knn`:
+
+```bash
+echo "authentication" | spelunk plumbing embed --query | spelunk plumbing knn --limit 5
+```
+
+Example output:
+
+```json
+{"model":"text-embedding-gemma-3","dimensions":1024,"vector":[0.021,-0.043,...]}
+```
+
+---
+
+### graph-edges
+
+```
+spelunk plumbing graph-edges --file <file> | --symbol <symbol>
+```
+
+Emit code graph edges (imports, calls, extends/implements) for a file or symbol. At least one of `--file` or `--symbol` is required. When both are provided, results are merged and deduplicated.
+
+| Flag | Description |
+|------|-------------|
+| `--file <file>` | Project-relative path; emit all edges originating from this file. |
+| `--symbol <symbol>` | Symbol name; emit edges where this name appears as source or target. |
+
+Exit codes: `0` = edges found, `1` = no edges matched, `2` = neither flag supplied or DB error.
+
+Example:
+
+```bash
+spelunk plumbing graph-edges --symbol validate_token
+```
+
+```json
+{"source_file":"src/auth/middleware.rs","source_name":"handle_request","target_name":"validate_token","kind":"calls","line":28}
+```
+
+---
+
+### read-memory
+
+```
+spelunk plumbing read-memory [--kind <kind>] [--id <n>] [--limit N]
+```
+
+Emit memory entries as NDJSON. Use `--kind` to filter by entry type or `--id` to fetch a single entry.
+
+| Flag | Description |
+|------|-------------|
+| `--kind <kind>` | Filter by memory kind: `decision`, `question`, `note`, `answer`, `requirement`, `handoff`. |
+| `--id <n>` | Fetch a single entry by its integer id. Exits `1` if not found. |
+| `--limit N` | Maximum number of entries (default: `50`). |
+
+Exit codes: `0` = entries found, `1` = no entries matched, `2` = error.
+
+Example:
+
+```bash
+spelunk plumbing read-memory --kind decision --limit 5 | jq '{id, title}'
+```
+
+```json
+{"id":17,"title":"Chose sqlite-vec over hnswlib for vector search"}
+{"id":22,"title":"Incremental index skips unchanged files via blake3 hash"}
+```
+
+---
+
 ## Summary: agent workflow at a glance
 
 ```bash
