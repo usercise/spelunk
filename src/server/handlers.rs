@@ -14,7 +14,7 @@ use super::{AppError, AppState};
 
 #[derive(Deserialize, ToSchema)]
 pub struct AddNoteRequest {
-    /// Kind of memory entry: `decision`, `requirement`, `note`, `question`, `handoff`.
+    /// Kind of memory entry: `decision`, `requirement`, `note`, `question`, `handoff`, `intent`.
     pub kind: String,
     pub title: String,
     #[serde(default)]
@@ -37,7 +37,7 @@ pub struct AddNoteResponse {
 
 #[derive(Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct ListQuery {
-    /// Filter by kind (`decision`, `requirement`, `note`, `question`, `handoff`).
+    /// Filter by kind (`decision`, `requirement`, `note`, `question`, `handoff`, `intent`).
     pub kind: Option<String>,
     /// Maximum number of results to return (default: 20).
     #[serde(default = "default_limit")]

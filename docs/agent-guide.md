@@ -160,6 +160,23 @@ spelunk memory add \
   --tags verify,indexer
 ```
 
+## Signalling intent
+
+Use the `intent` kind to broadcast to teammates (human or agent) that you are actively working on a given area. Active intents are surfaced by `spelunk check` so collaborators see ongoing work before starting overlapping changes.
+
+```bash
+spelunk memory add \
+  --title "Refactoring auth middleware to support OAuth2" \
+  --kind intent \
+  --tags auth,middleware
+```
+
+When the work is done, archive the intent:
+
+```bash
+spelunk memory archive <id>
+```
+
 ## Handing off between sessions
 
 At the end of a session, write a handoff note:
