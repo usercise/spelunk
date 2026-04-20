@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Args, Debug)]
 pub struct CheckArgs {
-    /// Output format: text or json
+    /// Output format: text, json, or porcelain
     #[arg(long, default_value = "text")]
     pub format: String,
 
@@ -16,8 +16,8 @@ pub struct CheckArgs {
     #[arg(long)]
     pub files: bool,
 
-    /// Machine-readable output: `stale=N total=M last_indexed=T`
-    #[arg(long)]
+    /// Machine-readable output (deprecated — use --format porcelain)
+    #[arg(long, hide = true)]
     pub porcelain: bool,
 }
 
@@ -56,11 +56,15 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
         }
     }
 
-    let fmt = crate::utils::effective_format(&args.format);
+    let effective = if args.porcelain {
+        "porcelain"
+    } else {
+        crate::utils::effective_format(&args.format)
+    };
     let fresh = stale.is_empty();
     let last_indexed: Option<i64> = db.stats().ok().and_then(|s| s.last_indexed);
 
-    if args.porcelain {
+    if effective == "porcelain" {
         let last_ts = last_indexed.unwrap_or(0);
         println!(
             "stale={} total={} last_indexed={}",
@@ -73,7 +77,7 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
                 println!("{p}");
             }
         }
-    } else if fmt == "json" {
+    } else if effective == "json" {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({

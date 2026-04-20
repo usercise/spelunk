@@ -19,8 +19,12 @@ pub struct ExploreArgs {
     #[arg(long)]
     pub verbose: bool,
 
-    /// Output result as JSON (answer + sources + step log)
-    #[arg(long)]
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Output result as JSON (deprecated — use --format json)
+    #[arg(long, hide = true)]
     pub json: bool,
 }
 
@@ -50,7 +54,12 @@ pub async fn explore(args: ExploreArgs, cfg: Config) -> Result<()> {
     sp.finish_and_clear();
 
     let verbose = args.verbose || crate::utils::is_agent_mode();
-    let use_json = args.json || crate::utils::is_agent_mode();
+    let fmt = if args.json {
+        "json".to_string()
+    } else {
+        args.format.clone()
+    };
+    let use_json = crate::utils::effective_format(&fmt) == "json" || crate::utils::is_agent_mode();
 
     if !use_json {
         eprintln!("Exploring: {}\n", args.question);
