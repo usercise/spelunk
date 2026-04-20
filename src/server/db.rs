@@ -23,7 +23,7 @@ pub struct Project {
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct ServerNote {
     pub id: i64,
-    /// Kind: `decision`, `requirement`, `note`, `question`, or `handoff`.
+    /// Kind: `decision`, `requirement`, `note`, `question`, `handoff`, or `intent`.
     pub kind: String,
     pub title: String,
     pub body: String,

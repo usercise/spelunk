@@ -14,7 +14,7 @@ pub struct MemoryArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum MemoryCommand {
-    /// Store a decision, context, requirement, note, question, answer, or handoff
+    /// Store a decision, context, requirement, note, question, answer, handoff, or intent
     Add(MemoryAddArgs),
     /// Semantic search over stored memory
     Search(MemorySearchArgs),
@@ -74,7 +74,7 @@ pub struct MemoryAddArgs {
     #[arg(long)]
     pub from_url: Option<String>,
 
-    /// Kind: decision, context, requirement, note, question, answer, handoff
+    /// Kind: decision, context, requirement, note, question, answer, handoff, intent
     #[arg(short, long, default_value = "note")]
     pub kind: String,
 
@@ -129,7 +129,7 @@ pub struct MemorySearchArgs {
 
 #[derive(Args, Debug)]
 pub struct MemoryListArgs {
-    /// Filter by kind: decision, context, requirement, note
+    /// Filter by kind: decision, context, requirement, note, intent
     #[arg(short, long)]
     pub kind: Option<String>,
 

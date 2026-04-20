@@ -23,7 +23,7 @@ pub struct CheckArgs {
 
 use crate::{
     config::{Config, resolve_db},
-    storage::Database,
+    storage::{Database, open_memory_backend},
 };
 
 pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
@@ -96,6 +96,22 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
             println!("  {p}");
         }
         println!("\nRun `spelunk index .` to update.");
+    }
+
+    // Show active intent entries (text mode only; silently skip if memory unavailable).
+    if effective == "text" || effective == "porcelain" {
+        let mem_path = resolve_db(args.db.as_deref(), &cfg.db_path).with_file_name("memory.db");
+        if let Ok(backend) = open_memory_backend(&cfg, &mem_path) {
+            let handle = tokio::runtime::Handle::current();
+            if let Ok(intents) = handle.block_on(backend.list(Some("intent"), 20, false, None))
+                && !intents.is_empty()
+            {
+                println!("Active agent intents: {}", intents.len());
+                for n in &intents {
+                    println!("  #{id}: {title}", id = n.id, title = n.title);
+                }
+            }
+        }
     }
 
     if !fresh {
