@@ -47,6 +47,17 @@ pub(crate) async fn load_llm(cfg: &Config) -> Result<crate::backends::ActiveLlm>
     Ok(llm)
 }
 
+/// Embed a query with the given task prefix and return the raw float vector.
+pub(crate) async fn embed_query_vec(
+    embedder: &crate::backends::ActiveEmbedder,
+    task: &str,
+    query: &str,
+) -> Result<Vec<f32>> {
+    let query_text = format!("task: {task} | query: {query}");
+    let vecs = embedder.embed(&[&query_text]).await?;
+    vecs.into_iter().next().context("no embedding returned")
+}
+
 /// Embed a query with the given task prefix and return the blob bytes suitable
 /// for KNN search.
 pub(crate) async fn embed_query(
@@ -54,10 +65,8 @@ pub(crate) async fn embed_query(
     task: &str,
     query: &str,
 ) -> Result<Vec<u8>> {
-    let query_text = format!("task: {task} | query: {query}");
-    let vecs = embedder.embed(&[&query_text]).await?;
-    let blob = vec_to_blob(vecs.first().context("no embedding returned")?);
-    Ok(blob)
+    let vec = embed_query_vec(embedder, task, query).await?;
+    Ok(vec_to_blob(&vec))
 }
 
 /// Return the final path component of `path` as a display name, falling back
