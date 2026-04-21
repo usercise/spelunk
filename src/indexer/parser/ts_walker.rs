@@ -145,6 +145,11 @@ pub(super) fn node_specs(language: &str) -> Vec<NodeSpec> {
 /// (common with fuzz inputs) would otherwise overflow the stack.
 const MAX_WALK_DEPTH: usize = 512;
 
+/// Maximum number of chunks collected in a single walk.  A file with millions
+/// of matched AST nodes (possible with adversarial input) would otherwise
+/// allocate unbounded memory.
+const MAX_CHUNKS: usize = 100_000;
+
 pub(super) fn walk_node(
     node: tree_sitter::Node<'_>,
     src: &[u8],
@@ -155,7 +160,7 @@ pub(super) fn walk_node(
     out: &mut Vec<Chunk>,
     depth: usize,
 ) {
-    if depth >= MAX_WALK_DEPTH {
+    if depth >= MAX_WALK_DEPTH || out.len() >= MAX_CHUNKS {
         return;
     }
     if let Some(spec) = specs.iter().find(|s| s.kind == node.kind()) {
