@@ -3,6 +3,7 @@ mod ts_walker;
 
 use super::chunker::{Chunk, sliding_window};
 use anyhow::Result;
+use std::ops::ControlFlow;
 
 /// All languages recognised by the indexer (tree-sitter, text, and document formats).
 pub const SUPPORTED_LANGUAGES: &[&str] = &[
@@ -143,23 +144,43 @@ impl SourceParser {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&ts_lang)?;
 
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| anyhow::anyhow!("tree-sitter produced no parse tree for {file_path}"))?;
-
+        // Prevent pathological inputs (adversarial or deeply ambiguous) from
+        // consuming unbounded memory/time during GLR parsing.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut on_progress = |_: &tree_sitter::ParseState| -> ControlFlow<()> {
+            if std::time::Instant::now() >= deadline {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        };
         let bytes = source.as_bytes();
-        let specs = ts_walker::node_specs(language);
-        let mut chunks = Vec::new();
+        let len = bytes.len();
+        let mut opts = tree_sitter::ParseOptions::new().progress_callback(&mut on_progress);
+        let tree = match parser.parse_with_options(
+            &mut |i, _| if i < len { &bytes[i..] } else { &[] },
+            None,
+            Some(opts.reborrow()),
+        ) {
+            Some(t) => t,
+            None => {
+                tracing::warn!(
+                    "{file_path}: tree-sitter parse exceeded time budget, using sliding window"
+                );
+                return Ok(sliding_window(source, file_path, language, 120, 15));
+            }
+        };
 
-        ts_walker::walk_node(
-            tree.root_node(),
-            bytes,
+        let specs = ts_walker::node_specs(language);
+        let ctx = ts_walker::WalkCtx {
+            src: bytes,
             file_path,
             language,
-            &specs,
-            None,
-            &mut chunks,
-        );
+            specs: &specs,
+        };
+        let mut chunks = Vec::new();
+
+        ts_walker::walk_node(tree.root_node(), &ctx, None, &mut chunks, 0);
 
         if chunks.is_empty() {
             tracing::debug!("{file_path}: no semantic nodes found, using sliding window");
