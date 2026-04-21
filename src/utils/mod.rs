@@ -70,6 +70,59 @@ pub fn strip_ansi(s: &str) -> String {
     out
 }
 
+/// Format a Unix timestamp as a human-readable age string (e.g. "3 min ago").
+pub fn format_age(created_at: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let secs = (now - created_at).max(0) as u64;
+    if secs < 90 {
+        format!("{secs} sec ago")
+    } else if secs < 3600 {
+        format!("{} min ago", secs / 60)
+    } else if secs < 86400 {
+        format!("{} hr ago", secs / 3600)
+    } else {
+        format!("{} days ago", secs / 86400)
+    }
+}
+
+/// Collect files modified or untracked relative to HEAD using git.
+/// Returns an empty set on any error (graceful degradation).
+pub fn worktree_modified_files() -> std::collections::HashSet<String> {
+    let mut files = std::collections::HashSet::new();
+
+    if let Ok(out) = std::process::Command::new("git")
+        .args(["diff", "--name-only", "HEAD"])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let s = line.trim();
+            if !s.is_empty() {
+                files.insert(s.to_string());
+            }
+        }
+    }
+
+    if let Ok(out) = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let s = line.trim();
+            if s.len() > 3 {
+                let path = s[3..].trim();
+                if !path.is_empty() {
+                    files.insert(path.to_string());
+                }
+            }
+        }
+    }
+
+    files
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

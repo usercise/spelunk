@@ -24,6 +24,7 @@ pub struct CheckArgs {
 use crate::{
     config::{Config, resolve_db},
     storage::{Database, open_memory_backend},
+    utils::{format_age, worktree_modified_files},
 };
 
 pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
@@ -106,9 +107,34 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
             if let Ok(intents) = handle.block_on(backend.list(Some("intent"), 20, false, None))
                 && !intents.is_empty()
             {
-                println!("Active agent intents: {}", intents.len());
+                println!("Active agent sessions:");
                 for n in &intents {
-                    println!("  #{id}: {title}", id = n.id, title = n.title);
+                    let age = format_age(n.created_at);
+                    if n.linked_files.is_empty() {
+                        println!("  · \"{}\"  ({})", n.title, age);
+                    } else {
+                        println!(
+                            "  · \"{}\"  linked: {}  ({})",
+                            n.title,
+                            n.linked_files.join(", "),
+                            age
+                        );
+                    }
+                }
+
+                // File overlap warning: compare intent linked_files with worktree changes.
+                let modified = worktree_modified_files();
+                if !modified.is_empty() {
+                    let intent_files: std::collections::HashSet<String> = intents
+                        .iter()
+                        .flat_map(|n| n.linked_files.iter().cloned())
+                        .collect();
+
+                    for file in &modified {
+                        if intent_files.contains(file) {
+                            println!("⚠  Overlap: {file} is listed in an active intent");
+                        }
+                    }
                 }
             }
         }
