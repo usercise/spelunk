@@ -145,5 +145,43 @@ POST   /v1/projects/{project_id}/memory/search
 DELETE /v1/projects/{project_id}/memory/{id}
 POST   /v1/projects/{project_id}/memory/{id}/archive
 POST   /v1/projects/{project_id}/memory/{id}/supersede
+GET    /v1/projects/{project_id}/memory/since     ?t=<epoch>&limit=
+GET    /v1/projects/{project_id}/memory/stream    (Server-Sent Events)
 GET    /v1/projects/{project_id}/stats
 ```
+
+### Conflict detection
+
+When `POST /v1/projects/{project_id}/memory`, the server checks if a semantically similar entry already exists (cosine similarity >= 0.92). If a conflict is detected, the response is **HTTP 409** with a JSON body:
+
+```json
+{
+  "status": "created_with_conflict",
+  "entry_id": 42,
+  "conflict_id": 37,
+  "conflict_title": "Previous similar entry",
+  "message": "Entry created but conflicts with existing memory"
+}
+```
+
+The new entry is stored with a `contradicts` edge to the conflicting entry. Clients should log or display this warning. Configure the threshold with `--conflict-threshold` flag (0.0–1.0, default 0.92).
+
+### Polling for new entries
+
+Use `GET /memory/since?t=<epoch>&limit=N` to retrieve entries created after a Unix timestamp:
+
+```bash
+spelunk memory since 1700000000
+```
+
+Returns up to N entries (default 50) created after the given epoch, sorted ascending by creation time.
+
+### Streaming entries
+
+Use `GET /memory/stream` (Server-Sent Events) to subscribe to new entries as they arrive:
+
+```bash
+spelunk memory watch
+```
+
+Each line is a JSON object representing a newly added entry. The stream persists until the client disconnects.

@@ -162,13 +162,14 @@ spelunk memory add \
 
 ## Signalling intent
 
-Use the `intent` kind to broadcast to teammates (human or agent) that you are actively working on a given area. Active intents are surfaced by `spelunk check` so collaborators see ongoing work before starting overlapping changes.
+Use the `intent` kind to broadcast to teammates (human or agent) that you are actively working on a given area. Active intents are surfaced by `spelunk check` along with file overlap warnings, so collaborators see ongoing work before starting overlapping changes.
 
 ```bash
 spelunk memory add \
   --title "Refactoring auth middleware to support OAuth2" \
   --kind intent \
-  --tags auth,middleware
+  --tags auth,middleware \
+  --files src/auth/middleware.rs
 ```
 
 When the work is done, archive the intent:
@@ -193,6 +194,20 @@ At the start of the next session, read it:
 ```bash
 AGENT=true spelunk memory list --kind handoff --limit 3
 ```
+
+## Multi-agent coordination
+
+When using a shared memory server (`memory_server_url` in config), agents can coordinate without stepping on each other's toes:
+
+```bash
+# Poll for new entries since a given timestamp
+spelunk memory since <epoch>
+
+# Stream entries as they arrive (requires memory_server_url)
+spelunk memory watch
+```
+
+Conflict detection: If you write an entry semantically similar to an existing one (cosine ≥ 0.92), the server returns HTTP 409 (advisory). The entry is stored with a `contradicts` edge linking to the conflicting entry. Check `spelunk memory show <id>` to review related entries before proceeding.
 
 ## Cross-project search
 

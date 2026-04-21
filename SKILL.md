@@ -30,7 +30,7 @@ spelunk check                  # verify the index is fresh before starting work
 spelunk search "<query>"
 spelunk search "<query>" --limit 20
 spelunk search "<query>" --graph          # include call-graph neighbours
-spelunk search "<query>" --format json
+spelunk search "<query>" --format text|json|ndjson
 
 # Deep search — iterative, uses LLM (requires llm_model in config)
 spelunk explore "<question>"
@@ -40,15 +40,49 @@ spelunk explore "<question>" --json       # {answer, sources, steps}
 # Call/import graph
 spelunk graph <symbol-or-file>
 spelunk graph <symbol> --kind calls       # calls | imports | extends | implements
-spelunk graph <file> --format json
+spelunk graph <file> --format text|json|ndjson
+
+# Status and checks
+spelunk status --format text|json|ndjson
+spelunk check --format text|json|ndjson
 
 # Inspect what was indexed for a file
 spelunk chunks <file-path>
-spelunk chunks <file-path> --format json
+spelunk chunks <file-path> --format text|json|ndjson
 ```
 
 Use `search` for targeted lookups. Use `explore` when the answer requires
 tracing across multiple files — it runs autonomously and reports back.
+
+---
+
+## Plumbing commands
+
+Plumbing commands emit NDJSON and are designed for scripts and pipelines.
+Exit codes: `0` = success, `1` = no results, `2` = error. See [Plumbing and Porcelain](docs/plumbing-and-porcelain.md) for full details.
+
+```bash
+# Emit indexed chunks for a file
+spelunk plumbing cat-chunks <file>
+
+# List all indexed files (optionally filtered by prefix or staleness)
+spelunk plumbing ls-files [--prefix <p>] [--stale]
+
+# Parse a file without writing to the index
+spelunk plumbing parse-file <file>
+
+# Compute and verify file hash
+spelunk plumbing hash-file <file>
+
+# Read embedding from stdin, return nearest chunks by similarity
+echo "your query" | spelunk plumbing embed --query | spelunk plumbing knn --limit 10
+
+# Emit code graph edges (imports, calls, extends)
+spelunk plumbing graph-edges --file <f> | --symbol <s>
+
+# Emit memory entries as NDJSON
+spelunk plumbing read-memory [--kind <k>] [--limit N]
+```
 
 ---
 
@@ -76,7 +110,7 @@ spelunk memory add --kind note --title "Follow-up observation" --body "..." \
   --relates-to <other-id>
 ```
 
-**Kinds:** `decision` · `context` · `requirement` · `note`
+**Kinds:** `decision` · `context` · `requirement` · `note` · `intent` · `answer` · `handoff` · `question`
 
 ### Query
 
@@ -90,20 +124,24 @@ spelunk memory list --as-of 2026-01-01   # point-in-time snapshot
 spelunk memory show <id>                  # full entry + relationships
 spelunk memory graph <id>                 # relationship graph for an entry
 spelunk memory timeline "<topic>"         # topic evolution across all entries (ASC time)
+spelunk memory since <epoch>              # poll for entries newer than Unix timestamp
+spelunk memory watch                      # stream new entries as they arrive (SSE; requires memory_server_url)
 spelunk memory search "<q>" --format json
 ```
 
-### Harvest from git history
+### Harvest from git history or Claude Code history
 
 ```bash
 spelunk memory harvest                    # analyse HEAD~10..HEAD
 spelunk memory harvest --git-range v0.1.0..HEAD
 spelunk memory harvest --branch main      # full branch history
+spelunk memory harvest --source claude-code --confirm  # extract from ~/.claude/history.jsonl
 ```
 
-Extracts decisions, requirements, and non-obvious notes from commit messages.
+Extracts decisions, requirements, and non-obvious notes. From git, analyzes commit messages.
+From `claude-code`, reads agent session transcripts from `~/.claude/history.jsonl`.
 Run at the start of a session on a new repo, or after a batch of significant commits.
-Requires `llm_model` in config.
+Requires `llm_model` in config. The `--source claude-code` requires `--confirm` flag.
 
 ---
 
@@ -113,6 +151,10 @@ Requires `llm_model` in config.
 spelunk status                 # index health for current project
 spelunk status --all           # all registered projects
 spelunk status --list          # one-line table
+spelunk status --format json   # machine-readable output
+
+spelunk check                  # verify index is fresh; shows active intents and file-overlap warnings
+spelunk check --format json    # machine-readable output
 
 spelunk autoclean              # remove stale registry entries (deleted/moved projects)
 spelunk link <path>            # include another project's index in searches
@@ -152,9 +194,10 @@ AGENT=true spelunk graph src/storage/db.rs
 
 **Start of every session:**
 ```bash
-spelunk check
+spelunk check                              # includes active intents and overlapping work
 spelunk memory list --kind decision --limit 10
 spelunk memory list --kind handoff --limit 3
+spelunk memory list --kind intent          # see what teammates are working on
 spelunk memory list --kind question
 ```
 
