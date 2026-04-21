@@ -33,7 +33,7 @@ Edit the `version` field in `Cargo.toml`:
 ```toml
 [package]
 name = "spelunk"
-version = "0.4.1"   # <-- update this
+version = "0.5.0"   # <-- update this
 ```
 
 ### 1a. Update version references in docs
@@ -52,15 +52,15 @@ Commit everything together:
 
 ```bash
 git add Cargo.toml Cargo.lock docs/getting-started.md
-git commit -m "chore: bump version to 0.4.1"
+git commit -m "chore: bump version to 0.5.0"
 git push origin main
 ```
 
 ### 2. Tag and push
 
 ```bash
-git tag v0.4.1
-git push origin v0.4.1
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 That's it. The release workflow triggers automatically on the pushed tag.
@@ -71,7 +71,7 @@ Watch progress at:
 `https://github.com/usercise/spelunk/actions/workflows/release.yml`
 
 Once all jobs pass, the release appears at:
-`https://github.com/usercise/spelunk/releases/tag/v0.4.1`
+`https://github.com/usercise/spelunk/releases/tag/v0.5.0`
 
 ## Pre-releases
 
@@ -80,8 +80,8 @@ GitHub Release as a pre-release when the tag contains `-rc`, `-beta`, or
 `-alpha`:
 
 ```bash
-git tag v0.4.1-rc.1
-git push origin v0.4.1-rc.1
+git tag v0.5.0-rc.1
+git push origin v0.5.0-rc.1
 ```
 
 ## Download URLs
@@ -96,16 +96,16 @@ Examples:
 
 ```bash
 # macOS Apple Silicon
-https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-aarch64-apple-darwin.tar.gz
+https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-aarch64-apple-darwin.tar.gz
 
 # macOS universal (x86_64 + Apple Silicon)
-https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-universal-apple-darwin.tar.gz
+https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-universal-apple-darwin.tar.gz
 
 # Linux x86_64
-https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-x86_64-unknown-linux-gnu.tar.gz
+https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
 
 # Linux ARM64
-https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-aarch64-unknown-linux-gnu.tar.gz
+https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-aarch64-unknown-linux-gnu.tar.gz
 ```
 
 ## Deleting a bad release
@@ -114,11 +114,11 @@ If a release needs to be pulled:
 
 ```bash
 # Delete the tag locally and on remote
-git tag -d v0.4.1
-git push origin :refs/tags/v0.4.1
+git tag -d v0.5.0
+git push origin :refs/tags/v0.5.0
 
 # Delete the GitHub Release (requires gh CLI)
-gh release delete v0.4.1 --yes
+gh release delete v0.5.0 --yes
 ```
 
 Then fix the issue, re-commit, and re-tag.
