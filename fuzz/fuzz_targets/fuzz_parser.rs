@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use spelunk::indexer::parser::{detect_language, SourceParser};
+use spelunk::indexer::parser::SourceParser;
 
 /// Fuzz `SourceParser::parse` with arbitrary bytes across all supported languages.
 ///
@@ -13,11 +13,13 @@ use spelunk::indexer::parser::{detect_language, SourceParser};
 fuzz_target!(|data: &[u8]| {
     let Ok(s) = std::str::from_utf8(data) else { return };
 
-    // Rotate through languages based on a prefix byte so every grammar
-    // gets exercised without needing separate fuzz targets.
+    // Rotate through all supported languages based on a prefix byte so every
+    // grammar gets exercised without needing separate fuzz targets.
+    // Kept in sync with SUPPORTED_LANGUAGES in src/indexer/parser/mod.rs.
     let languages = &[
-        "rust", "python", "javascript", "typescript", "go",
-        "java", "c", "cpp", "markdown", "text",
+        "rust", "python", "javascript", "jsx", "typescript", "tsx",
+        "go", "java", "c", "cpp", "json", "html", "css", "hcl",
+        "sql", "proto", "markdown", "text", "notebook",
     ];
     let lang_idx = data.first().copied().unwrap_or(0) as usize % languages.len();
     let language = languages[lang_idx];
