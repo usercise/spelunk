@@ -1,9 +1,16 @@
+use std::convert::Infallible;
+use std::time::Duration;
+
 use anyhow::Result;
+use async_stream::stream;
 use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -444,6 +451,129 @@ pub async fn harvested_shas(
     let project = require_project(&db, &project_id)?;
     let shas = db.harvested_shas(project.id)?;
     Ok(Json(shas))
+}
+
+// ── Poll / SSE endpoints ──────────────────────────────────────────────────────
+
+#[derive(Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct SinceQuery {
+    /// Unix epoch seconds (exclusive lower bound).
+    pub t: i64,
+    /// Maximum number of results (default: 100, max: 500).
+    #[serde(default = "default_since_limit")]
+    pub limit: i64,
+}
+fn default_since_limit() -> i64 {
+    100
+}
+
+#[derive(Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct StreamQuery {
+    /// Unix epoch seconds to start from (inclusive). Defaults to now.
+    pub t: Option<i64>,
+}
+
+/// Return notes created after a given Unix timestamp. Archived entries are
+/// excluded. Results are ordered `created_at ASC`.
+#[utoipa::path(
+    get,
+    path = "/v1/projects/{project_id}/memory/since",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+        SinceQuery,
+    ),
+    responses(
+        (status = 200, description = "Notes newer than `t`", body = Vec<super::db::ServerNote>),
+        (status = 400, description = "Missing or invalid `t` parameter"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
+pub async fn memory_since(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Query(params): Query<SinceQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let db = state.db.lock().await;
+    let project = require_project(&db, &project_id)?;
+    let notes = db.notes_since(project.id, params.t, params.limit)?;
+    Ok(Json(notes))
+}
+
+/// Stream new memory entries as Server-Sent Events. Each event carries a
+/// single `ServerNote` serialised as JSON. The stream polls the database once
+/// per second and stays open indefinitely — close the connection to stop it.
+///
+/// Pass `?t=<unix_secs>` to replay entries written after a known timestamp.
+/// Omit it to receive only entries written after the connection opens.
+#[utoipa::path(
+    get,
+    path = "/v1/projects/{project_id}/memory/stream",
+    params(
+        ("project_id" = String, Path, description = "Project slug"),
+        StreamQuery,
+    ),
+    responses(
+        (status = 200, description = "SSE stream of new memory entries"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "memory"
+)]
+pub async fn memory_stream(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Query(params): Query<StreamQuery>,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, AppError> {
+    // Validate the project exists before opening the stream.
+    {
+        let db = state.db.lock().await;
+        require_project(&db, &project_id)?;
+    }
+
+    let start_t = params.t.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64
+    });
+
+    let s = stream! {
+        let mut last_seen = start_t;
+        loop {
+            // Lock, query, immediately release.
+            let notes = {
+                let db = state.db.lock().await;
+                // Re-fetch the project each iteration so the stream survives
+                // project creation that may have happened after the handshake.
+                let pid = match db.get_project(&project_id) {
+                    Ok(Some(p)) => p.id,
+                    _ => {
+                        drop(db);
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        continue;
+                    }
+                };
+                // Ignore DB errors mid-stream; keep the connection alive.
+                db.notes_since(pid, last_seen, 50).unwrap_or_default()
+            };
+
+            for note in notes {
+                if note.created_at > last_seen {
+                    last_seen = note.created_at;
+                }
+                let data = serde_json::to_string(&note).unwrap_or_default();
+                yield Ok::<Event, Infallible>(Event::default().data(data));
+            }
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    };
+
+    Ok(Sse::new(s).keep_alive(KeepAlive::default()))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

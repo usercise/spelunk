@@ -326,6 +326,73 @@ async fn search_returns_closest_note() {
     assert_eq!(notes[0]["title"], "alpha");
 }
 
+// ── /memory/since ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+#[serial]
+async fn since_endpoint_returns_entries_after_timestamp() {
+    use spelunk::server::db::ServerDb;
+
+    common::register_sqlite_vec();
+
+    // Build a DB and insert two notes with known timestamps.
+    let db = ServerDb::open(std::path::Path::new(":memory:"), 4).expect("open in-memory server db");
+
+    // Insert a project manually so we control created_at timing.
+    db.conn
+        .execute(
+            "INSERT INTO projects (slug, embedding_dim) VALUES ('ts-proj', 4)",
+            [],
+        )
+        .unwrap();
+    let project_id = db.conn.last_insert_rowid();
+
+    // Note at t=1000.
+    db.conn
+        .execute(
+            "INSERT INTO notes (project_id, kind, title, body, created_at) VALUES (?1, 'note', 'old note', '', 1000)",
+            rusqlite::params![project_id],
+        )
+        .unwrap();
+
+    // Note at t=2000.
+    db.conn
+        .execute(
+            "INSERT INTO notes (project_id, kind, title, body, created_at) VALUES (?1, 'note', 'new note', '', 2000)",
+            rusqlite::params![project_id],
+        )
+        .unwrap();
+
+    let state = AppState {
+        db: Arc::new(tokio::sync::Mutex::new(db)),
+        api_key: None,
+        conflict_threshold: spelunk::server::default_conflict_threshold(),
+    };
+
+    // Query with t=1500 — should return only the note at t=2000.
+    let resp = send(
+        state,
+        "GET",
+        "/v1/projects/ts-proj/memory/since?t=1500",
+        Body::empty(),
+        false,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let notes: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let arr = notes.as_array().expect("expected array");
+    assert_eq!(
+        arr.len(),
+        1,
+        "expected exactly 1 note after t=1500; got {arr:?}"
+    );
+    assert_eq!(arr[0]["title"], "new note");
+    assert_eq!(arr[0]["created_at"], 2000);
+}
+
 // ── stats ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]

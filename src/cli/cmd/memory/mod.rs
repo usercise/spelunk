@@ -34,6 +34,10 @@ pub enum MemoryCommand {
     Timeline(MemoryTimelineArgs),
     /// Show the relationship graph for a memory entry
     Graph(MemoryGraphArgs),
+    /// List memory entries created after a given Unix timestamp
+    Since(MemorySinceArgs),
+    /// Stream new memory entries from the server in real time (requires memory_server_url)
+    Watch(MemoryWatchArgs),
 }
 
 #[derive(Args, Debug)]
@@ -224,6 +228,27 @@ pub struct MemorySupersededArgs {
     pub new_id: i64,
 }
 
+#[derive(Args, Debug)]
+pub struct MemorySinceArgs {
+    /// Unix epoch seconds (exclusive lower bound for `created_at`)
+    pub since: i64,
+
+    /// Maximum number of results to return
+    #[arg(short, long, default_value_t = 100)]
+    pub limit: usize,
+
+    /// Output format: text, json, or ndjson
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct MemoryWatchArgs {
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
 use super::status::format_age;
 
 mod add;
@@ -235,8 +260,10 @@ mod list;
 mod push;
 mod search;
 mod show;
+mod since;
 mod supersede;
 mod timeline;
+mod watch;
 
 pub async fn memory(args: MemoryArgs, cfg: crate::config::Config) -> Result<()> {
     cfg.validate()?;
@@ -254,6 +281,8 @@ pub async fn memory(args: MemoryArgs, cfg: crate::config::Config) -> Result<()> 
         MemoryCommand::Push(a) => push::memory_push(a, &mem_path, &cfg).await,
         MemoryCommand::Timeline(a) => timeline::memory_timeline(a, &mem_path, &cfg).await,
         MemoryCommand::Graph(a) => graph_cmd::memory_graph(a, &mem_path, &cfg).await,
+        MemoryCommand::Since(a) => since::memory_since(a, &mem_path, &cfg).await,
+        MemoryCommand::Watch(a) => watch::memory_watch(a, &cfg).await,
     }
 }
 
