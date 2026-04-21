@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::Args;
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 #[derive(Args, Debug)]
@@ -25,63 +24,8 @@ pub struct CheckArgs {
 use crate::{
     config::{Config, resolve_db},
     storage::{Database, open_memory_backend},
+    utils::{format_age, worktree_modified_files},
 };
-
-/// Format a Unix timestamp age as a human-readable string (e.g. "3 min ago").
-fn format_age(created_at: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let secs = (now - created_at).max(0) as u64;
-    if secs < 90 {
-        format!("{secs} sec ago")
-    } else if secs < 3600 {
-        format!("{} min ago", secs / 60)
-    } else if secs < 86400 {
-        format!("{} hr ago", secs / 3600)
-    } else {
-        format!("{} days ago", secs / 86400)
-    }
-}
-
-/// Collect files modified or untracked relative to HEAD using git.
-/// Returns an empty set on any error (graceful degradation).
-fn worktree_modified_files() -> HashSet<String> {
-    let mut files = HashSet::new();
-
-    // git diff --name-only HEAD — staged + unstaged changes vs HEAD
-    if let Ok(out) = std::process::Command::new("git")
-        .args(["diff", "--name-only", "HEAD"])
-        .output()
-    {
-        for line in String::from_utf8_lossy(&out.stdout).lines() {
-            let s = line.trim();
-            if !s.is_empty() {
-                files.insert(s.to_string());
-            }
-        }
-    }
-
-    // git status --porcelain — picks up untracked files too
-    if let Ok(out) = std::process::Command::new("git")
-        .args(["status", "--porcelain"])
-        .output()
-    {
-        for line in String::from_utf8_lossy(&out.stdout).lines() {
-            // Each line is "XY filename" where XY is two-char status code
-            let s = line.trim();
-            if s.len() > 3 {
-                let path = s[3..].trim();
-                if !path.is_empty() {
-                    files.insert(path.to_string());
-                }
-            }
-        }
-    }
-
-    files
-}
 
 pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
     let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
@@ -181,7 +125,7 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
                 // File overlap warning: compare intent linked_files with worktree changes.
                 let modified = worktree_modified_files();
                 if !modified.is_empty() {
-                    let intent_files: HashSet<String> = intents
+                    let intent_files: std::collections::HashSet<String> = intents
                         .iter()
                         .flat_map(|n| n.linked_files.iter().cloned())
                         .collect();
