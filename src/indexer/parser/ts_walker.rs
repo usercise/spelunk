@@ -170,7 +170,16 @@ pub(super) fn walk_node(
         if node.named_child_count() == 0 {
             for i in 0..node.child_count() {
                 if let Some(child) = node.child(i as u32) {
-                    walk_node(child, src, file_path, language, specs, parent_scope, out, depth + 1);
+                    walk_node(
+                        child,
+                        src,
+                        file_path,
+                        language,
+                        specs,
+                        parent_scope,
+                        out,
+                        depth + 1,
+                    );
                 }
             }
             return;
@@ -223,7 +232,16 @@ pub(super) fn walk_node(
         // Not a target node — recurse with same parent scope
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i as u32) {
-                walk_node(child, src, file_path, language, specs, parent_scope, out, depth + 1);
+                walk_node(
+                    child,
+                    src,
+                    file_path,
+                    language,
+                    specs,
+                    parent_scope,
+                    out,
+                    depth + 1,
+                );
             }
         }
     }

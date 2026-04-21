@@ -164,7 +164,9 @@ impl SourceParser {
         ) {
             Some(t) => t,
             None => {
-                tracing::warn!("{file_path}: tree-sitter parse exceeded time budget, using sliding window");
+                tracing::warn!(
+                    "{file_path}: tree-sitter parse exceeded time budget, using sliding window"
+                );
                 return Ok(sliding_window(source, file_path, language, 120, 15));
             }
         };
