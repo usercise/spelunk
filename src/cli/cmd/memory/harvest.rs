@@ -12,6 +12,18 @@ pub(super) async fn memory_harvest(
     mem_path: &std::path::Path,
     cfg: &Config,
 ) -> Result<()> {
+    match args.source.as_str() {
+        "git" => memory_harvest_git(args, mem_path, cfg).await,
+        "claude-code" => super::harvest_claude::harvest_claude_code(args, mem_path, cfg).await,
+        other => anyhow::bail!("Unknown --source '{other}'. Valid values: git, claude-code"),
+    }
+}
+
+async fn memory_harvest_git(
+    args: MemoryHarvestArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
     use crate::llm::LlmBackend;
 
     let (git_ref, range_label) = match &args.branch {

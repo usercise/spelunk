@@ -176,10 +176,28 @@ pub struct MemoryHarvestArgs {
     #[arg(long, conflicts_with = "git_range")]
     pub branch: Option<String>,
 
-    /// Number of commits to send to the LLM in each request.
+    /// Number of commits/sessions to send to the LLM in each request.
     /// Smaller values are more stable; larger values risk hitting context-window limits.
     #[arg(long, default_value_t = 3)]
     pub batch_size: usize,
+
+    /// Source to harvest from: git (default) or claude-code
+    #[arg(long, default_value = "git")]
+    pub source: String,
+
+    /// Path to Claude Code history file (default: ~/.claude/history.jsonl).
+    /// Only used with --source claude-code.
+    #[arg(long)]
+    pub history_file: Option<std::path::PathBuf>,
+
+    /// Only harvest sessions after this date (ISO 8601, e.g. 2026-04-01).
+    /// Only used with --source claude-code.
+    #[arg(long)]
+    pub since: Option<String>,
+
+    /// Confirm reading ~/.claude/history.jsonl (required for --source claude-code)
+    #[arg(long)]
+    pub confirm: bool,
 }
 
 #[derive(Args, Debug)]
@@ -212,6 +230,7 @@ mod add;
 mod archive;
 mod graph_cmd;
 mod harvest;
+mod harvest_claude;
 mod list;
 mod push;
 mod search;
