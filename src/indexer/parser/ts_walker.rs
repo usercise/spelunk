@@ -142,7 +142,7 @@ pub(super) fn node_specs(language: &str) -> Vec<NodeSpec> {
 }
 
 /// Maximum AST recursion depth.  Deeply-nested or pathological parse trees
-/// (common with fuzz inputs) would otherwise overflow the stack.
+/// (common with adversarial inputs) would otherwise overflow the stack.
 const MAX_WALK_DEPTH: usize = 512;
 
 /// Maximum number of chunks collected in a single walk.  A file with millions
