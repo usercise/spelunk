@@ -81,7 +81,10 @@ if command -v spelunk &>/dev/null; then
 fi
 
 # Read task IDs from the JSON array (requires python3)
-mapfile -t ALL_TASKS < <(python3 -c "
+ALL_TASKS=()
+while IFS= read -r line; do
+    ALL_TASKS+=("$line")
+done < <(python3 -c "
 import json, sys
 with open('${TASKS_FILE}') as f:
     tasks = json.load(f)
@@ -157,7 +160,7 @@ import json, sys, statistics
 from pathlib import Path
 
 task_results = [json.loads(r) for r in [
-$(printf '    %s,\n' "${TASK_RESULTS[@]}")
+$(printf "    '%s',\n" "${TASK_RESULTS[@]}")
 ]]
 
 tokens_list = [
