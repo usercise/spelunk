@@ -6,23 +6,23 @@ Download the latest binary for your platform from the [releases page](https://gi
 
 ```bash
 # macOS (Apple Silicon) — universal binary also available
-curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-aarch64-apple-darwin.tar.gz \
+curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-aarch64-apple-darwin.tar.gz \
   | tar -xz && chmod +x spelunk spelunk-server && sudo mv spelunk spelunk-server /usr/local/bin/
 
 # macOS (Intel)
-curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-x86_64-apple-darwin.tar.gz \
+curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-x86_64-apple-darwin.tar.gz \
   | tar -xz && chmod +x spelunk spelunk-server && sudo mv spelunk spelunk-server /usr/local/bin/
 
 # macOS (universal — works on both Intel and Apple Silicon)
-curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-universal-apple-darwin.tar.gz \
+curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-universal-apple-darwin.tar.gz \
   | tar -xz && chmod +x spelunk spelunk-server && sudo mv spelunk spelunk-server /usr/local/bin/
 
 # Linux x86_64
-curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-x86_64-unknown-linux-gnu.tar.gz \
+curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-x86_64-unknown-linux-gnu.tar.gz \
   | tar -xz && chmod +x spelunk spelunk-server && sudo mv spelunk spelunk-server /usr/local/bin/
 
 # Linux ARM64
-curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.4.1-aarch64-unknown-linux-gnu.tar.gz \
+curl -L https://github.com/usercise/spelunk/releases/latest/download/spelunk-v0.5.0-aarch64-unknown-linux-gnu.tar.gz \
   | tar -xz && chmod +x spelunk spelunk-server && sudo mv spelunk spelunk-server /usr/local/bin/
 
 # Verify
