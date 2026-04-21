@@ -53,6 +53,8 @@ pub fn default_conflict_threshold() -> f32 {
         handlers::supersede_note,
         handlers::project_stats,
         handlers::harvested_shas,
+        handlers::memory_since,
+        handlers::memory_stream,
     ),
     components(schemas(
         handlers::AddNoteRequest,
@@ -63,6 +65,8 @@ pub fn default_conflict_threshold() -> f32 {
         handlers::BoolResponse,
         handlers::CountResponse,
         handlers::SupersedeRequest,
+        handlers::SinceQuery,
+        handlers::StreamQuery,
         db::Project,
         db::ServerNote,
         db::ProjectStats,
@@ -118,6 +122,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/v1/projects/{project_id}/memory/harvested-shas",
             get(handlers::harvested_shas),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/since",
+            get(handlers::memory_since),
+        )
+        .route(
+            "/v1/projects/{project_id}/memory/stream",
+            get(handlers::memory_stream),
         )
         .route(
             "/v1/projects/{project_id}/memory/{note_id}",

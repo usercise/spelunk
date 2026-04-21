@@ -371,6 +371,31 @@ impl ServerDb {
         Ok(changed > 0)
     }
 
+    /// Return notes created after `since_secs` (exclusive), ordered ASC by `created_at`.
+    /// Archived entries are excluded. `limit` is capped at 500.
+    pub fn notes_since(
+        &self,
+        project_id: i64,
+        since_secs: i64,
+        limit: i64,
+    ) -> Result<Vec<ServerNote>> {
+        let limit = limit.clamp(1, 500);
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, kind, title, body, tags, linked_files, created_at, status, superseded_by
+             FROM notes
+             WHERE project_id = ?1 AND created_at > ?2 AND status != 'archived'
+             ORDER BY created_at ASC
+             LIMIT ?3",
+        )?;
+        let notes = stmt
+            .query_map(
+                rusqlite::params![project_id, since_secs, limit],
+                row_to_note,
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(notes)
+    }
+
     pub fn delete_note(&self, project_id: i64, note_id: i64) -> Result<bool> {
         self.conn.execute(
             "DELETE FROM note_embeddings WHERE note_id = ?1",
