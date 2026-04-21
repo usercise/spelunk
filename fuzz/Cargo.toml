@@ -9,6 +9,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dependencies.spelunk]
 path = ".."
@@ -21,5 +23,35 @@ codegen-units = 4
 [[bin]]
 name = "fuzz_parser"
 path = "fuzz_targets/fuzz_parser.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_secret_scanner"
+path = "fuzz_targets/fuzz_secret_scanner.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_chunker"
+path = "fuzz_targets/fuzz_chunker.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_escape_xml"
+path = "fuzz_targets/fuzz_escape_xml.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ndjson_parse"
+path = "fuzz_targets/fuzz_ndjson_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_cli_history_entry"
+path = "fuzz_targets/fuzz_cli_history_entry.rs"
 test = false
 doc = false
