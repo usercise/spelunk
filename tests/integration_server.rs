@@ -22,6 +22,7 @@ fn make_state() -> AppState {
     AppState {
         db: Arc::new(tokio::sync::Mutex::new(db)),
         api_key: None,
+        conflict_threshold: spelunk::server::default_conflict_threshold(),
     }
 }
 
@@ -256,6 +257,7 @@ async fn protected_endpoint_rejects_missing_token() {
     let state = AppState {
         db: Arc::new(tokio::sync::Mutex::new(db)),
         api_key: Some("secret".into()),
+        conflict_threshold: spelunk::server::default_conflict_threshold(),
     };
     let resp = send(state, "GET", "/v1/projects", Body::empty(), false).await;
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -268,6 +270,7 @@ async fn protected_endpoint_accepts_correct_token() {
     let state = AppState {
         db: Arc::new(tokio::sync::Mutex::new(db)),
         api_key: Some("secret".into()),
+        conflict_threshold: spelunk::server::default_conflict_threshold(),
     };
     let req = Request::builder()
         .method("GET")

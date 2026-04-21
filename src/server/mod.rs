@@ -19,6 +19,13 @@ use db::ServerDb;
 pub struct AppState {
     pub db: Arc<tokio::sync::Mutex<ServerDb>>,
     pub api_key: Option<String>,
+    /// Cosine similarity threshold above which a new entry is flagged as conflicting (0.0–1.0).
+    /// Default: 0.92. Set to 1.0 to disable conflict detection.
+    pub conflict_threshold: f32,
+}
+
+pub fn default_conflict_threshold() -> f32 {
+    0.92
 }
 
 // ── OpenAPI spec ──────────────────────────────────────────────────────────────
@@ -50,6 +57,7 @@ pub struct AppState {
     components(schemas(
         handlers::AddNoteRequest,
         handlers::AddNoteResponse,
+        handlers::ConflictEntry,
         handlers::ListQuery,
         handlers::SearchRequest,
         handlers::BoolResponse,
