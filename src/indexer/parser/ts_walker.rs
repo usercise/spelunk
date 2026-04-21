@@ -150,12 +150,27 @@ const MAX_WALK_DEPTH: usize = 512;
 /// allocate unbounded memory.
 const MAX_CHUNKS: usize = 100_000;
 
+/// Immutable per-file context threaded through the AST walk.
+pub(super) struct WalkCtx<'a> {
+    pub src: &'a [u8],
+    pub file_path: &'a str,
+    pub language: &'a str,
+    pub specs: &'a [NodeSpec],
+}
+
 pub(super) fn walk_node(
     node: tree_sitter::Node<'_>,
-    src: &[u8],
-    file_path: &str,
-    language: &str,
-    specs: &[NodeSpec],
+    ctx: &WalkCtx<'_>,
+    parent_scope: Option<&str>,
+    out: &mut Vec<Chunk>,
+    depth: usize,
+) {
+    walk_node_inner(node, ctx, parent_scope, out, depth);
+}
+
+fn walk_node_inner(
+    node: tree_sitter::Node<'_>,
+    ctx: &WalkCtx<'_>,
     parent_scope: Option<&str>,
     out: &mut Vec<Chunk>,
     depth: usize,
@@ -163,34 +178,25 @@ pub(super) fn walk_node(
     if depth >= MAX_WALK_DEPTH || out.len() >= MAX_CHUNKS {
         return;
     }
-    if let Some(spec) = specs.iter().find(|s| s.kind == node.kind()) {
+    if let Some(spec) = ctx.specs.iter().find(|s| s.kind == node.kind()) {
         // Skip keyword leaf tokens: grammars like proto reuse the node kind
         // name for both the keyword token ("message") and the structural block.
         // Structural nodes always have named children; keyword leaves do not.
         if node.named_child_count() == 0 {
             for i in 0..node.child_count() {
                 if let Some(child) = node.child(i as u32) {
-                    walk_node(
-                        child,
-                        src,
-                        file_path,
-                        language,
-                        specs,
-                        parent_scope,
-                        out,
-                        depth + 1,
-                    );
+                    walk_node_inner(child, ctx, parent_scope, out, depth + 1);
                 }
             }
             return;
         }
 
-        let name = extract_name(&node, src, language, spec);
+        let name = extract_name(&node, ctx.src, ctx.language, spec);
 
-        let content = node.utf8_text(src).unwrap_or("").to_owned();
+        let content = node.utf8_text(ctx.src).unwrap_or("").to_owned();
 
         // Look for a doc comment immediately before this node
-        let docstring = preceding_comment(&node, src);
+        let docstring = preceding_comment(&node, ctx.src);
 
         // Build scope label for impl/class containers
         let scope_label: Option<String> = match spec.chunk_kind {
@@ -201,8 +207,8 @@ pub(super) fn walk_node(
         };
 
         out.push(Chunk {
-            file_path: file_path.to_owned(),
-            language: language.to_owned(),
+            file_path: ctx.file_path.to_owned(),
+            language: ctx.language.to_owned(),
             kind: spec.chunk_kind.clone(),
             name,
             start_line: node.start_position().row + 1,
@@ -216,32 +222,14 @@ pub(super) fn walk_node(
         // Recurse into children with the updated scope
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i as u32) {
-                walk_node(
-                    child,
-                    src,
-                    file_path,
-                    language,
-                    specs,
-                    scope_label.as_deref(),
-                    out,
-                    depth + 1,
-                );
+                walk_node_inner(child, ctx, scope_label.as_deref(), out, depth + 1);
             }
         }
     } else {
         // Not a target node — recurse with same parent scope
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i as u32) {
-                walk_node(
-                    child,
-                    src,
-                    file_path,
-                    language,
-                    specs,
-                    parent_scope,
-                    out,
-                    depth + 1,
-                );
+                walk_node_inner(child, ctx, parent_scope, out, depth + 1);
             }
         }
     }

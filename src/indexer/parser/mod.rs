@@ -158,7 +158,7 @@ impl SourceParser {
         let len = bytes.len();
         let mut opts = tree_sitter::ParseOptions::new().progress_callback(&mut on_progress);
         let tree = match parser.parse_with_options(
-            &mut |i, _| (i < len).then(|| &bytes[i..]).unwrap_or_default(),
+            &mut |i, _| if i < len { &bytes[i..] } else { &[] },
             None,
             Some(opts.reborrow()),
         ) {
@@ -172,18 +172,15 @@ impl SourceParser {
         };
 
         let specs = ts_walker::node_specs(language);
-        let mut chunks = Vec::new();
-
-        ts_walker::walk_node(
-            tree.root_node(),
-            bytes,
+        let ctx = ts_walker::WalkCtx {
+            src: bytes,
             file_path,
             language,
-            &specs,
-            None,
-            &mut chunks,
-            0,
-        );
+            specs: &specs,
+        };
+        let mut chunks = Vec::new();
+
+        ts_walker::walk_node(tree.root_node(), &ctx, None, &mut chunks, 0);
 
         if chunks.is_empty() {
             tracing::debug!("{file_path}: no semantic nodes found, using sliding window");
