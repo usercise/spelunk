@@ -431,13 +431,13 @@ mod tests {
             "display": "how does the chunker work?",
             "pastedContents": {},
             "timestamp": 1773481284710,
-            "project": "/Users/johan/Projects/codeanalysis",
+            "project": "/Users/test/myproject",
             "sessionId": "2fb1e326-1dac-4c88-bf4f-9dedd6de630a"
         }"#;
         let entry: ClaudeHistoryEntry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.display, "how does the chunker work?");
         assert_eq!(entry.timestamp, 1773481284710);
-        assert_eq!(entry.project, "/Users/johan/Projects/codeanalysis");
+        assert_eq!(entry.project, "/Users/test/myproject");
         assert_eq!(entry.session_id, "2fb1e326-1dac-4c88-bf4f-9dedd6de630a");
         assert!(entry.pasted_contents.is_empty());
     }
@@ -475,34 +475,32 @@ mod tests {
 
     #[test]
     fn project_root_filter_matches_exact() {
-        let repo_root = "/Users/johan/Projects/codeanalysis".to_string();
-        let project = "/Users/johan/Projects/codeanalysis".to_string();
+        let repo_root = "/Users/test/myproject".to_string();
+        let project = "/Users/test/myproject".to_string();
         assert!(project.starts_with(&repo_root));
     }
 
     #[test]
     fn project_root_filter_matches_subpath() {
-        let repo_root = "/Users/johan/Projects/codeanalysis".to_string();
-        let project = "/Users/johan/Projects/codeanalysis/subdir".to_string();
+        let repo_root = "/Users/test/myproject".to_string();
+        let project = "/Users/test/myproject/subdir".to_string();
         assert!(project.starts_with(&repo_root));
     }
 
     #[test]
     fn project_root_filter_rejects_other_project() {
-        let repo_root = "/Users/johan/Projects/codeanalysis".to_string();
-        let project = "/Users/johan/Projects/other-project".to_string();
+        let repo_root = "/Users/test/myproject".to_string();
+        let project = "/Users/test/other-project".to_string();
         assert!(!project.starts_with(&repo_root));
     }
 
     #[test]
     fn project_root_filter_rejects_prefix_only_match() {
-        // "/Users/johan/Projects/codeanalysis-extra" must NOT match
-        // "/Users/johan/Projects/codeanalysis" as a repo root.
-        // The filter uses starts_with on the raw string, so this correctly
-        // passes if the repo root has a trailing path separator in practice,
-        // but let's assert the exact behaviour of the current implementation.
-        let repo_root = "/Users/johan/Projects/codeanalysis/".to_string();
-        let project = "/Users/johan/Projects/codeanalysis-extra".to_string();
+        // "/Users/test/myproject-extra" must NOT match "/Users/test/myproject"
+        // as a repo root. The filter uses starts_with on the raw string, so
+        // this correctly passes if the repo root has a trailing separator.
+        let repo_root = "/Users/test/myproject/".to_string();
+        let project = "/Users/test/myproject-extra".to_string();
         assert!(!project.starts_with(&repo_root));
     }
 
