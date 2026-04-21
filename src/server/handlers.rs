@@ -3,7 +3,7 @@ use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -31,8 +31,22 @@ pub struct AddNoteRequest {
 
 #[derive(Serialize, ToSchema)]
 pub struct AddNoteResponse {
+    /// Whether the note was stored (always true for 201/409).
+    pub stored: bool,
     /// ID of the created note.
     pub id: i64,
+    /// Conflicting entries (only present on 409).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub conflicts: Vec<ConflictEntry>,
+}
+
+/// A single conflicting memory entry returned in a 409 response.
+#[derive(Serialize, ToSchema)]
+pub struct ConflictEntry {
+    pub id: i64,
+    pub title: String,
+    /// Cosine similarity to the new entry (0.0–1.0).
+    pub similarity: f32,
 }
 
 #[derive(Deserialize, ToSchema, utoipa::IntoParams)]
@@ -116,6 +130,10 @@ pub async fn list_projects(State(state): State<AppState>) -> Result<impl IntoRes
 ///
 /// The client must supply a pre-computed `embedding` vector. All entries in
 /// a project must use the same embedding dimension — the first write fixes it.
+///
+/// Returns **201** on success. Returns **409** when the new entry is semantically
+/// close to one or more existing active entries (similarity ≥ conflict_threshold).
+/// The entry is still stored in both cases; the 409 is informational.
 #[utoipa::path(
     post,
     path = "/v1/projects/{project_id}/memory",
@@ -127,6 +145,7 @@ pub async fn list_projects(State(state): State<AppState>) -> Result<impl IntoRes
         (status = 201, description = "Note created", body = AddNoteResponse),
         (status = 400, description = "Embedding dimension mismatch"),
         (status = 401, description = "Unauthorized"),
+        (status = 409, description = "Note stored but conflicts with existing entries", body = AddNoteResponse),
     ),
     security(("bearer_auth" = [])),
     tag = "memory"
@@ -135,7 +154,7 @@ pub async fn add_note(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     Json(body): Json<AddNoteRequest>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
     let embedding = body.embedding.as_deref();
     let dim = embedding.map(|v| v.len()).unwrap_or(0);
 
@@ -152,7 +171,57 @@ pub async fn add_note(
         embedding,
     )?;
 
-    Ok((StatusCode::CREATED, Json(AddNoteResponse { id })))
+    // ── Conflict detection ────────────────────────────────────────────────────
+    // Only run if the entry has an embedding and conflict detection is enabled
+    // (threshold < 1.0).
+    let threshold = state.conflict_threshold;
+    if let Some(vec) = embedding
+        && threshold < 1.0
+    {
+        let max_distance = 1.0 - threshold;
+        let nearby = db.search_notes_for_conflicts(project.id, vec, max_distance, id, 5)?;
+        if !nearby.is_empty() {
+            // Insert `contradicts` edges for each conflict.
+            for note in &nearby {
+                if let Err(e) = db.add_edge(id, note.id, "contradicts") {
+                    tracing::warn!("failed to insert contradicts edge {id}→{}: {e}", note.id);
+                }
+            }
+            let conflicts: Vec<ConflictEntry> = nearby
+                .into_iter()
+                .map(|n| {
+                    let similarity = n
+                        .distance
+                        .map(|d| (1.0 - d as f32).clamp(0.0, 1.0))
+                        .unwrap_or(0.0);
+                    ConflictEntry {
+                        id: n.id,
+                        title: n.title,
+                        similarity,
+                    }
+                })
+                .collect();
+            return Ok((
+                StatusCode::CONFLICT,
+                Json(AddNoteResponse {
+                    stored: true,
+                    id,
+                    conflicts,
+                }),
+            )
+                .into_response());
+        }
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(AddNoteResponse {
+            stored: true,
+            id,
+            conflicts: vec![],
+        }),
+    )
+        .into_response())
 }
 
 /// List memory entries for a project, optionally filtered by kind.
@@ -381,4 +450,180 @@ pub async fn harvested_shas(
 
 fn require_project(db: &super::db::ServerDb, slug: &str) -> Result<super::db::Project, AppError> {
     db.get_project(slug)?.ok_or(AppError::NotFound)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::Body,
+        http::{self, Request},
+    };
+    use serde_json::{Value, json};
+    use tower::ServiceExt; // for `oneshot`
+
+    use super::super::db::ServerDb;
+    use super::super::{AppState, router};
+
+    /// Register sqlite-vec extension once per test process.
+    fn register_sqlite_vec() {
+        use std::sync::OnceLock;
+        static INIT: OnceLock<()> = OnceLock::new();
+        INIT.get_or_init(|| {
+            #[allow(clippy::missing_transmute_annotations)]
+            unsafe {
+                rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                    sqlite_vec::sqlite3_vec_init as *const (),
+                )));
+            }
+        });
+    }
+
+    fn make_app(conflict_threshold: f32) -> (axum::Router, i32) {
+        register_sqlite_vec();
+        let dim: usize = 4;
+        let db = ServerDb::open(std::path::Path::new(":memory:"), dim)
+            .expect("failed to open in-memory server db");
+        let state = AppState {
+            db: Arc::new(tokio::sync::Mutex::new(db)),
+            api_key: None,
+            conflict_threshold,
+        };
+        (router(state), dim as i32)
+    }
+
+    /// POST /v1/projects/{slug}/memory with the given embedding. Returns the response.
+    async fn post_note(
+        app: axum::Router,
+        slug: &str,
+        title: &str,
+        embedding: Vec<f32>,
+    ) -> (http::StatusCode, Value) {
+        let body = json!({
+            "kind": "note",
+            "title": title,
+            "body": "test body",
+            "embedding": embedding,
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/projects/{slug}/memory"))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, json)
+    }
+
+    /// Two semantically identical entries (identical embeddings) should trigger 409
+    /// and a `contradicts` edge should be inserted.
+    #[tokio::test]
+    async fn conflict_detection_identical_embeddings_returns_409() {
+        let (app, _dim) = make_app(0.92);
+        // Use a very low threshold to ensure a conflict (0.0 = any non-zero similarity conflicts).
+        let (app_low, _dim) = make_app(0.0);
+
+        // First entry — must be 201.
+        let embedding = vec![1.0_f32, 0.0, 0.0, 0.0];
+        let (status1, body1) = post_note(
+            app_low.clone(),
+            "test-project",
+            "Entry A",
+            embedding.clone(),
+        )
+        .await;
+        assert_eq!(
+            status1,
+            http::StatusCode::CREATED,
+            "first write must be 201; body: {body1}"
+        );
+        let first_id = body1["id"].as_i64().expect("id in response");
+        assert_eq!(body1["stored"], json!(true));
+
+        // Second entry with identical embedding — must be 409.
+        let (status2, body2) = post_note(
+            app_low.clone(),
+            "test-project",
+            "Entry B (duplicate)",
+            embedding.clone(),
+        )
+        .await;
+        assert_eq!(
+            status2,
+            http::StatusCode::CONFLICT,
+            "second identical write must be 409; body: {body2}"
+        );
+        assert_eq!(
+            body2["stored"],
+            json!(true),
+            "stored must be true even on 409"
+        );
+
+        let conflicts = body2["conflicts"]
+            .as_array()
+            .expect("conflicts array in 409 body");
+        assert!(!conflicts.is_empty(), "conflicts must not be empty");
+        let conflicting_ids: Vec<i64> = conflicts.iter().filter_map(|c| c["id"].as_i64()).collect();
+        assert!(
+            conflicting_ids.contains(&first_id),
+            "first entry's id ({first_id}) must appear in conflicts; got: {conflicting_ids:?}"
+        );
+
+        // Similarity should be > 0.
+        let similarity = conflicts[0]["similarity"]
+            .as_f64()
+            .expect("similarity field");
+        assert!(
+            similarity > 0.0,
+            "similarity must be positive; got {similarity}"
+        );
+
+        // Suppress unused variable warning from app (default threshold).
+        drop(app);
+    }
+
+    /// At default threshold (0.92), dissimilar entries must not conflict.
+    #[tokio::test]
+    async fn conflict_detection_dissimilar_entries_no_conflict() {
+        let (app, _dim) = make_app(0.92);
+
+        // Orthogonal embeddings — cosine similarity = 0.
+        let emb_a = vec![1.0_f32, 0.0, 0.0, 0.0];
+        let emb_b = vec![0.0_f32, 1.0, 0.0, 0.0];
+
+        let (status1, _) = post_note(app.clone(), "proj-dissimilar", "Alpha", emb_a).await;
+        assert_eq!(status1, http::StatusCode::CREATED);
+
+        let (status2, body2) = post_note(app.clone(), "proj-dissimilar", "Beta", emb_b).await;
+        assert_eq!(
+            status2,
+            http::StatusCode::CREATED,
+            "orthogonal entries must not conflict; body: {body2}"
+        );
+    }
+
+    /// threshold = 1.0 disables conflict detection entirely.
+    #[tokio::test]
+    async fn conflict_detection_disabled_at_threshold_one() {
+        let (app, _dim) = make_app(1.0);
+
+        // Use identical embeddings — but with threshold=1.0, no conflict should fire.
+        let embedding = vec![1.0_f32, 0.0, 0.0, 0.0];
+        let (status1, _) = post_note(app.clone(), "proj-disabled", "X", embedding.clone()).await;
+        assert_eq!(status1, http::StatusCode::CREATED);
+        let (status2, body2) = post_note(app.clone(), "proj-disabled", "X dup", embedding).await;
+        assert_eq!(
+            status2,
+            http::StatusCode::CREATED,
+            "threshold=1.0 must disable conflict detection; body: {body2}"
+        );
+    }
 }

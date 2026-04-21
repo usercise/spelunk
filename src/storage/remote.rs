@@ -55,6 +55,17 @@ struct AddNoteRequest {
 #[derive(Deserialize)]
 struct AddNoteResponse {
     id: i64,
+    #[serde(default)]
+    conflicts: Vec<ConflictInfo>,
+}
+
+/// Conflict information returned by the server when a new note is semantically
+/// close to an existing active entry (HTTP 409).
+#[derive(Debug, Deserialize, Clone)]
+pub struct ConflictInfo {
+    pub id: i64,
+    pub title: String,
+    pub similarity: f32,
 }
 
 #[derive(Deserialize)]
@@ -136,12 +147,34 @@ impl MemoryBackend for RemoteMemoryBackend {
             source_ref: input.source_ref,
             valid_at: input.valid_at,
         };
-        let resp = self
+        let http_resp = self
             .authed(self.client.post(self.url("memory")))
             .json(&body)
             .send()
             .await
-            .context("POST /memory")?
+            .context("POST /memory")?;
+
+        let status = http_resp.status();
+
+        // 409 means "stored but conflicting" — treat as success but emit a warning.
+        if status == reqwest::StatusCode::CONFLICT {
+            let resp = http_resp
+                .json::<AddNoteResponse>()
+                .await
+                .context("parsing POST /memory 409 response")?;
+            if !resp.conflicts.is_empty() {
+                eprintln!("warning: memory entry conflicts with existing entries:");
+                for c in &resp.conflicts {
+                    eprintln!(
+                        "  · #{} \"{}\" (similarity: {:.2})",
+                        c.id, c.title, c.similarity
+                    );
+                }
+            }
+            return Ok(resp.id);
+        }
+
+        let resp = http_resp
             .error_for_status()
             .context("server returned error for POST /memory")?
             .json::<AddNoteResponse>()

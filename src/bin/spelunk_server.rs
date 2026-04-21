@@ -6,7 +6,7 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 // Pull in the spelunk library crate (same workspace).
 use spelunk::server::db::ServerDb;
-use spelunk::server::{ApiDoc, AppState, router};
+use spelunk::server::{ApiDoc, AppState, default_conflict_threshold, router};
 use utoipa::OpenApi;
 
 #[derive(Parser, Debug)]
@@ -32,6 +32,12 @@ struct Args {
     /// Default: 768 (EmbeddingGemma 300M).
     #[arg(long, default_value = "768")]
     embedding_dim: usize,
+
+    /// Cosine similarity threshold for conflict detection (0.0–1.0). New entries with
+    /// similarity ≥ this value to an existing active entry trigger a 409 response.
+    /// Set to 1.0 to disable conflict detection.
+    #[arg(long, default_value_t = default_conflict_threshold())]
+    conflict_threshold: f32,
 
     /// Print the OpenAPI spec as JSON and exit (for Postman / Newman import).
     #[arg(long)]
@@ -73,6 +79,7 @@ async fn main() -> Result<()> {
     let state = AppState {
         db: Arc::new(tokio::sync::Mutex::new(db)),
         api_key: args.key,
+        conflict_threshold: args.conflict_threshold,
     };
 
     let app = router(state);

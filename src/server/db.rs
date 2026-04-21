@@ -68,6 +68,9 @@ impl ServerDb {
                 dim = self.embedding_dim
             ))
             .context("creating note_embeddings virtual table")?;
+        self.conn
+            .execute_batch(include_str!("../../migrations/server_002.sql"))
+            .context("server migration 002")?;
         Ok(())
     }
 
@@ -267,6 +270,64 @@ impl ServerDb {
             )?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(notes)
+    }
+
+    /// Search for existing active notes that are semantically close to the given embedding.
+    /// Returns notes with cosine distance ≤ `max_distance` (i.e. similarity ≥ `1 - max_distance`),
+    /// excluding `exclude_id` (the note just written).
+    pub fn search_notes_for_conflicts(
+        &self,
+        project_id: i64,
+        query_vec: &[f32],
+        max_distance: f32,
+        exclude_id: i64,
+        limit: usize,
+    ) -> Result<Vec<ServerNote>> {
+        let limit = limit.min(50);
+        let blob = crate::embeddings::vec_to_blob(query_vec);
+        // We search with a generous k (limit + 1 for the excluded entry) and filter in Rust.
+        let search_limit = limit + 1;
+        let sql = format!(
+            "WITH knn AS (
+                 SELECT note_id, distance
+                 FROM   note_embeddings
+                 WHERE  embedding MATCH ?1 AND k = {search_limit}
+             )
+             SELECT n.id, n.kind, n.title, n.body, n.tags, n.linked_files,
+                    n.created_at, n.status, n.superseded_by, CAST(k.distance AS REAL)
+             FROM   knn k
+             JOIN   notes n ON n.id = k.note_id
+             WHERE  n.project_id = ?2
+               AND  n.status = 'active'
+               AND  n.id != ?3
+               AND  k.distance <= ?4
+             ORDER  BY k.distance
+             LIMIT  {limit}"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let notes = stmt
+            .query_map(
+                rusqlite::params![blob, project_id, exclude_id, max_distance as f64],
+                row_to_note_with_distance,
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(notes)
+    }
+
+    /// Insert a directed edge between two server notes.
+    /// `kind` must be one of: supersedes, relates_to, contradicts.
+    pub fn add_edge(&self, from_id: i64, to_id: i64, kind: &str) -> Result<()> {
+        const VALID_KINDS: &[&str] = &["supersedes", "relates_to", "contradicts"];
+        if !VALID_KINDS.contains(&kind) {
+            anyhow::bail!(
+                "invalid edge kind '{kind}'; must be one of: supersedes, relates_to, contradicts"
+            );
+        }
+        self.conn.execute(
+            "INSERT OR IGNORE INTO note_edges (from_id, to_id, kind) VALUES (?1, ?2, ?3)",
+            rusqlite::params![from_id, to_id, kind],
+        )?;
+        Ok(())
     }
 
     /// Return all git SHAs stored in tags for a project.
