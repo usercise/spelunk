@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Args;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 #[derive(Args, Debug)]
@@ -25,6 +26,62 @@ use crate::{
     config::{Config, resolve_db},
     storage::{Database, open_memory_backend},
 };
+
+/// Format a Unix timestamp age as a human-readable string (e.g. "3 min ago").
+fn format_age(created_at: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let secs = (now - created_at).max(0) as u64;
+    if secs < 90 {
+        format!("{secs} sec ago")
+    } else if secs < 3600 {
+        format!("{} min ago", secs / 60)
+    } else if secs < 86400 {
+        format!("{} hr ago", secs / 3600)
+    } else {
+        format!("{} days ago", secs / 86400)
+    }
+}
+
+/// Collect files modified or untracked relative to HEAD using git.
+/// Returns an empty set on any error (graceful degradation).
+fn worktree_modified_files() -> HashSet<String> {
+    let mut files = HashSet::new();
+
+    // git diff --name-only HEAD — staged + unstaged changes vs HEAD
+    if let Ok(out) = std::process::Command::new("git")
+        .args(["diff", "--name-only", "HEAD"])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let s = line.trim();
+            if !s.is_empty() {
+                files.insert(s.to_string());
+            }
+        }
+    }
+
+    // git status --porcelain — picks up untracked files too
+    if let Ok(out) = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            // Each line is "XY filename" where XY is two-char status code
+            let s = line.trim();
+            if s.len() > 3 {
+                let path = s[3..].trim();
+                if !path.is_empty() {
+                    files.insert(path.to_string());
+                }
+            }
+        }
+    }
+
+    files
+}
 
 pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
     let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
@@ -106,9 +163,34 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
             if let Ok(intents) = handle.block_on(backend.list(Some("intent"), 20, false, None))
                 && !intents.is_empty()
             {
-                println!("Active agent intents: {}", intents.len());
+                println!("Active agent sessions:");
                 for n in &intents {
-                    println!("  #{id}: {title}", id = n.id, title = n.title);
+                    let age = format_age(n.created_at);
+                    if n.linked_files.is_empty() {
+                        println!("  · \"{}\"  ({})", n.title, age);
+                    } else {
+                        println!(
+                            "  · \"{}\"  linked: {}  ({})",
+                            n.title,
+                            n.linked_files.join(", "),
+                            age
+                        );
+                    }
+                }
+
+                // File overlap warning: compare intent linked_files with worktree changes.
+                let modified = worktree_modified_files();
+                if !modified.is_empty() {
+                    let intent_files: HashSet<String> = intents
+                        .iter()
+                        .flat_map(|n| n.linked_files.iter().cloned())
+                        .collect();
+
+                    for file in &modified {
+                        if intent_files.contains(file) {
+                            println!("⚠  Overlap: {file} is listed in an active intent");
+                        }
+                    }
                 }
             }
         }
