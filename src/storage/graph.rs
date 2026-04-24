@@ -152,13 +152,19 @@ impl Database {
             .map(|(i, _)| format!("?{}", i + 1))
             .collect::<Vec<_>>()
             .join(", ");
+        // CTE + INDEXED BY forces SQLite to start from chunk IDs rather than
+        // scanning all 'mentions' edges — critical with 25k+ mention edges.
         let sql = format!(
-            "SELECT c.id, ge.target_name
-             FROM graph_edges ge
-             JOIN chunks c ON c.name = ge.source_name
-             JOIN files f ON f.id = c.file_id AND f.path = ge.source_file
-             WHERE c.id IN ({placeholders})
-               AND ge.kind IN ('mentions', 'calls')"
+            "WITH chunk_info AS MATERIALIZED (
+                 SELECT c.id, c.name, f.path
+                 FROM chunks c JOIN files f ON f.id = c.file_id
+                 WHERE c.id IN ({placeholders})
+             )
+             SELECT ci.id, ge.target_name
+             FROM chunk_info ci
+             JOIN graph_edges ge INDEXED BY graph_edges_source_name_kind
+                  ON ge.source_name = ci.name AND ge.source_file = ci.path
+                  AND ge.kind IN ('mentions', 'calls')"
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let params: Vec<&dyn rusqlite::ToSql> = chunk_ids
@@ -192,7 +198,7 @@ impl Database {
             .join(", ");
         let sql = format!(
             "SELECT ge.target_name, c.id
-             FROM graph_edges ge
+             FROM graph_edges ge INDEXED BY graph_edges_target_name_kind
              JOIN chunks c ON c.name = ge.source_name
              JOIN files f ON f.id = c.file_id AND f.path = ge.source_file
              WHERE ge.target_name IN ({placeholders})
