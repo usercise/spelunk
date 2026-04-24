@@ -23,9 +23,9 @@ const PPR_ITERATIONS: usize = 20;
 const PPR_DAMPING: f32 = 0.85;
 const LAMBDA: f32 = 0.5; // weight of KNN similarity vs PPR score
 /// Latency guards: limit PPR graph size when mention edges are dense.
-const MAX_ACTIVE_SYMBOLS: usize = 50;
-const MAX_CHUNKS_PER_SYMBOL: usize = 20;
-const MAX_EXPANDED_CHUNKS: usize = 200;
+const MAX_ACTIVE_SYMBOLS: usize = 150;
+const MAX_CHUNKS_PER_SYMBOL: usize = 50;
+const MAX_EXPANDED_CHUNKS: usize = 500;
 
 /// Run LinearRAG retrieval and return up to `limit` results.
 ///
