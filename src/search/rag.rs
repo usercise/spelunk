@@ -22,6 +22,10 @@ const ACTIVATION_ITERATIONS: usize = 3; // t
 const PPR_ITERATIONS: usize = 20;
 const PPR_DAMPING: f32 = 0.85;
 const LAMBDA: f32 = 0.5; // weight of KNN similarity vs PPR score
+/// Latency guards: limit PPR graph size when mention edges are dense.
+const MAX_ACTIVE_SYMBOLS: usize = 50;
+const MAX_CHUNKS_PER_SYMBOL: usize = 20;
+const MAX_EXPANDED_CHUNKS: usize = 200;
 
 /// Run LinearRAG retrieval and return up to `limit` results.
 ///
@@ -69,6 +73,19 @@ pub fn linearrag_search(
     // similarity of chunks containing that symbol.
     let chunk_mentions = db.mention_edges_for_chunks(&knn_ids)?;
 
+    // Inverted index: symbol → KNN chunk IDs that mention it. Used for
+    // propagation so we avoid repeated DB round-trips (Stage 1 only uses
+    // KNN-resident chunks, so the in-memory map is sufficient).
+    let mut sym_to_knn_chunks: HashMap<String, Vec<i64>> = HashMap::new();
+    for (&chunk_id, symbols) in &chunk_mentions {
+        for sym in symbols {
+            sym_to_knn_chunks
+                .entry(sym.clone())
+                .or_default()
+                .push(chunk_id);
+        }
+    }
+
     let mut aq: HashMap<String, f32> = HashMap::new();
     for (chunk_id, symbols) in &chunk_mentions {
         let sim = knn_by_id.get(chunk_id).copied().unwrap_or(0.0);
@@ -80,17 +97,17 @@ pub fn linearrag_search(
         }
     }
 
-    // Propagate: for each iteration, look up KNN-resident chunks containing
-    // active symbols and let their similarity update entity activations.
+    // Propagate within the KNN pool using the in-memory inverted index —
+    // no DB queries needed since only KNN-resident similarities are used.
     for _ in 0..ACTIVATION_ITERATIONS {
         if aq.is_empty() {
             break;
         }
-        let sym_refs: Vec<&str> = aq.keys().map(String::as_str).collect();
-        let sym_to_chunks = db.chunks_mentioning_symbols(&sym_refs)?;
-
         let mut updated = false;
-        for (sym, chunk_ids) in &sym_to_chunks {
+        for (sym, chunk_ids) in &sym_to_knn_chunks {
+            if !aq.contains_key(sym) {
+                continue;
+            }
             for &cid in chunk_ids {
                 if let Some(&sim) = knn_by_id.get(&cid)
                     && sim > ENTITY_THRESHOLD
@@ -117,8 +134,14 @@ pub fn linearrag_search(
     }
 
     // ── Stage 2: Personalised PageRank ────────────────────────────────────────
-    // Find ALL chunks mentioning any activated symbol (candidate expansion).
-    let active_syms: Vec<&str> = aq.keys().map(String::as_str).collect();
+    // Cap to top-N symbols by activation score to bound PPR graph size.
+    let mut active_syms_scored: Vec<(&str, f32)> =
+        aq.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    active_syms_scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    active_syms_scored.truncate(MAX_ACTIVE_SYMBOLS);
+    let active_syms: Vec<&str> = active_syms_scored.iter().map(|(s, _)| *s).collect();
+
+    // Find chunks mentioning any activated symbol (candidate expansion).
     let sym_to_chunks = db.chunks_mentioning_symbols(&active_syms)?;
 
     // Build the bipartite entity↔chunk graph as undirected edge pairs.
@@ -138,8 +161,22 @@ pub fn linearrag_search(
     }
 
     // Edges from expanded chunks (those not in the initial KNN pool).
+    // Cap per-symbol and total to keep PPR graph manageable.
+    let mut total_extra: usize = 0;
     for (sym, chunk_ids) in &sym_to_chunks {
+        if total_extra >= MAX_EXPANDED_CHUNKS {
+            break;
+        }
+        let mut sym_extra: usize = 0;
         for &cid in chunk_ids {
+            let is_extra = !knn_by_id.contains_key(&cid);
+            if is_extra {
+                if sym_extra >= MAX_CHUNKS_PER_SYMBOL || total_extra >= MAX_EXPANDED_CHUNKS {
+                    continue;
+                }
+                sym_extra += 1;
+                total_extra += 1;
+            }
             all_candidate_ids.insert(cid);
             let cn = chunk_node(cid);
             bipartite.push((cn.clone(), sym.clone()));
