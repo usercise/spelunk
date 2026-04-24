@@ -1,0 +1,18 @@
+{
+  "run_id": "20260424T080158Z",
+  "benchmark": "repobench",
+  "condition": "baseline",
+  "model": "gemma-4-e2b-it",
+  "model_source": "local",
+  "api_base_url": "http://127.0.0.1:1234/v1",
+  "spelunk_version": "0.5.0",
+  "scaffold_hash": "94dd35da4772ccb1268ae67a227cfda73f874f31",
+  "split": "cross_file_first",
+  "samples": 400,
+  "exact_match": 0.0025,
+  "edit_similarity": 0.2141,
+  "identifier_recall": 0.2894,
+  "median_input_tokens": 1100.0,
+  "median_output_tokens": 52.5,
+  "median_wall_seconds": 2.679
+}
