@@ -424,6 +424,7 @@ pub(super) fn preceding_comment(node: &tree_sitter::Node<'_>, src: &[u8]) -> Opt
             && prev.kind() != "comment"
             && prev.kind() != "line_comment"
             && prev.kind() != "block_comment"
+            && prev.kind() != "doc_comment"
     {
         prev = prev.prev_sibling()?;
     }
