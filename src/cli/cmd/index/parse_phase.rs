@@ -292,7 +292,7 @@ fn process_text_file(
     db.delete_embeddings_for_file(file_id)?;
     db.delete_chunks_for_file(file_id)?;
 
-    // Extract and store graph edges for this file.
+    // Extract and store graph edges for this file (structural: calls/imports/extends).
     match EdgeExtractor::extract(&source, path_str, language) {
         Ok(edges) => {
             if let Err(e) = db.replace_edges(path_str, &edges) {
@@ -300,6 +300,28 @@ fn process_text_file(
             }
         }
         Err(e) => tracing::warn!("graph extraction failed for {path_str}: {e}"),
+    }
+
+    // Store mention edges (broader than calls — used by LinearRAG C matrix).
+    // replace_edges already cleared the file's edges, so we just append here.
+    let mention_owned: Vec<(Option<String>, String)> = chunks
+        .iter()
+        .filter(|c| c.name.is_some())
+        .flat_map(|c| {
+            let name = c.name.clone().unwrap();
+            extract_mention_tokens(&c.content, language)
+                .into_iter()
+                .map(move |sym| (Some(name.clone()), sym))
+        })
+        .collect();
+    let mention_refs: Vec<(Option<&str>, &str)> = mention_owned
+        .iter()
+        .map(|(n, s)| (n.as_deref(), s.as_str()))
+        .collect();
+    if !mention_refs.is_empty()
+        && let Err(e) = db.append_mention_edges(path_str, &mention_refs)
+    {
+        tracing::warn!("mention edge storage failed for {path_str}: {e}");
     }
 
     store_chunks(&chunks, path_str, file_id, db, acc)?;
@@ -365,4 +387,186 @@ fn cleanup_stale(files: &[ignore::DirEntry], root: &std::path::Path, db: &Databa
         }
     }
     Ok(removed)
+}
+
+// ── Mention token extraction ──────────────────────────────────────────────────
+
+/// Keywords to exclude from mention edges, per language family.
+static MENTION_STOPWORDS: std::sync::OnceLock<std::collections::HashSet<&'static str>> =
+    std::sync::OnceLock::new();
+
+fn mention_stopwords() -> &'static std::collections::HashSet<&'static str> {
+    MENTION_STOPWORDS.get_or_init(|| {
+        [
+            // Rust
+            "fn",
+            "let",
+            "mut",
+            "pub",
+            "use",
+            "mod",
+            "struct",
+            "enum",
+            "impl",
+            "trait",
+            "type",
+            "where",
+            "async",
+            "await",
+            "move",
+            "dyn",
+            "ref",
+            "box",
+            "unsafe",
+            "true",
+            "false",
+            "self",
+            "super",
+            "crate",
+            "extern",
+            // Common types / builtins
+            "None",
+            "Some",
+            "Ok",
+            "Err",
+            "Vec",
+            "String",
+            "str",
+            "bool",
+            "usize",
+            "i32",
+            "i64",
+            "u32",
+            "u64",
+            "f32",
+            "f64",
+            "isize",
+            "u8",
+            "i8",
+            "u16",
+            "i16",
+            // Python
+            "def",
+            "class",
+            "import",
+            "from",
+            "with",
+            "pass",
+            "raise",
+            "yield",
+            "lambda",
+            "global",
+            "nonlocal",
+            "assert",
+            "del",
+            // JavaScript / TypeScript
+            "var",
+            "const",
+            "function",
+            "typeof",
+            "instanceof",
+            "new",
+            "delete",
+            "export",
+            "default",
+            "extends",
+            "static",
+            // Go
+            "func",
+            "package",
+            "interface",
+            "chan",
+            "select",
+            "defer",
+            "goto",
+            "fallthrough",
+            // Java / C
+            "void",
+            "null",
+            "class",
+            "int",
+            "long",
+            "double",
+            "float",
+            "char",
+            "byte",
+            "short",
+            "final",
+            "this",
+            "super",
+            "throws",
+            "throw",
+            "catch",
+            "finally",
+            // Control flow (shared)
+            "if",
+            "else",
+            "for",
+            "while",
+            "do",
+            "switch",
+            "case",
+            "break",
+            "continue",
+            "return",
+            "match",
+            "in",
+            "not",
+            "and",
+            "or",
+            "is",
+            // Very common but not meaningful
+            "get",
+            "set",
+            "add",
+            "new",
+            "into",
+            "from",
+            "with",
+            "data",
+            "val",
+        ]
+        .iter()
+        .copied()
+        .collect()
+    })
+}
+
+/// Extract identifier-like tokens from chunk content for use as mention edges.
+/// Returns up to 40 unique tokens that look like symbol names.
+pub(crate) fn extract_mention_tokens(content: &str, _language: &str) -> Vec<String> {
+    let stop = mention_stopwords();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+
+    let mut start: Option<usize> = None;
+    let chars: Vec<char> = content.chars().collect();
+    let n = chars.len();
+
+    for i in 0..=n {
+        let ch = if i < n { chars[i] } else { ' ' };
+        let is_ident = ch.is_ascii_alphanumeric() || ch == '_';
+
+        if is_ident {
+            if start.is_none() {
+                start = Some(i);
+            }
+        } else if let Some(s) = start.take() {
+            let tok: String = chars[s..i].iter().collect();
+            // Keep tokens that look like symbols: 3-50 chars, not all digits, not a stopword
+            if tok.len() >= 3
+                && tok.len() <= 50
+                && !tok.chars().all(|c| c.is_ascii_digit())
+                && !stop.contains(tok.as_str())
+                && seen.insert(tok.clone())
+            {
+                out.push(tok);
+                if out.len() >= 40 {
+                    break;
+                }
+            }
+        }
+    }
+
+    out
 }

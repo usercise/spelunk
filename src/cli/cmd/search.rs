@@ -46,6 +46,10 @@ pub struct SearchArgs {
     /// Search against this snapshot instead of the live index (full or short commit SHA)
     #[arg(long, value_name = "SHA")]
     pub as_of: Option<String>,
+
+    /// Retrieval algorithm: knn (default) or linearrag (two-stage entity activation + PPR)
+    #[arg(long, default_value = "knn", value_name = "ALGO")]
+    pub retrieval: String,
 }
 
 use super::helpers::{embed_query_vec, load_embedder, project_display_name};
@@ -54,7 +58,7 @@ use crate::{
     config::{Config, resolve_db},
     embeddings::vec_to_blob,
     registry::{Project, Registry},
-    search::SearchResult,
+    search::{SearchResult, rag},
     storage::Database,
 };
 
@@ -119,7 +123,10 @@ pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {
         };
 
         sp.set_message("Searching…");
-        let res = if let Some(snap_id) = snapshot_id {
+        let res = if args.retrieval == "linearrag" && snapshot_id.is_none() {
+            let db = Database::open(&db_path)?;
+            rag::linearrag_search(&db, &query_vec, &args.query, fetch_limit)?
+        } else if let Some(snap_id) = snapshot_id {
             let db = Database::open(&db_path)?;
             db.search_snapshot(snap_id, &query_blob, fetch_limit)?
         } else if mode == "hybrid" {
