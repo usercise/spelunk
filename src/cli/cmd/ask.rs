@@ -34,11 +34,12 @@ pub struct AskArgs {
     pub no_stale_check: bool,
 }
 
-use super::helpers::{embed_query, load_llm};
-use super::search::{maybe_warn_stale, resolve_project_and_deps, search_all_dbs};
+use super::helpers::{embed_query_vec, load_llm};
+use super::search::{maybe_warn_stale, resolve_project_and_deps, search_all_dbs_linearrag};
 use super::ui::spinner;
 use crate::{
     config::{Config, resolve_db},
+    embeddings::vec_to_blob,
     storage::{Database, open_memory_backend},
 };
 
@@ -59,12 +60,13 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
         .with_context(|| format!("loading embedding model '{}'", cfg.embedding_model))?;
 
     sp.set_message("Searching for relevant context…");
-    let query_blob = embed_query(&embedder, "question answering", &args.question).await?;
+    let query_vec = embed_query_vec(&embedder, "question answering", &args.question).await?;
 
-    let mut results = search_all_dbs(
+    let mut results = search_all_dbs_linearrag(
         &db_path,
         &dep_dbs,
-        &query_blob,
+        &args.question,
+        &query_vec,
         args.context_chunks.min(100),
     )?;
     sp.finish_and_clear();
@@ -160,7 +162,7 @@ pub async fn ask(args: AskArgs, cfg: Config) -> Result<()> {
     // ── Step 2c: memory context (decisions / requirements / background) ──────
     let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
     let memory_context: Option<String> = if let Ok(backend) = open_memory_backend(&cfg, &mem_path) {
-        match backend.search(&query_blob, 5, None).await {
+        match backend.search(&vec_to_blob(&query_vec), 5, None).await {
             Ok(notes) if !notes.is_empty() => {
                 let text = notes
                     .iter()
