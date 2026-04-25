@@ -1,5 +1,106 @@
 use std::collections::HashMap;
 
+/// Personalised PageRank over a bipartite entity↔chunk graph for LinearRAG Stage 2.
+///
+/// `edges` contains undirected pairs `(node_a, node_b)` (caller should add both
+/// directions). `personalisation` maps entity names to activation scores — only
+/// entity nodes need entries; chunk nodes start at zero personalisation weight.
+/// Returns score per node name (both entity and chunk nodes).
+pub fn compute_personalised_pagerank(
+    edges: &[(String, String)],
+    personalisation: &HashMap<String, f32>,
+    iterations: usize,
+    damping: f32,
+) -> HashMap<String, f32> {
+    if edges.is_empty() {
+        return personalisation
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+    }
+
+    // 1. Collect unique nodes; personalisation nodes must be present.
+    let mut nodes: Vec<String> = Vec::new();
+    let mut node_index: HashMap<String, usize> = HashMap::new();
+
+    for name in personalisation.keys() {
+        if !node_index.contains_key(name) {
+            node_index.insert(name.clone(), nodes.len());
+            nodes.push(name.clone());
+        }
+    }
+    for (from, to) in edges {
+        for name in [from, to] {
+            if !node_index.contains_key(name) {
+                node_index.insert(name.clone(), nodes.len());
+                nodes.push(name.clone());
+            }
+        }
+    }
+
+    let n = nodes.len();
+    if n == 0 {
+        return HashMap::new();
+    }
+
+    // 2. Adjacency lists.
+    let mut out_edges: Vec<Vec<usize>> = vec![vec![]; n];
+    let mut in_edges: Vec<Vec<usize>> = vec![vec![]; n];
+    for (from, to) in edges {
+        let fi = node_index[from];
+        let ti = node_index[to];
+        if fi != ti {
+            out_edges[fi].push(ti);
+            in_edges[ti].push(fi);
+        }
+    }
+
+    // 3. Normalised personalisation vector.
+    let total_p: f32 = personalisation.values().copied().sum::<f32>().max(1e-9);
+    let mut p_vec: Vec<f32> = vec![0.0; n];
+    for (name, &score) in personalisation {
+        if let Some(&idx) = node_index.get(name) {
+            p_vec[idx] = score / total_p;
+        }
+    }
+
+    // 4. Initialise scores.
+    let init = 1.0_f32 / n as f32;
+    let mut scores: Vec<f32> = vec![init; n];
+
+    // 5. Power iterations with personalisation.
+    for _ in 0..iterations {
+        let dangling_sum: f32 = scores
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| out_edges[*i].is_empty())
+            .map(|(_, s)| s)
+            .sum();
+
+        // Teleport + dangling redistribution goes to personalisation nodes.
+        let mut new_scores: Vec<f32> = vec![0.0; n];
+        for i in 0..n {
+            new_scores[i] += (1.0 - damping) * p_vec[i];
+            new_scores[i] += damping * dangling_sum * p_vec[i];
+        }
+
+        for v in 0..n {
+            for &u in &in_edges[v] {
+                let out_deg = out_edges[u].len() as f32;
+                new_scores[v] += damping * scores[u] / out_deg;
+            }
+        }
+
+        scores = new_scores;
+    }
+
+    nodes
+        .into_iter()
+        .enumerate()
+        .map(|(i, name)| (name, scores[i]))
+        .collect()
+}
+
 /// Compute PageRank scores for a set of nodes given directed edges.
 /// Returns a map from node name -> score (scores sum to ~1.0).
 pub fn compute_pagerank(

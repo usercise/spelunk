@@ -27,7 +27,7 @@ use crate::{
     utils::{format_age, worktree_modified_files},
 };
 
-pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
+pub async fn check(args: CheckArgs, cfg: Config) -> Result<()> {
     let db_path = resolve_db(args.db.as_deref(), &cfg.db_path);
     if !db_path.exists() {
         anyhow::bail!(
@@ -102,38 +102,36 @@ pub fn check(args: CheckArgs, cfg: Config) -> Result<()> {
     // Show active intent entries (text mode only; silently skip if memory unavailable).
     if effective == "text" || effective == "porcelain" {
         let mem_path = resolve_db(args.db.as_deref(), &cfg.db_path).with_file_name("memory.db");
-        if let Ok(backend) = open_memory_backend(&cfg, &mem_path) {
-            let handle = tokio::runtime::Handle::current();
-            if let Ok(intents) = handle.block_on(backend.list(Some("intent"), 20, false, None))
-                && !intents.is_empty()
-            {
-                println!("Active agent sessions:");
-                for n in &intents {
-                    let age = format_age(n.created_at);
-                    if n.linked_files.is_empty() {
-                        println!("  · \"{}\"  ({})", n.title, age);
-                    } else {
-                        println!(
-                            "  · \"{}\"  linked: {}  ({})",
-                            n.title,
-                            n.linked_files.join(", "),
-                            age
-                        );
-                    }
+        if let Ok(backend) = open_memory_backend(&cfg, &mem_path)
+            && let Ok(intents) = backend.list(Some("intent"), 20, false, None).await
+            && !intents.is_empty()
+        {
+            println!("Active agent sessions:");
+            for n in &intents {
+                let age = format_age(n.created_at);
+                if n.linked_files.is_empty() {
+                    println!("  · \"{}\"  ({})", n.title, age);
+                } else {
+                    println!(
+                        "  · \"{}\"  linked: {}  ({})",
+                        n.title,
+                        n.linked_files.join(", "),
+                        age
+                    );
                 }
+            }
 
-                // File overlap warning: compare intent linked_files with worktree changes.
-                let modified = worktree_modified_files();
-                if !modified.is_empty() {
-                    let intent_files: std::collections::HashSet<String> = intents
-                        .iter()
-                        .flat_map(|n| n.linked_files.iter().cloned())
-                        .collect();
+            // File overlap warning: compare intent linked_files with worktree changes.
+            let modified = worktree_modified_files();
+            if !modified.is_empty() {
+                let intent_files: std::collections::HashSet<String> = intents
+                    .iter()
+                    .flat_map(|n| n.linked_files.iter().cloned())
+                    .collect();
 
-                    for file in &modified {
-                        if intent_files.contains(file) {
-                            println!("⚠  Overlap: {file} is listed in an active intent");
-                        }
+                for file in &modified {
+                    if intent_files.contains(file) {
+                        println!("⚠  Overlap: {file} is listed in an active intent");
                     }
                 }
             }

@@ -7,6 +7,7 @@ fn parse_known_kinds() {
     assert_eq!(EdgeKind::parse("calls"), EdgeKind::Calls);
     assert_eq!(EdgeKind::parse("extends"), EdgeKind::Extends);
     assert_eq!(EdgeKind::parse("implements"), EdgeKind::Implements);
+    assert_eq!(EdgeKind::parse("mentions"), EdgeKind::Mentions);
 }
 
 #[test]
@@ -23,6 +24,7 @@ fn display_roundtrips_through_parse() {
         EdgeKind::Calls,
         EdgeKind::Extends,
         EdgeKind::Implements,
+        EdgeKind::Mentions,
     ] {
         assert_eq!(EdgeKind::parse(&kind.to_string()), kind);
     }

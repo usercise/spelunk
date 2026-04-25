@@ -26,6 +26,8 @@ pub enum EdgeKind {
     Calls,
     Extends,
     Implements,
+    /// All symbol mentions within a chunk — broader than Calls, used for LinearRAG C matrix.
+    Mentions,
 }
 
 impl std::fmt::Display for EdgeKind {
@@ -35,6 +37,7 @@ impl std::fmt::Display for EdgeKind {
             Self::Calls => write!(f, "calls"),
             Self::Extends => write!(f, "extends"),
             Self::Implements => write!(f, "implements"),
+            Self::Mentions => write!(f, "mentions"),
         }
     }
 }
@@ -46,6 +49,7 @@ impl EdgeKind {
             "calls" => Self::Calls,
             "extends" => Self::Extends,
             "implements" => Self::Implements,
+            "mentions" => Self::Mentions,
             _ => Self::Imports,
         }
     }
