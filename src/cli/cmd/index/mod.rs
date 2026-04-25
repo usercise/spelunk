@@ -42,6 +42,7 @@ pub struct IndexArgs {
 use crate::{config::Config, registry::Registry, storage::Database};
 
 mod embed_phase;
+mod mentions;
 mod parse_phase;
 mod summaries;
 mod worktree;
