@@ -140,6 +140,7 @@ fn collect_files(root: &std::path::Path) -> Result<Vec<ignore::DirEntry>> {
     ];
     let mut walk = WalkBuilder::new(root);
     walk.standard_filters(true);
+    walk.add_custom_ignore_filename(".spelunkignore");
     let mut ob = ignore::overrides::OverrideBuilder::new(root);
     for pat in &sensitive_patterns {
         ob.add(pat).ok();
