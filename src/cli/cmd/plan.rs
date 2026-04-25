@@ -40,11 +40,12 @@ pub struct PlanStatusArgs {
     pub format: String,
 }
 
-use super::helpers::embed_query;
-use super::search::{resolve_project_and_deps, search_all_dbs};
+use super::helpers::embed_query_vec;
+use super::search::{resolve_project_and_deps, search_all_dbs_linearrag};
 use super::ui::spinner;
 use crate::{
     config::{Config, resolve_db},
+    embeddings::vec_to_blob,
     storage::open_memory_backend,
 };
 
@@ -67,15 +68,15 @@ async fn plan_create(
     let embedder = crate::backends::ActiveEmbedder::load(cfg)
         .await
         .context("loading embedder")?;
-    let blob = embed_query(&embedder, "question answering", &args.description).await?;
+    let query_vec = embed_query_vec(&embedder, "question answering", &args.description).await?;
 
-    let chunks = search_all_dbs(&db_path, &dep_paths, &blob, 15)?;
+    let chunks = search_all_dbs_linearrag(&db_path, &dep_paths, &args.description, &query_vec, 15)?;
     sp.finish_and_clear();
 
     // Gather memory context if available.
     let mem_path = resolve_db(None, &cfg.db_path).with_file_name("memory.db");
     let memory_context = {
-        let mblob = blob.clone();
+        let mblob = vec_to_blob(&query_vec);
         match open_memory_backend(cfg, &mem_path).ok() {
             Some(b) => b.search(&mblob, 5, None).await.ok().and_then(|notes| {
                 if notes.is_empty() {
