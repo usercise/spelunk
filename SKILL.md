@@ -110,7 +110,7 @@ spelunk memory add --kind note --title "Follow-up observation" --body "..." \
   --relates-to <other-id>
 ```
 
-**Kinds:** `decision` · `context` · `requirement` · `note` · `intent` · `answer` · `handoff` · `question`
+**Kinds:** `decision` · `context` · `requirement` · `note` · `intent` · `answer` · `handoff` · `question` · `antipattern`
 
 ### Query
 
@@ -127,6 +127,8 @@ spelunk memory timeline "<topic>"         # topic evolution across all entries (
 spelunk memory since <epoch>              # poll for entries newer than Unix timestamp
 spelunk memory watch                      # stream new entries as they arrive (SSE; requires memory_server_url)
 spelunk memory search "<q>" --format json
+spelunk memory failures                   # list all antipatterns (shortcut for list --kind antipattern)
+spelunk memory failures --limit 30
 ```
 
 ### Harvest from git history or Claude Code history
@@ -136,6 +138,8 @@ spelunk memory harvest                    # analyse HEAD~10..HEAD
 spelunk memory harvest --git-range v0.1.0..HEAD
 spelunk memory harvest --branch main      # full branch history
 spelunk memory harvest --source claude-code --confirm  # extract from ~/.claude/history.jsonl
+spelunk memory harvest --source failures  # extract antipatterns from revert/bugfix commits
+spelunk memory harvest --source failures --git-range v0.4.0..HEAD
 ```
 
 Extracts decisions, requirements, and non-obvious notes. From git, analyzes commit messages.
@@ -199,6 +203,7 @@ spelunk memory list --kind decision --limit 10
 spelunk memory list --kind handoff --limit 3
 spelunk memory list --kind intent          # see what teammates are working on
 spelunk memory list --kind question
+spelunk memory failures                    # check antipatterns — things to avoid
 ```
 
 **Understanding code:**
