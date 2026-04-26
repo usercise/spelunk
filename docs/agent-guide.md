@@ -47,6 +47,9 @@ AGENT=true spelunk memory list --kind handoff --limit 5
 
 # Understand what's been decided
 AGENT=true spelunk memory search "architecture decisions"
+
+# Check antipatterns — things to avoid repeating
+AGENT=true spelunk memory failures
 ```
 
 ## Searching before writing
@@ -114,6 +117,8 @@ spelunk verify src/auth/middleware.rs
 # Re-index to incorporate changes
 spelunk index .
 ```
+
+To exclude files or directories from indexing, add a `.spelunkignore` file (same syntax as `.gitignore`) to any directory. It takes higher precedence than `.gitignore`.
 
 ## Storing decisions
 
@@ -443,7 +448,7 @@ Emit memory entries as NDJSON. Use `--kind` to filter by entry type or `--id` to
 
 | Flag | Description |
 |------|-------------|
-| `--kind <kind>` | Filter by memory kind: `decision`, `question`, `note`, `answer`, `requirement`, `handoff`. |
+| `--kind <kind>` | Filter by memory kind: `decision`, `question`, `note`, `answer`, `requirement`, `handoff`, `antipattern`. |
 | `--id <n>` | Fetch a single entry by its integer id. Exits `1` if not found. |
 | `--limit N` | Maximum number of entries (default: `50`). |
 

@@ -18,6 +18,8 @@ spelunk index <path> [options]
 | `--batch-size <n>` | 32 | Embedding batch size |
 | `--force` | false | Re-index all files regardless of hash |
 
+Add a `.spelunkignore` file (same syntax as `.gitignore`) to any directory to exclude files from indexing. Takes higher precedence than `.gitignore`.
+
 **Example:**
 
 ```bash
@@ -38,10 +40,13 @@ spelunk search <query> [options]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-l, --limit <n>` | 10 | Number of results (max 100) |
-| `--format text\|json` | text | Output format |
+| `--format text\|json\|ndjson` | text | Output format |
 | `-g, --graph` | false | Enrich results with 1-hop call-graph neighbours |
 | `--graph-limit <n>` | 10 | Max graph-expanded results to add |
+| `--mode text\|hybrid` | hybrid | `text` uses FTS only (no embedding model); `hybrid` uses LinearRAG (default) |
 | `-d, --db <path>` | auto | Override database path |
+
+Search uses LinearRAG by default: a two-stage entity-activation + personalised PageRank pipeline that improves multi-hop recall significantly over raw KNN.
 
 **Example:**
 
@@ -49,6 +54,7 @@ spelunk search <query> [options]
 spelunk search "where is the JWT token validated"
 spelunk search "database schema migration" --limit 5 --format json
 spelunk search "authentication middleware" --graph
+spelunk search "TODO fix me" --mode text    # FTS only, no embedding model needed
 ```
 
 ---
@@ -246,7 +252,13 @@ spelunk memory search <query> [--limit 10] [--format text|json]
 spelunk memory list [--kind decision] [--limit 20] [--format text|json]
 spelunk memory show <id> [--format text|json]
 spelunk memory harvest [--git-range HEAD~10..HEAD]
+spelunk memory harvest --source failures   # extract antipatterns from revert/bugfix commits
+spelunk memory failures                    # list all antipatterns
 ```
+
+**Memory kinds:** `decision` · `context` · `requirement` · `note` · `intent` · `answer` · `handoff` · `question` · `antipattern`
+
+Use `--kind antipattern` to store things to avoid. `spelunk memory failures` is a shortcut for `spelunk memory list --kind antipattern`.
 
 ---
 
