@@ -68,14 +68,11 @@ pub fn compute_personalised_pagerank(
     let init = 1.0_f32 / n as f32;
     let mut scores: Vec<f32> = vec![init; n];
 
+    let dangling_indices: Vec<usize> = (0..n).filter(|&i| out_edges[i].is_empty()).collect();
+
     // 5. Power iterations with personalisation.
     for _ in 0..iterations {
-        let dangling_sum: f32 = scores
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| out_edges[*i].is_empty())
-            .map(|(_, s)| s)
-            .sum();
+        let dangling_sum: f32 = dangling_indices.iter().map(|&i| scores[i]).sum();
 
         // Teleport + dangling redistribution goes to personalisation nodes.
         let mut new_scores: Vec<f32> = vec![0.0; n];
@@ -151,16 +148,11 @@ pub fn compute_pagerank(
     let mut scores: Vec<f32> = vec![init_score; n];
 
     let base = (1.0 - damping) / n as f32;
+    let dangling_indices: Vec<usize> = (0..n).filter(|&i| out_edges[i].is_empty()).collect();
 
     // 4. Iterate
     for _ in 0..iterations {
-        // Dangling nodes: those with no out-edges contribute to all nodes evenly
-        let dangling_sum: f32 = scores
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| out_edges[*i].is_empty())
-            .map(|(_, s)| s)
-            .sum();
+        let dangling_sum: f32 = dangling_indices.iter().map(|&i| scores[i]).sum();
         let dangling_contrib = damping * dangling_sum / n as f32;
 
         let mut new_scores: Vec<f32> = vec![base + dangling_contrib; n];
