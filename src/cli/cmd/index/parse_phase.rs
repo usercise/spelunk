@@ -1,3 +1,5 @@
+use super::mentions::extract_mention_tokens;
+
 use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar};
@@ -293,7 +295,7 @@ fn process_text_file(
     db.delete_embeddings_for_file(file_id)?;
     db.delete_chunks_for_file(file_id)?;
 
-    // Extract and store graph edges for this file.
+    // Extract and store graph edges for this file (structural: calls/imports/extends).
     match EdgeExtractor::extract(&source, path_str, language) {
         Ok(edges) => {
             if let Err(e) = db.replace_edges(path_str, &edges) {
@@ -301,6 +303,28 @@ fn process_text_file(
             }
         }
         Err(e) => tracing::warn!("graph extraction failed for {path_str}: {e}"),
+    }
+
+    // Store mention edges (broader than calls — used by LinearRAG C matrix).
+    // replace_edges already cleared the file's edges, so we just append here.
+    let mention_owned: Vec<(Option<String>, String)> = chunks
+        .iter()
+        .filter(|c| c.name.is_some())
+        .flat_map(|c| {
+            let name = c.name.clone().unwrap();
+            extract_mention_tokens(&c.content, language)
+                .into_iter()
+                .map(move |sym| (Some(name.clone()), sym))
+        })
+        .collect();
+    let mention_refs: Vec<(Option<&str>, &str)> = mention_owned
+        .iter()
+        .map(|(n, s)| (n.as_deref(), s.as_str()))
+        .collect();
+    if !mention_refs.is_empty()
+        && let Err(e) = db.append_mention_edges(path_str, &mention_refs)
+    {
+        tracing::warn!("mention edge storage failed for {path_str}: {e}");
     }
 
     store_chunks(&chunks, path_str, file_id, db, acc)?;

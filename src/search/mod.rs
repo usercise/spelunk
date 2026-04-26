@@ -1,11 +1,12 @@
 pub mod explore;
+pub mod rag;
 pub mod tokens;
 pub mod tools;
 
 use serde::{Deserialize, Serialize};
 
 /// A single search result returned to the caller.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub chunk_id: i64,
     pub file_path: String,

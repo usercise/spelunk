@@ -1,0 +1,3942 @@
+[
+  {
+    "id": "S1",
+    "cat": "structural",
+    "query": "where is compute_pagerank called",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13129,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "{   \"S1\": {     \"query\": \"where is compute_pagerank called\",     \"pool\": {       \"11582\": {         \"file\": \"bench/linea"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13150,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "[   {     \"id\": \"S1\",     \"cat\": \"structural\",     \"query\": \"where is compute_pagerank called\",     \"knn\": {       \"resu"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13151,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 106,
+          "end": 225,
+          "snippet": "          \"chunk_id\": 12720,           \"file\": \"src/cli/cmd/index/mod.rs\",           \"name\": \"run_phases_3_to_5\",       "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13152,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 211,
+          "end": 330,
+          "snippet": "          \"end\": 120,           \"snippet\": \"{   \\\"S1\\\": {     \\\"query\\\": \\\"where is compute_pagerank called\\\",     \\\"poo"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13184,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3571,
+          "end": 3690,
+          "snippet": "        },         {           \"rank\": 3,           \"chunk_id\": 12139,           \"file\": \"docs/memory.md\",           \"na"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13174,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2521,
+          "end": 2640,
+          "snippet": "        },         {           \"rank\": 7,           \"chunk_id\": 12531,           \"file\": \"src/cli/cmd/links.rs\",        "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13175,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2626,
+          "end": 2745,
+          "snippet": "          \"file\": \"docs/commands.md\",           \"name\": \"spelunk search\",           \"start\": 30,           \"end\": 55,   "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13153,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 316,
+          "end": 435,
+          "snippet": "          \"end\": 195,           \"snippet\": \"fn collect(     node: &tree_sitter::Node<'_>,     src: &[u8],     file_path:"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13147,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1891,
+          "end": 2010,
+          "snippet": "        \"name\": \"chunks\",         \"start\": 7,         \"snippet\": \"mod chunks;\",         \"relevant\": 0       },       \"13"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13142,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1366,
+          "end": 1485,
+          "snippet": "      },       \"12646\": {         \"file\": \"src/cli/cmd/link.rs\",         \"name\": \"link\",         \"start\": 27,         \"s"
+        }
+      ],
+      "latency_p50_ms": 26.6207079985179,
+      "latency_p95_ms": 35.25916702346876
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13207,
+          "file": "src/search/rag.rs",
+          "name": "linearrag_search",
+          "start": 34,
+          "end": 249,
+          "snippet": "pub fn linearrag_search(     db: &Database,     query_vec: &[f32],     query: &str,     limit: usize, ) -> Result<Vec<Se"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12720,
+          "file": "src/cli/cmd/index/mod.rs",
+          "name": "run_phases_3_to_5",
+          "start": 170,
+          "end": 237,
+          "snippet": "async fn run_phases_3_to_5(     args: &IndexArgs,     cfg: &Config,     db: &Database,     root_canonical: &std::path::P"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13118,
+          "file": "src/indexer/pagerank.rs",
+          "name": "compute_pagerank",
+          "start": 106,
+          "end": 184,
+          "snippet": "pub fn compute_pagerank(     edges: &[(String, String)], // (from, to) symbol name pairs     iterations: usize,         "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13117,
+          "file": "src/indexer/pagerank.rs",
+          "name": "compute_personalised_pagerank",
+          "start": 9,
+          "end": 102,
+          "snippet": "pub fn compute_personalised_pagerank(     edges: &[(String, String)],     personalisation: &HashMap<String, f32>,     it"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13129,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "{   \"S1\": {     \"query\": \"where is compute_pagerank called\",     \"pool\": {       \"11582\": {         \"file\": \"bench/linea"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13150,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "[   {     \"id\": \"S1\",     \"cat\": \"structural\",     \"query\": \"where is compute_pagerank called\",     \"knn\": {       \"resu"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13151,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 106,
+          "end": 225,
+          "snippet": "          \"chunk_id\": 12720,           \"file\": \"src/cli/cmd/index/mod.rs\",           \"name\": \"run_phases_3_to_5\",       "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13152,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 211,
+          "end": 330,
+          "snippet": "          \"end\": 120,           \"snippet\": \"{   \\\"S1\\\": {     \\\"query\\\": \\\"where is compute_pagerank called\\\",     \\\"poo"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13184,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3571,
+          "end": 3690,
+          "snippet": "        },         {           \"rank\": 3,           \"chunk_id\": 12139,           \"file\": \"docs/memory.md\",           \"na"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13174,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2521,
+          "end": 2640,
+          "snippet": "        },         {           \"rank\": 7,           \"chunk_id\": 12531,           \"file\": \"src/cli/cmd/links.rs\",        "
+        }
+      ],
+      "latency_p50_ms": 53.0085839855019,
+      "latency_p95_ms": 70.1515419932548
+    }
+  },
+  {
+    "id": "S2",
+    "cat": "structural",
+    "query": "what functions call replace_edges",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13048,
+          "file": "src/indexer/graph/mod.rs",
+          "name": "edges",
+          "start": 14,
+          "end": 14,
+          "snippet": "mod edges;"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13151,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 106,
+          "end": 225,
+          "snippet": "          \"chunk_id\": 12720,           \"file\": \"src/cli/cmd/index/mod.rs\",           \"name\": \"run_phases_3_to_5\",       "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12809,
+          "file": "src/storage/memory/mod.rs",
+          "name": "edges",
+          "start": 6,
+          "end": 6,
+          "snippet": "mod edges;"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13129,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "{   \"S1\": {     \"query\": \"where is compute_pagerank called\",     \"pool\": {       \"11582\": {         \"file\": \"bench/linea"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11683,
+          "file": "tests/integration_db.rs",
+          "name": "replace_edges_round_trips",
+          "start": 160,
+          "end": 185,
+          "snippet": "fn replace_edges_round_trips() {     let db = common::open_test_db();     let edges = vec![         Edge {             s"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12759,
+          "file": "src/cli/cmd/plumbing/mod.rs",
+          "name": "graph_edges",
+          "start": 119,
+          "end": 119,
+          "snippet": "mod graph_edges;"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13191,
+          "file": "src/storage/graph.rs",
+          "name": "replace_edges",
+          "start": 28,
+          "end": 51,
+          "snippet": "pub fn replace_edges(         &self,         file_path: &str,         edges: &[crate::indexer::graph::Edge],     ) -> Re"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 11684,
+          "file": "tests/integration_db.rs",
+          "name": "replace_edges_removes_stale_edges",
+          "start": 189,
+          "end": 212,
+          "snippet": "fn replace_edges_removes_stale_edges() {     let db = common::open_test_db();     let e1 = vec![Edge {         source_fi"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13130,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 106,
+          "end": 225,
+          "snippet": "        \"relevant\": -1       },       \"13048\": {         \"file\": \"src/indexer/graph/mod.rs\",         \"name\": \"edges\",   "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12289,
+          "file": "SKILL.md",
+          "name": "Emit code graph edges (imports, calls, extends)",
+          "start": 80,
+          "end": 82,
+          "snippet": "# Emit code graph edges (imports, calls, extends) spelunk plumbing graph-edges --file <f> | --symbol <s> "
+        }
+      ],
+      "latency_p50_ms": 28.798082988942042,
+      "latency_p95_ms": 32.172666979022324
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12114,
+          "file": "docs/agent-guide.md",
+          "name": "graph-edges",
+          "start": 409,
+          "end": 435,
+          "snippet": "### graph-edges  ``` spelunk plumbing graph-edges --file <file> | --symbol <symbol> ```  Emit code graph edges (imports,"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13060,
+          "file": "src/indexer/graph/mod.rs",
+          "name": "collect",
+          "start": 156,
+          "end": 195,
+          "snippet": "fn collect(     node: &tree_sitter::Node<'_>,     src: &[u8],     file_path: &str,     language: &str,     enclosing: Op"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11684,
+          "file": "tests/integration_db.rs",
+          "name": "replace_edges_removes_stale_edges",
+          "start": 189,
+          "end": 212,
+          "snippet": "fn replace_edges_removes_stale_edges() {     let db = common::open_test_db();     let e1 = vec![Edge {         source_fi"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11683,
+          "file": "tests/integration_db.rs",
+          "name": "replace_edges_round_trips",
+          "start": 160,
+          "end": 185,
+          "snippet": "fn replace_edges_round_trips() {     let db = common::open_test_db();     let edges = vec![         Edge {             s"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13191,
+          "file": "src/storage/graph.rs",
+          "name": "replace_edges",
+          "start": 28,
+          "end": 51,
+          "snippet": "pub fn replace_edges(         &self,         file_path: &str,         edges: &[crate::indexer::graph::Edge],     ) -> Re"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13035,
+          "file": "src/indexer/graph/edges.rs",
+          "name": "python_edges",
+          "start": 69,
+          "end": 125,
+          "snippet": "pub(super) fn python_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)> {     let mut out = Vec:"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13151,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 106,
+          "end": 225,
+          "snippet": "          \"chunk_id\": 12720,           \"file\": \"src/cli/cmd/index/mod.rs\",           \"name\": \"run_phases_3_to_5\",       "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13129,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "{   \"S1\": {     \"query\": \"where is compute_pagerank called\",     \"pool\": {       \"11582\": {         \"file\": \"bench/linea"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13034,
+          "file": "src/indexer/graph/edges.rs",
+          "name": "rust_edges",
+          "start": 4,
+          "end": 67,
+          "snippet": "pub(super) fn rust_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)> {     let mut out = Vec::n"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13039,
+          "file": "src/indexer/graph/edges.rs",
+          "name": "c_edges",
+          "start": 248,
+          "end": 275,
+          "snippet": "pub(super) fn c_edges(node: &tree_sitter::Node<'_>, src: &[u8]) -> Vec<(String, EdgeKind)> {     let mut out = Vec::new("
+        }
+      ],
+      "latency_p50_ms": 48.29158299253322,
+      "latency_p95_ms": 55.6557500094641
+    }
+  },
+  {
+    "id": "S3",
+    "cat": "structural",
+    "query": "where is insert_chunk called",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13153,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 316,
+          "end": 435,
+          "snippet": "          \"end\": 195,           \"snippet\": \"fn collect(     node: &tree_sitter::Node<'_>,     src: &[u8],     file_path:"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12962,
+          "file": "src/storage/chunks.rs",
+          "name": "insert_chunk",
+          "start": 7,
+          "end": 33,
+          "snippet": "pub fn insert_chunk(         &self,         file_id: i64,         node_type: &str,         name: Option<&str>,         s"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13130,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 106,
+          "end": 225,
+          "snippet": "        \"relevant\": -1       },       \"13048\": {         \"file\": \"src/indexer/graph/mod.rs\",         \"name\": \"edges\",   "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12937,
+          "file": "src/storage/db.rs",
+          "name": "insert_embedding",
+          "start": 141,
+          "end": 147,
+          "snippet": "pub fn insert_embedding(&self, chunk_id: i64, blob: &[u8]) -> Result<()> {         self.conn.execute(             \"INSER"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12918,
+          "file": "src/storage/snapshots.rs",
+          "name": "insert_snapshot_embedding",
+          "start": 144,
+          "end": 150,
+          "snippet": "pub fn insert_snapshot_embedding(&self, chunk_id: i64, blob: &[u8]) -> Result<()> {         self.conn.execute(          "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13154,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 421,
+          "end": 540,
+          "snippet": "          \"rank\": 3,           \"chunk_id\": 12962,           \"file\": \"src/storage/chunks.rs\",           \"name\": \"insert_c"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12917,
+          "file": "src/storage/snapshots.rs",
+          "name": "insert_snapshot_chunk",
+          "start": 112,
+          "end": 141,
+          "snippet": "pub fn insert_snapshot_chunk(         &self,         snapshot_id: i64,         file_id: i64,         node_type: &str,   "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11526,
+          "file": "migrations/001_initial.sql",
+          "name": "chunks",
+          "start": 25,
+          "end": 25,
+          "snippet": "CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 11503,
+          "file": "migrations/010_summaries.sql",
+          "name": null,
+          "start": 1,
+          "end": 1,
+          "snippet": "ALTER TABLE chunks ADD COLUMN summary TEXT;"
+        }
+      ],
+      "latency_p50_ms": 32.625709020067006,
+      "latency_p95_ms": 70.31937499414198
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12736,
+          "file": "src/cli/cmd/index/embed_phase.rs",
+          "name": "run_embed_phase",
+          "start": 16,
+          "end": 86,
+          "snippet": "pub(super) async fn run_embed_phase(     chunk_ids_and_texts: Vec<(i64, String)>,     db: &Database,     cfg: &Config,  "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13153,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 316,
+          "end": 435,
+          "snippet": "          \"end\": 195,           \"snippet\": \"fn collect(     node: &tree_sitter::Node<'_>,     src: &[u8],     file_path:"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11679,
+          "file": "tests/integration_db.rs",
+          "name": "insert_and_delete_chunks",
+          "start": 57,
+          "end": 78,
+          "snippet": "fn insert_and_delete_chunks() {     let db = common::open_test_db();     let file_id = db.upsert_file(\"src/foo.rs\", Some"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13130,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 106,
+          "end": 225,
+          "snippet": "        \"relevant\": -1       },       \"13048\": {         \"file\": \"src/indexer/graph/mod.rs\",         \"name\": \"edges\",   "
+        },
+        {
+          "rank": 6,
+          "chunk_id": 11526,
+          "file": "migrations/001_initial.sql",
+          "name": "chunks",
+          "start": 25,
+          "end": 25,
+          "snippet": "CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12962,
+          "file": "src/storage/chunks.rs",
+          "name": "insert_chunk",
+          "start": 7,
+          "end": 33,
+          "snippet": "pub fn insert_chunk(         &self,         file_id: i64,         node_type: &str,         name: Option<&str>,         s"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12917,
+          "file": "src/storage/snapshots.rs",
+          "name": "insert_snapshot_chunk",
+          "start": 112,
+          "end": 141,
+          "snippet": "pub fn insert_snapshot_chunk(         &self,         snapshot_id: i64,         file_id: i64,         node_type: &str,   "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12937,
+          "file": "src/storage/db.rs",
+          "name": "insert_embedding",
+          "start": 141,
+          "end": 147,
+          "snippet": "pub fn insert_embedding(&self, chunk_id: i64, blob: &[u8]) -> Result<()> {         self.conn.execute(             \"INSER"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 11525,
+          "file": "migrations/001_initial.sql",
+          "name": "chunks",
+          "start": 11,
+          "end": 20,
+          "snippet": "CREATE TABLE IF NOT EXISTS chunks (     id         INTEGER PRIMARY KEY AUTOINCREMENT,     file_id    INTEGER NOT NULL RE"
+        }
+      ],
+      "latency_p50_ms": 47.3522919928655,
+      "latency_p95_ms": 50.482749997172505
+    }
+  },
+  {
+    "id": "S4",
+    "cat": "structural",
+    "query": "what calls search_hybrid",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13155,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 526,
+          "end": 645,
+          "snippet": "          \"rank\": 4,           \"chunk_id\": 11566,           \"file\": \"bench/linearrag/labels.json\",           \"name\": nul"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12041,
+          "file": "docs/getting-started.md",
+          "name": "Hybrid search (semantic + full-text) \u2014 the default",
+          "start": 141,
+          "end": 143,
+          "snippet": "# Hybrid search (semantic + full-text) \u2014 the default spelunk search \"authentication\" --mode hybrid "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12140,
+          "file": "docs/memory.md",
+          "name": "Search mode: hybrid (default), semantic, text",
+          "start": 96,
+          "end": 99,
+          "snippet": "# Search mode: hybrid (default), semantic, text spelunk memory search \"auth\" --mode semantic spelunk memory search \"auth"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13131,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 211,
+          "end": 330,
+          "snippet": "      \"11585\": {         \"file\": \"bench/linearrag/results.json\",         \"name\": null,         \"start\": 316,         \"sn"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12956,
+          "file": "src/storage/mod.rs",
+          "name": "search",
+          "start": 10,
+          "end": 10,
+          "snippet": "mod search;"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12811,
+          "file": "src/storage/memory/mod.rs",
+          "name": "search",
+          "start": 8,
+          "end": 8,
+          "snippet": "mod search;"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12602,
+          "file": "src/cli/cmd/memory/mod.rs",
+          "name": "search",
+          "start": 261,
+          "end": 261,
+          "snippet": "mod search;"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12042,
+          "file": "docs/getting-started.md",
+          "name": "Pure text search \u2014 no embedding model needed",
+          "start": 144,
+          "end": 146,
+          "snippet": "# Pure text search \u2014 no embedding model needed spelunk search \"handleRequest\" --mode text "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13156,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 631,
+          "end": 750,
+          "snippet": "          \"start\": 96,           \"end\": 99,           \"snippet\": \"# Search mode: hybrid (default), semantic, text spelun"
+        }
+      ],
+      "latency_p50_ms": 26.33687501656823,
+      "latency_p95_ms": 28.379083989420906
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12777,
+          "file": "src/cli/cmd/search.rs",
+          "name": "search",
+          "start": 65,
+          "end": 242,
+          "snippet": "pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {     let (db_path, dep_projects) = resolve_project_and"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12784,
+          "file": "src/cli/cmd/search.rs",
+          "name": "search_all_dbs_hybrid",
+          "start": 381,
+          "end": 424,
+          "snippet": "pub(crate) fn search_all_dbs_hybrid(     primary_db_path: &std::path::Path,     dep_projects: &[Project],     query: &st"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13155,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 526,
+          "end": 645,
+          "snippet": "          \"rank\": 4,           \"chunk_id\": 11566,           \"file\": \"bench/linearrag/labels.json\",           \"name\": nul"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13131,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 211,
+          "end": 330,
+          "snippet": "      \"11585\": {         \"file\": \"bench/linearrag/results.json\",         \"name\": null,         \"start\": 316,         \"sn"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12264,
+          "file": "README.md",
+          "name": "Semantic search",
+          "start": 66,
+          "end": 76,
+          "snippet": "### Semantic search  ```bash spelunk search \"how are errors propagated to the user\" spelunk search \"database connection "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 11962,
+          "file": "docs/commands.md",
+          "name": "spelunk search",
+          "start": 30,
+          "end": 55,
+          "snippet": "## spelunk search  Semantic search over indexed code.  ``` spelunk search <query> [options] ```  | Flag | Default | Desc"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12776,
+          "file": "src/cli/cmd/search.rs",
+          "name": "SearchArgs",
+          "start": 6,
+          "end": 53,
+          "snippet": "pub struct SearchArgs {     /// Natural language search query     pub query: String,      /// Number of results to retur"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12041,
+          "file": "docs/getting-started.md",
+          "name": "Hybrid search (semantic + full-text) \u2014 the default",
+          "start": 141,
+          "end": 143,
+          "snippet": "# Hybrid search (semantic + full-text) \u2014 the default spelunk search \"authentication\" --mode hybrid "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12140,
+          "file": "docs/memory.md",
+          "name": "Search mode: hybrid (default), semantic, text",
+          "start": 96,
+          "end": 99,
+          "snippet": "# Search mode: hybrid (default), semantic, text spelunk memory search \"auth\" --mode semantic spelunk memory search \"auth"
+        }
+      ],
+      "latency_p50_ms": 46.68874997878447,
+      "latency_p95_ms": 49.3114169803448
+    }
+  },
+  {
+    "id": "S5",
+    "cat": "structural",
+    "query": "where is embed_query_vec called",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13133,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 421,
+          "end": 540,
+          "snippet": "  \"S5\": {     \"query\": \"where is embed_query_vec called\",     \"pool\": {       \"11589\": {         \"file\": \"bench/linearra"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13157,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 736,
+          "end": 855,
+          "snippet": "          \"start\": 6,           \"end\": 53,           \"snippet\": \"pub struct SearchArgs {     /// Natural language search"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13132,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 316,
+          "end": 435,
+          "snippet": "        \"name\": null,         \"start\": 526,         \"snippet\": \"          \\\"rank\\\": 4,           \\\"chunk_id\\\": 7340,    "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12671,
+          "file": "src/cli/cmd/helpers.rs",
+          "name": "embed_query_vec",
+          "start": 51,
+          "end": 59,
+          "snippet": "pub(crate) async fn embed_query_vec(     embedder: &crate::backends::ActiveEmbedder,     task: &str,     query: &str, ) "
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12672,
+          "file": "src/cli/cmd/helpers.rs",
+          "name": "embed_query",
+          "start": 63,
+          "end": 70,
+          "snippet": "pub(crate) async fn embed_query(     embedder: &crate::backends::ActiveEmbedder,     task: &str,     query: &str, ) -> R"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12113,
+          "file": "docs/agent-guide.md",
+          "name": "embed",
+          "start": 381,
+          "end": 408,
+          "snippet": "### embed  ``` spelunk plumbing embed [--query] ```  Read lines from stdin and emit one NDJSON embedding vector per line"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 11720,
+          "file": "tests/embed.rs",
+          "name": "embed_query_mode_produces_ndjson_vector",
+          "start": 120,
+          "end": 149,
+          "snippet": "async fn embed_query_mode_produces_ndjson_vector() {     const DIMS: usize = 768;     let mock = MockServer::start().awa"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12422,
+          "file": "src/lib.rs",
+          "name": "embeddings",
+          "start": 4,
+          "end": 4,
+          "snippet": "pub mod embeddings;"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12372,
+          "file": "src/embeddings/openai_compat.rs",
+          "name": "EmbedData",
+          "start": 56,
+          "end": 58,
+          "snippet": "struct EmbedData {     embedding: Vec<f32>, }"
+        }
+      ],
+      "latency_p50_ms": 34.514208004111424,
+      "latency_p95_ms": 45.40804200223647
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12772,
+          "file": "src/cli/cmd/plumbing/embed_cmd.rs",
+          "name": "embed_cmd",
+          "start": 16,
+          "end": 59,
+          "snippet": "pub(super) async fn embed_cmd(cfg: &Config, query_mode: bool) -> Result<()> {     if std::io::stdin().is_terminal() {   "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11720,
+          "file": "tests/embed.rs",
+          "name": "embed_query_mode_produces_ndjson_vector",
+          "start": 120,
+          "end": 149,
+          "snippet": "async fn embed_query_mode_produces_ndjson_vector() {     const DIMS: usize = 768;     let mock = MockServer::start().awa"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12113,
+          "file": "docs/agent-guide.md",
+          "name": "embed",
+          "start": 381,
+          "end": 408,
+          "snippet": "### embed  ``` spelunk plumbing embed [--query] ```  Read lines from stdin and emit one NDJSON embedding vector per line"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11718,
+          "file": "tests/embed.rs",
+          "name": "embed_document_mode_produces_ndjson_vector",
+          "start": 76,
+          "end": 117,
+          "snippet": "async fn embed_document_mode_produces_ndjson_vector() {     const DIMS: usize = 768;     let mock = MockServer::start()."
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12374,
+          "file": "src/embeddings/openai_compat.rs",
+          "name": "embed",
+          "start": 66,
+          "end": 102,
+          "snippet": "async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {         // Append <eos> to each input so the GGUF token"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13133,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 421,
+          "end": 540,
+          "snippet": "  \"S5\": {     \"query\": \"where is embed_query_vec called\",     \"pool\": {       \"11589\": {         \"file\": \"bench/linearra"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13157,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 736,
+          "end": 855,
+          "snippet": "          \"start\": 6,           \"end\": 53,           \"snippet\": \"pub struct SearchArgs {     /// Natural language search"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12671,
+          "file": "src/cli/cmd/helpers.rs",
+          "name": "embed_query_vec",
+          "start": 51,
+          "end": 59,
+          "snippet": "pub(crate) async fn embed_query_vec(     embedder: &crate::backends::ActiveEmbedder,     task: &str,     query: &str, ) "
+        }
+      ],
+      "latency_p50_ms": 46.1382910143584,
+      "latency_p95_ms": 47.78120800619945
+    }
+  },
+  {
+    "id": "M1",
+    "cat": "multihop",
+    "query": "how does error handling propagate from storage to CLI",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13134,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 526,
+          "end": 645,
+          "snippet": "        \"snippet\": \"### `spelunk plumbing embed`  Read lines of text from stdin; emit one embedding vector per line.  ``"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13159,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 946,
+          "end": 1065,
+          "snippet": "        {           \"rank\": 7,           \"chunk_id\": 12374,           \"file\": \"src/embeddings/openai_compat.rs\",        "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12423,
+          "file": "src/lib.rs",
+          "name": "error",
+          "start": 5,
+          "end": 5,
+          "snippet": "pub mod error;"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11703,
+          "file": "tests/ls_files.rs",
+          "name": "plumbing_exits_2_on_error",
+          "start": 144,
+          "end": 169,
+          "snippet": "fn plumbing_exits_2_on_error() {     // When the plumbing dispatcher returns Err (e.g. missing DB),     // main.rs inter"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13133,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 421,
+          "end": 540,
+          "snippet": "  \"S5\": {     \"query\": \"where is embed_query_vec called\",     \"pool\": {       \"11589\": {         \"file\": \"bench/linearra"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13023,
+          "file": "src/main.rs",
+          "name": "cli",
+          "start": 4,
+          "end": 4,
+          "snippet": "mod cli;"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13160,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1051,
+          "end": 1170,
+          "snippet": "          \"name\": \"open_store\",           \"start\": 19,           \"end\": 23,           \"snippet\": \"fn open_store() -> Mem"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12397,
+          "file": "src/error.rs",
+          "name": "IndexError",
+          "start": 5,
+          "end": 14,
+          "snippet": "pub enum IndexError {     #[error(\"unsupported language: {0}\")]     UnsupportedLanguage(String),      #[error(\"parse err"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12820,
+          "file": "src/storage/memory/tests.rs",
+          "name": "open_store",
+          "start": 19,
+          "end": 23,
+          "snippet": "fn open_store() -> MemoryStore {     register_sqlite_vec();     MemoryStore::open(std::path::Path::new(\":memory:\"))     "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12429,
+          "file": "src/lib.rs",
+          "name": "storage",
+          "start": 11,
+          "end": 11,
+          "snippet": "pub mod storage;"
+        }
+      ],
+      "latency_p50_ms": 27.56554097868502,
+      "latency_p95_ms": 28.944416000740603
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13024,
+          "file": "src/main.rs",
+          "name": "main",
+          "start": 11,
+          "end": 79,
+          "snippet": "async fn main() -> Result<()> {     // Register sqlite-vec for every SQLite connection opened in this process.     // SA"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13134,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 526,
+          "end": 645,
+          "snippet": "        \"snippet\": \"### `spelunk plumbing embed`  Read lines of text from stdin; emit one embedding vector per line.  ``"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13159,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 946,
+          "end": 1065,
+          "snippet": "        {           \"rank\": 7,           \"chunk_id\": 12374,           \"file\": \"src/embeddings/openai_compat.rs\",        "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13133,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 421,
+          "end": 540,
+          "snippet": "  \"S5\": {     \"query\": \"where is embed_query_vec called\",     \"pool\": {       \"11589\": {         \"file\": \"bench/linearra"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11703,
+          "file": "tests/ls_files.rs",
+          "name": "plumbing_exits_2_on_error",
+          "start": 144,
+          "end": 169,
+          "snippet": "fn plumbing_exits_2_on_error() {     // When the plumbing dispatcher returns Err (e.g. missing DB),     // main.rs inter"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12232,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Exit code convention",
+          "start": 25,
+          "end": 34,
+          "snippet": "## Exit code convention  | Exit code | Meaning | |-----------|---------| | `0` | Command succeeded; one or more results "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12423,
+          "file": "src/lib.rs",
+          "name": "error",
+          "start": 5,
+          "end": 5,
+          "snippet": "pub mod error;"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13023,
+          "file": "src/main.rs",
+          "name": "cli",
+          "start": 4,
+          "end": 4,
+          "snippet": "mod cli;"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12397,
+          "file": "src/error.rs",
+          "name": "IndexError",
+          "start": 5,
+          "end": 14,
+          "snippet": "pub enum IndexError {     #[error(\"unsupported language: {0}\")]     UnsupportedLanguage(String),      #[error(\"parse err"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12820,
+          "file": "src/storage/memory/tests.rs",
+          "name": "open_store",
+          "start": 19,
+          "end": 23,
+          "snippet": "fn open_store() -> MemoryStore {     register_sqlite_vec();     MemoryStore::open(std::path::Path::new(\":memory:\"))     "
+        }
+      ],
+      "latency_p50_ms": 48.57904100208543,
+      "latency_p95_ms": 48.7536670116242
+    }
+  },
+  {
+    "id": "M2",
+    "cat": "multihop",
+    "query": "what code is involved in the embedding pipeline",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13161,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1156,
+          "end": 1275,
+          "snippet": "          \"name\": \"error\",           \"start\": 5,           \"end\": 5,           \"snippet\": \"pub mod error;\"         },   "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13134,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 526,
+          "end": 645,
+          "snippet": "        \"snippet\": \"### `spelunk plumbing embed`  Read lines of text from stdin; emit one embedding vector per line.  ``"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11838,
+          "file": "docs/architecture.md",
+          "name": "Data flow: index",
+          "start": 123,
+          "end": 134,
+          "snippet": "## Data flow: index  ``` files on disk   \u2192 SourceParser (tree-sitter AST \u2192 Chunk[])   \u2192 SecretScanner (drop credential c"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12422,
+          "file": "src/lib.rs",
+          "name": "embeddings",
+          "start": 4,
+          "end": 4,
+          "snippet": "pub mod embeddings;"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12113,
+          "file": "docs/agent-guide.md",
+          "name": "embed",
+          "start": 381,
+          "end": 408,
+          "snippet": "### embed  ``` spelunk plumbing embed [--query] ```  Read lines from stdin and emit one NDJSON embedding vector per line"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13133,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 421,
+          "end": 540,
+          "snippet": "  \"S5\": {     \"query\": \"where is embed_query_vec called\",     \"pool\": {       \"11589\": {         \"file\": \"bench/linearra"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12064,
+          "file": "docs/architecture/plumbing-commands.md",
+          "name": "`spelunk plumbing embed`",
+          "start": 131,
+          "end": 143,
+          "snippet": "### `spelunk plumbing embed`  Read lines of text from stdin; emit one embedding vector per line.  ```json { \"index\": 0, "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13162,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1261,
+          "end": 1380,
+          "snippet": "        },         {           \"rank\": 9,           \"chunk_id\": 12064,           \"file\": \"docs/architecture/plumbing-com"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12372,
+          "file": "src/embeddings/openai_compat.rs",
+          "name": "EmbedData",
+          "start": 56,
+          "end": 58,
+          "snippet": "struct EmbedData {     embedding: Vec<f32>, }"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13158,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 841,
+          "end": 960,
+          "snippet": "        {           \"rank\": 6,           \"chunk_id\": 11720,           \"file\": \"tests/embed.rs\",           \"name\": \"embed"
+        }
+      ],
+      "latency_p50_ms": 26.810707990080118,
+      "latency_p95_ms": 28.013625007588416
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12772,
+          "file": "src/cli/cmd/plumbing/embed_cmd.rs",
+          "name": "embed_cmd",
+          "start": 16,
+          "end": 59,
+          "snippet": "pub(super) async fn embed_cmd(cfg: &Config, query_mode: bool) -> Result<()> {     if std::io::stdin().is_terminal() {   "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11838,
+          "file": "docs/architecture.md",
+          "name": "Data flow: index",
+          "start": 123,
+          "end": 134,
+          "snippet": "## Data flow: index  ``` files on disk   \u2192 SourceParser (tree-sitter AST \u2192 Chunk[])   \u2192 SecretScanner (drop credential c"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12113,
+          "file": "docs/agent-guide.md",
+          "name": "embed",
+          "start": 381,
+          "end": 408,
+          "snippet": "### embed  ``` spelunk plumbing embed [--query] ```  Read lines from stdin and emit one NDJSON embedding vector per line"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12064,
+          "file": "docs/architecture/plumbing-commands.md",
+          "name": "`spelunk plumbing embed`",
+          "start": 131,
+          "end": 143,
+          "snippet": "### `spelunk plumbing embed`  Read lines of text from stdin; emit one embedding vector per line.  ```json { \"index\": 0, "
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13161,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1156,
+          "end": 1275,
+          "snippet": "          \"name\": \"error\",           \"start\": 5,           \"end\": 5,           \"snippet\": \"pub mod error;\"         },   "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13134,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 526,
+          "end": 645,
+          "snippet": "        \"snippet\": \"### `spelunk plumbing embed`  Read lines of text from stdin; emit one embedding vector per line.  ``"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12276,
+          "file": "SKILL.md",
+          "name": "Indexing",
+          "start": 16,
+          "end": 25,
+          "snippet": "## Indexing  ```bash spelunk index <path>           # index (subsequent runs are incremental) spelunk index <path> --for"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12422,
+          "file": "src/lib.rs",
+          "name": "embeddings",
+          "start": 4,
+          "end": 4,
+          "snippet": "pub mod embeddings;"
+        }
+      ],
+      "latency_p50_ms": 46.64158300147392,
+      "latency_p95_ms": 50.25033300626092
+    }
+  },
+  {
+    "id": "M3",
+    "cat": "multihop",
+    "query": "how does incremental indexing work with file hashing",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13163,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1366,
+          "end": 1485,
+          "snippet": "        },         {           \"rank\": 10,           \"chunk_id\": 12276,           \"file\": \"SKILL.md\",           \"name\": "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13136,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 736,
+          "end": 855,
+          "snippet": "  },   \"M3\": {     \"query\": \"how does incremental indexing work with file hashing\",     \"pool\": {       \"11595\": {      "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13135,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 631,
+          "end": 750,
+          "snippet": "        \"file\": \"bench/linearrag/results.json\",         \"name\": null,         \"start\": 1156,         \"snippet\": \"       "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12325,
+          "file": "CLAUDE.md",
+          "name": "Incremental indexing",
+          "start": 215,
+          "end": 218,
+          "snippet": "### Incremental indexing Each file is hashed with blake3. On re-index, unchanged files are skipped. Changed files: delet"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11833,
+          "file": "docs/architecture.md",
+          "name": "Incremental indexing via blake3",
+          "start": 94,
+          "end": 97,
+          "snippet": "### Incremental indexing via blake3  Each file is hashed with blake3. On re-index, unchanged files are skipped entirely."
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12062,
+          "file": "docs/architecture/plumbing-commands.md",
+          "name": "`spelunk plumbing hash-file <file-path>`",
+          "start": 82,
+          "end": 99,
+          "snippet": "### `spelunk plumbing hash-file <file-path>`  Emit the blake3 hash for a single file and whether the index is current.  "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12745,
+          "file": "src/cli/cmd/plumbing/hash_file.rs",
+          "name": "hash_file",
+          "start": 15,
+          "end": 34,
+          "snippet": "pub(super) fn hash_file(args: PlumbingHashFileArgs, db: &Database) -> Result<()> {     let path = &args.file;     let by"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12111,
+          "file": "docs/agent-guide.md",
+          "name": "hash-file",
+          "start": 325,
+          "end": 350,
+          "snippet": "### hash-file  ``` spelunk plumbing hash-file <file> ```  Compute the blake3 hash of a file and check whether it matches"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11527,
+          "file": "migrations/001_initial.sql",
+          "name": "files",
+          "start": 26,
+          "end": 26,
+          "snippet": "CREATE INDEX IF NOT EXISTS idx_files_path     ON files(path)"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 11988,
+          "file": "docs/example/AGENT.md",
+          "name": "Check if a file has changed since last index",
+          "start": 79,
+          "end": 81,
+          "snippet": "# Check if a file has changed since last index spelunk plumbing hash-file src/auth.rs "
+        }
+      ],
+      "latency_p50_ms": 26.97845801594667,
+      "latency_p95_ms": 33.494874980533496
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 11707,
+          "file": "tests/hash_file.rs",
+          "name": "hash_file_reports_null_indexed_hash_for_unknown_file",
+          "start": 101,
+          "end": 132,
+          "snippet": "fn hash_file_reports_null_indexed_hash_for_unknown_file() {     let (_tmp, db_path, config_path) = index_fixture_project"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11706,
+          "file": "tests/hash_file.rs",
+          "name": "hash_file_is_current_for_relative_indexed_path",
+          "start": 55,
+          "end": 96,
+          "snippet": "fn hash_file_is_current_for_relative_indexed_path() {     let (_tmp, db_path, config_path) = index_fixture_project();   "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12111,
+          "file": "docs/agent-guide.md",
+          "name": "hash-file",
+          "start": 325,
+          "end": 350,
+          "snippet": "### hash-file  ``` spelunk plumbing hash-file <file> ```  Compute the blake3 hash of a file and check whether it matches"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11833,
+          "file": "docs/architecture.md",
+          "name": "Incremental indexing via blake3",
+          "start": 94,
+          "end": 97,
+          "snippet": "### Incremental indexing via blake3  Each file is hashed with blake3. On re-index, unchanged files are skipped entirely."
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12745,
+          "file": "src/cli/cmd/plumbing/hash_file.rs",
+          "name": "hash_file",
+          "start": 15,
+          "end": 34,
+          "snippet": "pub(super) fn hash_file(args: PlumbingHashFileArgs, db: &Database) -> Result<()> {     let path = &args.file;     let by"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12941,
+          "file": "src/storage/files.rs",
+          "name": "upsert_file",
+          "start": 15,
+          "end": 38,
+          "snippet": "pub fn upsert_file(&self, path: &str, language: Option<&str>, hash: &str) -> Result<i64> {         let now = std::time::"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13163,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1366,
+          "end": 1485,
+          "snippet": "        },         {           \"rank\": 10,           \"chunk_id\": 12276,           \"file\": \"SKILL.md\",           \"name\": "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13136,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 736,
+          "end": 855,
+          "snippet": "  },   \"M3\": {     \"query\": \"how does incremental indexing work with file hashing\",     \"pool\": {       \"11595\": {      "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11990,
+          "file": "docs/example/AGENT.md",
+          "name": "Re-indexing",
+          "start": 90,
+          "end": 102,
+          "snippet": "## Re-indexing  spelunk indexes are incremental. Re-run after significant changes:  ```bash spelunk index .            #"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12727,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "process_doc_file",
+          "start": 167,
+          "end": 197,
+          "snippet": "fn process_doc_file(     path: &std::path::Path,     path_str: &str,     doc_lang: &'static str,     db: &Database,     "
+        }
+      ],
+      "latency_p50_ms": 49.458041990874335,
+      "latency_p95_ms": 60.876417002873495
+    }
+  },
+  {
+    "id": "M4",
+    "cat": "multihop",
+    "query": "how are tree-sitter parse results converted to chunks",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 11831,
+          "file": "docs/architecture.md",
+          "name": "Chunking: tree-sitter AST nodes, not line splits",
+          "start": 82,
+          "end": 87,
+          "snippet": "### Chunking: tree-sitter AST nodes, not line splits  Tree-sitter parses source code into an AST and spelunk extracts na"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13165,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1576,
+          "end": 1695,
+          "snippet": "    }   },   {     \"id\": \"M4\",     \"cat\": \"multihop\",     \"query\": \"how are tree-sitter parse results converted to chunk"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13166,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1681,
+          "end": 1800,
+          "snippet": "          \"rank\": 1,           \"chunk_id\": 13072,           \"file\": \"src/indexer/parser/mod.rs\",           \"name\": \"pars"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13137,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 841,
+          "end": 960,
+          "snippet": "        \"start\": 15,         \"snippet\": \"pub fn upsert_file(&self, path: &str, language: Option<&str>, hash: &str) -> Re"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12322,
+          "file": "CLAUDE.md",
+          "name": "Chunking strategy",
+          "start": 195,
+          "end": 200,
+          "snippet": "### Chunking strategy Tree-sitter extracts **named semantic nodes** (functions, structs, impls, etc.) rather than naive "
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12769,
+          "file": "src/cli/cmd/plumbing/parse_file.rs",
+          "name": "ParsedChunk",
+          "start": 8,
+          "end": 15,
+          "snippet": "struct ParsedChunk {     kind: String,     name: Option<String>,     start_line: usize,     end_line: usize,     content"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12723,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "ParseResult",
+          "start": 21,
+          "end": 26,
+          "snippet": "pub(super) struct ParseResult {     /// (chunk_id, embedding_text) pairs awaiting embedding.     pub chunk_ids_and_texts"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12729,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "pages_to_chunks",
+          "start": 238,
+          "end": 254,
+          "snippet": "fn pages_to_chunks(pages: Vec<(u32, String)>, path_str: &str) -> Vec<crate::indexer::Chunk> {     pages         .into_it"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12110,
+          "file": "docs/agent-guide.md",
+          "name": "parse-file",
+          "start": 298,
+          "end": 324,
+          "snippet": "### parse-file  ``` spelunk plumbing parse-file <file> ```  Parse a file with tree-sitter and emit chunks as NDJSON with"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12059,
+          "file": "docs/architecture/plumbing-commands.md",
+          "name": "`spelunk plumbing cat-chunks <file-path>`",
+          "start": 29,
+          "end": 51,
+          "snippet": "### `spelunk plumbing cat-chunks <file-path>`  Emit each indexed chunk for a file as a JSON object.  **Output fields per"
+        }
+      ],
+      "latency_p50_ms": 25.78445800463669,
+      "latency_p95_ms": 43.230875016888604
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13072,
+          "file": "src/indexer/parser/mod.rs",
+          "name": "parse",
+          "start": 131,
+          "end": 192,
+          "snippet": "pub fn parse(source: &str, file_path: &str, language: &str) -> Result<Vec<Chunk>> {         // Text formats bypass tree-"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11831,
+          "file": "docs/architecture.md",
+          "name": "Chunking: tree-sitter AST nodes, not line splits",
+          "start": 82,
+          "end": 87,
+          "snippet": "### Chunking: tree-sitter AST nodes, not line splits  Tree-sitter parses source code into an AST and spelunk extracts na"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12322,
+          "file": "CLAUDE.md",
+          "name": "Chunking strategy",
+          "start": 195,
+          "end": 200,
+          "snippet": "### Chunking strategy Tree-sitter extracts **named semantic nodes** (functions, structs, impls, etc.) rather than naive "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12270,
+          "file": "README.md",
+          "name": "Supported languages",
+          "start": 126,
+          "end": 131,
+          "snippet": "## Supported languages  Tree-sitter AST-aware chunking for: **Rust**, **Go**, **Python**, **TypeScript**, **JavaScript**"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12110,
+          "file": "docs/agent-guide.md",
+          "name": "parse-file",
+          "start": 298,
+          "end": 324,
+          "snippet": "### parse-file  ``` spelunk plumbing parse-file <file> ```  Parse a file with tree-sitter and emit chunks as NDJSON with"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12729,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "pages_to_chunks",
+          "start": 238,
+          "end": 254,
+          "snippet": "fn pages_to_chunks(pages: Vec<(u32, String)>, path_str: &str) -> Vec<crate::indexer::Chunk> {     pages         .into_it"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13030,
+          "file": "src/indexer/chunker.rs",
+          "name": "Chunk",
+          "start": 38,
+          "end": 55,
+          "snippet": "pub struct Chunk {     #[allow(dead_code)]     pub file_path: String,     #[allow(dead_code)]     pub language: String, "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12770,
+          "file": "src/cli/cmd/plumbing/parse_file.rs",
+          "name": "parse_file",
+          "start": 17,
+          "end": 47,
+          "snippet": "pub(super) fn parse_file(args: PlumbingParseFileArgs) -> Result<()> {     let path = &args.file;     let language = matc"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12059,
+          "file": "docs/architecture/plumbing-commands.md",
+          "name": "`spelunk plumbing cat-chunks <file-path>`",
+          "start": 29,
+          "end": 51,
+          "snippet": "### `spelunk plumbing cat-chunks <file-path>`  Emit each indexed chunk for a file as a JSON object.  **Output fields per"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12723,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "ParseResult",
+          "start": 21,
+          "end": 26,
+          "snippet": "pub(super) struct ParseResult {     /// (chunk_id, embedding_text) pairs awaiting embedding.     pub chunk_ids_and_texts"
+        }
+      ],
+      "latency_p50_ms": 45.37858397816308,
+      "latency_p95_ms": 48.71104200719856
+    }
+  },
+  {
+    "id": "M5",
+    "cat": "multihop",
+    "query": "how does the search result get formatted and output to the terminal",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13138,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 946,
+          "end": 1065,
+          "snippet": "        \"relevant\": 1       },       \"12770\": {         \"file\": \"src/cli/cmd/plumbing/parse_file.rs\",         \"name\": \"p"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13166,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1681,
+          "end": 1800,
+          "snippet": "          \"rank\": 1,           \"chunk_id\": 13072,           \"file\": \"src/indexer/parser/mod.rs\",           \"name\": \"pars"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12565,
+          "file": "src/cli/cmd/ui.rs",
+          "name": "print_results_text",
+          "start": 31,
+          "end": 97,
+          "snippet": "pub(crate) fn print_results_text(results: &[crate::search::SearchResult]) {     let knn_count = results.iter().filter(|r"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13137,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 841,
+          "end": 960,
+          "snippet": "        \"start\": 15,         \"snippet\": \"pub fn upsert_file(&self, path: &str, language: Option<&str>, hash: &str) -> Re"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13156,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 631,
+          "end": 750,
+          "snippet": "          \"start\": 96,           \"end\": 99,           \"snippet\": \"# Search mode: hybrid (default), semantic, text spelun"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13168,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1891,
+          "end": 2010,
+          "snippet": "          \"start\": 31,           \"end\": 97,           \"snippet\": \"pub(crate) fn print_results_text(results: &[crate::sea"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12075,
+          "file": "docs/agent-guide.md",
+          "name": "Machine-readable output",
+          "start": 19,
+          "end": 33,
+          "snippet": "## Machine-readable output  Set `AGENT=true` and every `spelunk` command returns JSON:  ```bash export AGENT=true  spelu"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13175,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2626,
+          "end": 2745,
+          "snippet": "          \"file\": \"docs/commands.md\",           \"name\": \"spelunk search\",           \"start\": 30,           \"end\": 55,   "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13167,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1786,
+          "end": 1905,
+          "snippet": "          \"start\": 1681,           \"end\": 1800,           \"snippet\": \"          \\\"rank\\\": 1,           \\\"chunk_id\\\": 968"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13132,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 316,
+          "end": 435,
+          "snippet": "        \"name\": null,         \"start\": 526,         \"snippet\": \"          \\\"rank\\\": 4,           \\\"chunk_id\\\": 7340,    "
+        }
+      ],
+      "latency_p50_ms": 28.026957996189594,
+      "latency_p95_ms": 30.063542013522238
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12777,
+          "file": "src/cli/cmd/search.rs",
+          "name": "search",
+          "start": 65,
+          "end": 242,
+          "snippet": "pub async fn search(args: SearchArgs, cfg: Config) -> Result<()> {     let (db_path, dep_projects) = resolve_project_and"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12565,
+          "file": "src/cli/cmd/ui.rs",
+          "name": "print_results_text",
+          "start": 31,
+          "end": 97,
+          "snippet": "pub(crate) fn print_results_text(results: &[crate::search::SearchResult]) {     let knn_count = results.iter().filter(|r"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13138,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 946,
+          "end": 1065,
+          "snippet": "        \"relevant\": 1       },       \"12770\": {         \"file\": \"src/cli/cmd/plumbing/parse_file.rs\",         \"name\": \"p"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13166,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1681,
+          "end": 1800,
+          "snippet": "          \"rank\": 1,           \"chunk_id\": 13072,           \"file\": \"src/indexer/parser/mod.rs\",           \"name\": \"pars"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13137,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 841,
+          "end": 960,
+          "snippet": "        \"start\": 15,         \"snippet\": \"pub fn upsert_file(&self, path: &str, language: Option<&str>, hash: &str) -> Re"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12075,
+          "file": "docs/agent-guide.md",
+          "name": "Machine-readable output",
+          "start": 19,
+          "end": 33,
+          "snippet": "## Machine-readable output  Set `AGENT=true` and every `spelunk` command returns JSON:  ```bash export AGENT=true  spelu"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12775,
+          "file": "src/cli/cmd/explore.rs",
+          "name": "print_result",
+          "start": 80,
+          "end": 96,
+          "snippet": "fn print_result(result: &ExploreResult) {     println!(\"{}\", result.answer);     if !result.sources.is_empty() {        "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12566,
+          "file": "src/cli/cmd/ui.rs",
+          "name": "print_chunks_text",
+          "start": 99,
+          "end": 121,
+          "snippet": "pub(crate) fn print_chunks_text(chunks: &[crate::search::SearchResult]) {     for (i, c) in chunks.iter().enumerate() { "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11962,
+          "file": "docs/commands.md",
+          "name": "spelunk search",
+          "start": 30,
+          "end": 55,
+          "snippet": "## spelunk search  Semantic search over indexed code.  ``` spelunk search <query> [options] ```  | Flag | Default | Desc"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 11542,
+          "file": "bench/gemma/swebench_local/agent_spelunk.py",
+          "name": "spelunk_search",
+          "start": 137,
+          "end": 150,
+          "snippet": "def spelunk_search(repo_path: Path, query: str, limit: int = 10) -> str:     cmd = [\"spelunk\", \"search\", query, \"--limit"
+        }
+      ],
+      "latency_p50_ms": 47.32183300075121,
+      "latency_p95_ms": 48.35137497866526
+    }
+  },
+  {
+    "id": "M6",
+    "cat": "multihop",
+    "query": "how does the KNN vector search query work end to end",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13168,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1891,
+          "end": 2010,
+          "snippet": "          \"start\": 31,           \"end\": 97,           \"snippet\": \"pub(crate) fn print_results_text(results: &[crate::sea"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13139,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1051,
+          "end": 1170,
+          "snippet": "      \"12566\": {         \"file\": \"src/cli/cmd/ui.rs\",         \"name\": \"print_chunks_text\",         \"start\": 99,         "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12672,
+          "file": "src/cli/cmd/helpers.rs",
+          "name": "embed_query",
+          "start": 63,
+          "end": 70,
+          "snippet": "pub(crate) async fn embed_query(     embedder: &crate::backends::ActiveEmbedder,     task: &str,     query: &str, ) -> R"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 11681,
+          "file": "tests/integration_db.rs",
+          "name": "knn_returns_closest_vector_first",
+          "start": 87,
+          "end": 134,
+          "snippet": "fn knn_returns_closest_vector_first() {     let db = common::open_test_db();      // Insert two chunks with distinct emb"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 11682,
+          "file": "tests/integration_db.rs",
+          "name": "knn_limit_is_respected",
+          "start": 138,
+          "end": 154,
+          "snippet": "fn knn_limit_is_respected() {     let db = common::open_test_db();     let fid = db.upsert_file(\"b.rs\", Some(\"rust\"), \"h"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12766,
+          "file": "src/cli/cmd/plumbing/knn.rs",
+          "name": "knn",
+          "start": 7,
+          "end": 62,
+          "snippet": "pub(super) async fn knn(args: PlumbingKnnArgs, db: &Database) -> Result<()> {     // Read entire stdin and parse as JSON"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13169,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1996,
+          "end": 2115,
+          "snippet": "        {           \"rank\": 3,           \"chunk_id\": 12236,           \"file\": \"docs/plumbing-and-porcelain.md\",         "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12112,
+          "file": "docs/agent-guide.md",
+          "name": "knn",
+          "start": 351,
+          "end": 380,
+          "snippet": "### knn  ``` spelunk plumbing knn [--limit N] [--min-score F] [--lang <lang>] ```  Read a JSON embedding object from std"
+        }
+      ],
+      "latency_p50_ms": 27.514000015798956,
+      "latency_p95_ms": 29.39737497945316
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12766,
+          "file": "src/cli/cmd/plumbing/knn.rs",
+          "name": "knn",
+          "start": 7,
+          "end": 62,
+          "snippet": "pub(super) async fn knn(args: PlumbingKnnArgs, db: &Database) -> Result<()> {     // Read entire stdin and parse as JSON"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11681,
+          "file": "tests/integration_db.rs",
+          "name": "knn_returns_closest_vector_first",
+          "start": 87,
+          "end": 134,
+          "snippet": "fn knn_returns_closest_vector_first() {     let db = common::open_test_db();      // Insert two chunks with distinct emb"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11772,
+          "file": "tests/knn.rs",
+          "name": "knn_returns_ndjson_results_for_valid_vector",
+          "start": 97,
+          "end": 146,
+          "snippet": "fn knn_returns_ndjson_results_for_valid_vector() {     // Run manually: cargo test knn_returns_ndjson -- --ignored     /"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11720,
+          "file": "tests/embed.rs",
+          "name": "embed_query_mode_produces_ndjson_vector",
+          "start": 120,
+          "end": 149,
+          "snippet": "async fn embed_query_mode_produces_ndjson_vector() {     const DIMS: usize = 768;     let mock = MockServer::start().awa"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12112,
+          "file": "docs/agent-guide.md",
+          "name": "knn",
+          "start": 351,
+          "end": 380,
+          "snippet": "### knn  ``` spelunk plumbing knn [--limit N] [--min-score F] [--lang <lang>] ```  Read a JSON embedding object from std"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 11760,
+          "file": "tests/integration_compose.rs",
+          "name": "plumbing_knn_returns_valid_chunk_ids",
+          "start": 68,
+          "end": 120,
+          "snippet": "fn plumbing_knn_returns_valid_chunk_ids() {     let (_tmp, db_path, config_path) = index_fixture_project();      // Step"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13168,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1891,
+          "end": 2010,
+          "snippet": "          \"start\": 31,           \"end\": 97,           \"snippet\": \"pub(crate) fn print_results_text(results: &[crate::sea"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12264,
+          "file": "README.md",
+          "name": "Semantic search",
+          "start": 66,
+          "end": 76,
+          "snippet": "### Semantic search  ```bash spelunk search \"how are errors propagated to the user\" spelunk search \"database connection "
+        }
+      ],
+      "latency_p50_ms": 46.46933302865364,
+      "latency_p95_ms": 46.738917008042336
+    }
+  },
+  {
+    "id": "M7",
+    "cat": "multihop",
+    "query": "what happens when a secret credential is detected in a chunk",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13140,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1156,
+          "end": 1275,
+          "snippet": "        \"name\": \"embed_query_mode_produces_ndjson_vector\",         \"start\": 120,         \"snippet\": \"async fn embed_quer"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13170,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2101,
+          "end": 2220,
+          "snippet": "        {           \"rank\": 4,           \"chunk_id\": 12236,           \"file\": \"docs/plumbing-and-porcelain.md\",         "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12327,
+          "file": "CLAUDE.md",
+          "name": "Secret scanning",
+          "start": 224,
+          "end": 228,
+          "snippet": "### Secret scanning `src/indexer/secrets.rs` runs before each chunk is stored. Chunks matching known credential patterns"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11836,
+          "file": "docs/architecture.md",
+          "name": "Secret scanning",
+          "start": 115,
+          "end": 118,
+          "snippet": "### Secret scanning  `src/indexer/secrets.rs` runs regex patterns against every chunk before storage. Chunks matching kn"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12627,
+          "file": "src/cli/cmd/memory/harvest_claude.rs",
+          "name": "secret_scan_allows_clean_conversation",
+          "start": 522,
+          "end": 525,
+          "snippet": "fn secret_scan_allows_clean_conversation() {         let text = \"How does the chunker split files? I want to understand "
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12083,
+          "file": "docs/agent-guide.md",
+          "name": "Get the raw chunks for a specific file",
+          "start": 60,
+          "end": 62,
+          "snippet": "# Get the raw chunks for a specific file AGENT=true spelunk chunks src/auth/middleware.rs "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13119,
+          "file": "src/indexer/secrets.rs",
+          "name": "contains_secret",
+          "start": 14,
+          "end": 16,
+          "snippet": "pub fn contains_secret(text: &str) -> bool {     patterns().iter().any(|re| re.is_match(text)) }"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13123,
+          "file": "src/indexer/secrets.rs",
+          "name": "placeholder_not_flagged",
+          "start": 97,
+          "end": 99,
+          "snippet": "fn placeholder_not_flagged() {         assert!(!contains_secret(\"api_key = \\\"your_api_key_here\\\"\"));     }"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13109,
+          "file": "src/indexer/mod.rs",
+          "name": "secrets",
+          "start": 9,
+          "end": 9,
+          "snippet": "pub mod secrets;"
+        }
+      ],
+      "latency_p50_ms": 28.43858301639557,
+      "latency_p95_ms": 29.222624987596646
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11860,
+          "file": "docs/plans/security-review.md",
+          "name": "**Phase 2: Data Privacy & Secret Prevention**",
+          "start": 22,
+          "end": 35,
+          "snippet": "### **Phase 2: Data Privacy & Secret Prevention** *Focus: Ensure the RAG index does not become a source of credential le"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12327,
+          "file": "CLAUDE.md",
+          "name": "Secret scanning",
+          "start": 224,
+          "end": 228,
+          "snippet": "### Secret scanning `src/indexer/secrets.rs` runs before each chunk is stored. Chunks matching known credential patterns"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11938,
+          "file": "docs/security/THREAT-MODEL.md",
+          "name": "I \u2014 Information Disclosure",
+          "start": 118,
+          "end": 128,
+          "snippet": "### I \u2014 Information Disclosure  | Threat | Mode | Likelihood | Impact | Mitigation | |--------|------|-----------|------"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11836,
+          "file": "docs/architecture.md",
+          "name": "Secret scanning",
+          "start": 115,
+          "end": 118,
+          "snippet": "### Secret scanning  `src/indexer/secrets.rs` runs regex patterns against every chunk before storage. Chunks matching kn"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13140,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1156,
+          "end": 1275,
+          "snippet": "        \"name\": \"embed_query_mode_produces_ndjson_vector\",         \"start\": 120,         \"snippet\": \"async fn embed_quer"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13170,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2101,
+          "end": 2220,
+          "snippet": "        {           \"rank\": 4,           \"chunk_id\": 12236,           \"file\": \"docs/plumbing-and-porcelain.md\",         "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 11937,
+          "file": "docs/security/THREAT-MODEL.md",
+          "name": "R \u2014 Repudiation",
+          "start": 112,
+          "end": 117,
+          "snippet": "### R \u2014 Repudiation  | Threat | Mode | Likelihood | Impact | Mitigation | |--------|------|-----------|--------|--------"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11930,
+          "file": "docs/security/THREAT-MODEL.md",
+          "name": "Assets",
+          "start": 37,
+          "end": 50,
+          "snippet": "## Assets  | Asset | Confidentiality | Integrity | Availability | |-------|:-:|:-:|:-:| | Source code chunks in index | "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12343,
+          "file": "SECURITY.md",
+          "name": "Security Controls",
+          "start": 48,
+          "end": 59,
+          "snippet": "## Security Controls  - Secret scanning runs before any chunk is stored in the index   (`src/indexer/secrets.rs`) - `.en"
+        }
+      ],
+      "latency_p50_ms": 45.08108401205391,
+      "latency_p95_ms": 49.20104198390618
+    }
+  },
+  {
+    "id": "M8",
+    "cat": "multihop",
+    "query": "how does the project registry track and link multiple projects",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13141,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1261,
+          "end": 1380,
+          "snippet": "        \"snippet\": \"## Assets  | Asset | Confidentiality | Integrity | Availability | |-------|:-:|:-:|:-:| | Source cod"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13172,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2311,
+          "end": 2430,
+          "snippet": "          \"name\": \"Secret scanning\",           \"start\": 115,           \"end\": 118,           \"snippet\": \"### Secret scan"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11837,
+          "file": "docs/architecture.md",
+          "name": "Multi-project registry",
+          "start": 119,
+          "end": 122,
+          "snippet": "### Multi-project registry  `~/.config/spelunk/registry.db` tracks all indexed projects. `spelunk link` connects project"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12326,
+          "file": "CLAUDE.md",
+          "name": "Multi-project registry",
+          "start": 219,
+          "end": 223,
+          "snippet": "### Multi-project registry `~/.config/spelunk/registry.db` tracks all indexed projects and their dependency links. `spel"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12217,
+          "file": "docs/server.md",
+          "name": "Multiple projects",
+          "start": 70,
+          "end": 77,
+          "snippet": "## Multiple projects  One server instance supports multiple projects. Each project has its own namespace \u2014 entries from "
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12297,
+          "file": "SKILL.md",
+          "name": "Status & registry",
+          "start": 148,
+          "end": 165,
+          "snippet": "## Status & registry  ```bash spelunk status                 # index health for current project spelunk status --all    "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 11904,
+          "file": "docs/plans/shared-memory-server.md",
+          "name": "Project identity",
+          "start": 107,
+          "end": 115,
+          "snippet": "### Project identity  `project_id` is a short slug set in `.spelunk/config.toml` (e.g. `my-awesome-app`). It is scoped t"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13173,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2416,
+          "end": 2535,
+          "snippet": "        },         {           \"rank\": 6,           \"chunk_id\": 12217,           \"file\": \"docs/server.md\",           \"na"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12376,
+          "file": "src/registry.rs",
+          "name": "Project",
+          "start": 20,
+          "end": 26,
+          "snippet": "pub struct Project {     pub id: i64,     pub root_path: PathBuf,     pub db_path: PathBuf,     #[allow(dead_code)]     "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12378,
+          "file": "src/registry.rs",
+          "name": null,
+          "start": 36,
+          "end": 312,
+          "snippet": "impl Registry {     /// Open (or create) the global registry database.     pub fn open() -> Result<Self> {         let p"
+        }
+      ],
+      "latency_p50_ms": 27.022708003642038,
+      "latency_p95_ms": 33.733082993421704
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12530,
+          "file": "src/cli/cmd/links.rs",
+          "name": "links_list",
+          "start": 50,
+          "end": 139,
+          "snippet": "async fn links_list(format: String) -> Result<()> {     let cwd = std::env::current_dir().context(\"getting current direc"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12297,
+          "file": "SKILL.md",
+          "name": "Status & registry",
+          "start": 148,
+          "end": 165,
+          "snippet": "## Status & registry  ```bash spelunk status                 # index health for current project spelunk status --all    "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12217,
+          "file": "docs/server.md",
+          "name": "Multiple projects",
+          "start": 70,
+          "end": 77,
+          "snippet": "## Multiple projects  One server instance supports multiple projects. Each project has its own namespace \u2014 entries from "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11904,
+          "file": "docs/plans/shared-memory-server.md",
+          "name": "Project identity",
+          "start": 107,
+          "end": 115,
+          "snippet": "### Project identity  `project_id` is a short slug set in `.spelunk/config.toml` (e.g. `my-awesome-app`). It is scoped t"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12380,
+          "file": "src/registry.rs",
+          "name": "init",
+          "start": 51,
+          "end": 74,
+          "snippet": "fn init(&self) -> Result<()> {         self.conn             .execute_batch(                 \"             PRAGMA journa"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12531,
+          "file": "src/cli/cmd/links.rs",
+          "name": "links_check",
+          "start": 143,
+          "end": 207,
+          "snippet": "async fn links_check() -> Result<()> {     let cwd = std::env::current_dir().context(\"getting current directory\")?;     "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12646,
+          "file": "src/cli/cmd/link.rs",
+          "name": "link",
+          "start": 27,
+          "end": 76,
+          "snippet": "pub fn link(args: LinkArgs, _cfg: Config) -> Result<()> {     let cwd = std::env::current_dir().context(\"getting current"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12382,
+          "file": "src/registry.rs",
+          "name": "find_project_for_path",
+          "start": 106,
+          "end": 154,
+          "snippet": "pub fn find_project_for_path(&self, start: &Path) -> Result<Option<Project>> {         // 1. Registry walk-up (most spec"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11903,
+          "file": "docs/plans/shared-memory-server.md",
+          "name": "Multi-project server",
+          "start": 101,
+          "end": 106,
+          "snippet": "## Multi-project server  The server supports multiple projects. Each project has its own memory namespace \u2014 a team runni"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12381,
+          "file": "src/registry.rs",
+          "name": "register",
+          "start": 79,
+          "end": 99,
+          "snippet": "pub fn register(&self, root: &Path, db: &Path) -> Result<i64> {         let root_str = root.to_string_lossy();         l"
+        }
+      ],
+      "latency_p50_ms": 45.52629200043157,
+      "latency_p95_ms": 72.7650829940103
+    }
+  },
+  {
+    "id": "M9",
+    "cat": "multihop",
+    "query": "how does graph-based neighbour expansion enrich search results",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12139,
+          "file": "docs/memory.md",
+          "name": "Also surface 1-hop relates_to neighbours of each result",
+          "start": 93,
+          "end": 95,
+          "snippet": "# Also surface 1-hop relates_to neighbours of each result spelunk memory search \"authentication decisions\" --expand-grap"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12550,
+          "file": "src/cli/cmd/ask.rs",
+          "name": "MAX_GRAPH_EXTRA",
+          "start": 79,
+          "end": 79,
+          "snippet": "const MAX_GRAPH_EXTRA: usize = 5;"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12278,
+          "file": "SKILL.md",
+          "name": "Semantic search \u2014 primary lookup",
+          "start": 29,
+          "end": 34,
+          "snippet": "# Semantic search \u2014 primary lookup spelunk search \"<query>\" spelunk search \"<query>\" --limit 20 spelunk search \"<query>\""
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13148,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1996,
+          "end": 2115,
+          "snippet": "        \"snippet\": \"pub struct SearchResult {     pub chunk_id: i64,     pub file_path: String,     pub language: String"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13184,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3571,
+          "end": 3690,
+          "snippet": "        },         {           \"rank\": 3,           \"chunk_id\": 12139,           \"file\": \"docs/memory.md\",           \"na"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 11962,
+          "file": "docs/commands.md",
+          "name": "spelunk search",
+          "start": 30,
+          "end": 55,
+          "snippet": "## spelunk search  Semantic search over indexed code.  ``` spelunk search <query> [options] ```  | Flag | Default | Desc"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13150,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "[   {     \"id\": \"S1\",     \"cat\": \"structural\",     \"query\": \"where is compute_pagerank called\",     \"knn\": {       \"resu"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13175,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2626,
+          "end": 2745,
+          "snippet": "          \"file\": \"docs/commands.md\",           \"name\": \"spelunk search\",           \"start\": 30,           \"end\": 55,   "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        }
+      ],
+      "latency_p50_ms": 26.626625010976568,
+      "latency_p95_ms": 29.607833013869822
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11962,
+          "file": "docs/commands.md",
+          "name": "spelunk search",
+          "start": 30,
+          "end": 55,
+          "snippet": "## spelunk search  Semantic search over indexed code.  ``` spelunk search <query> [options] ```  | Flag | Default | Desc"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12295,
+          "file": "SKILL.md",
+          "name": "Query",
+          "start": 115,
+          "end": 131,
+          "snippet": "### Query  ```bash spelunk memory search \"<question>\"        # semantic search over stored entries spelunk memory search"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12264,
+          "file": "README.md",
+          "name": "Semantic search",
+          "start": 66,
+          "end": 76,
+          "snippet": "### Semantic search  ```bash spelunk search \"how are errors propagated to the user\" spelunk search \"database connection "
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12586,
+          "file": "src/cli/cmd/memory/mod.rs",
+          "name": "MemorySearchArgs",
+          "start": 109,
+          "end": 132,
+          "snippet": "pub struct MemorySearchArgs {     /// Natural language query     pub query: String,      /// Number of results to return"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12084,
+          "file": "docs/agent-guide.md",
+          "name": "Understand the call graph around a symbol",
+          "start": 63,
+          "end": 68,
+          "snippet": "# Understand the call graph around a symbol AGENT=true spelunk graph validate_token ```  The `--graph` flag on `spelunk "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12139,
+          "file": "docs/memory.md",
+          "name": "Also surface 1-hop relates_to neighbours of each result",
+          "start": 93,
+          "end": 95,
+          "snippet": "# Also surface 1-hop relates_to neighbours of each result spelunk memory search \"authentication decisions\" --expand-grap"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12278,
+          "file": "SKILL.md",
+          "name": "Semantic search \u2014 primary lookup",
+          "start": 29,
+          "end": 34,
+          "snippet": "# Semantic search \u2014 primary lookup spelunk search \"<query>\" spelunk search \"<query>\" --limit 20 spelunk search \"<query>\""
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12776,
+          "file": "src/cli/cmd/search.rs",
+          "name": "SearchArgs",
+          "start": 6,
+          "end": 53,
+          "snippet": "pub struct SearchArgs {     /// Natural language search query     pub query: String,      /// Number of results to retur"
+        }
+      ],
+      "latency_p50_ms": 41.32737501640804,
+      "latency_p95_ms": 42.426542000612244
+    }
+  },
+  {
+    "id": "M10",
+    "cat": "multihop",
+    "query": "how are chunk embeddings stored and retrieved from sqlite-vec",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12163,
+          "file": "docs/examples/onboarding-a-new-codebase.md",
+          "name": "12,341 chunks stored, 12,341 embeddings",
+          "start": 10,
+          "end": 12,
+          "snippet": "# 12,341 chunks stored, 12,341 embeddings ``` "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11510,
+          "file": "migrations/002_vectors.sql",
+          "name": "embeddings",
+          "start": 4,
+          "end": 7,
+          "snippet": "CREATE VIRTUAL TABLE IF NOT EXISTS embeddings USING vec0(     chunk_id INTEGER PRIMARY KEY,     embedding FLOAT[768] )"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12937,
+          "file": "src/storage/db.rs",
+          "name": "insert_embedding",
+          "start": 141,
+          "end": 147,
+          "snippet": "pub fn insert_embedding(&self, chunk_id: i64, blob: &[u8]) -> Result<()> {         self.conn.execute(             \"INSER"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11530,
+          "file": "migrations/017_snapshot_vectors.sql",
+          "name": "snapshot_embeddings",
+          "start": 3,
+          "end": 6,
+          "snippet": "CREATE VIRTUAL TABLE IF NOT EXISTS snapshot_embeddings USING vec0(     chunk_id  INTEGER PRIMARY KEY,     embedding FLOA"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13177,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2836,
+          "end": 2955,
+          "snippet": "          \"snippet\": \"          \\\"snippet\\\": \\\"### Storage: SQLite + sqlite-vec, nothing else  All data lives in a singl"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13178,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2941,
+          "end": 3060,
+          "snippet": "          \"snippet\": \"CREATE VIRTUAL TABLE IF NOT EXISTS snapshot_embeddings USING vec0(     chunk_id  INTEGER PRIMARY K"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 11834,
+          "file": "docs/architecture.md",
+          "name": "Embedding format",
+          "start": 98,
+          "end": 108,
+          "snippet": "### Embedding format  Chunks are embedded using EmbeddingGemma's recommended format: ``` title: {name} | text: {content}"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12492,
+          "file": "src/server/db.rs",
+          "name": null,
+          "start": 499,
+          "end": 504,
+          "snippet": "impl ServerDb {     /// Convenience: decode a raw embedding blob to f32 vec for use with search_notes.     pub fn decode"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11832,
+          "file": "docs/architecture.md",
+          "name": "Storage: SQLite + sqlite-vec, nothing else",
+          "start": 88,
+          "end": 93,
+          "snippet": "### Storage: SQLite + sqlite-vec, nothing else  All data lives in a single SQLite file per project. The sqlite-vec exten"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13176,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2731,
+          "end": 2850,
+          "snippet": "          \"file\": \"src/cli/cmd/search.rs\",           \"name\": \"SearchArgs\",           \"start\": 6,           \"end\": 53,   "
+        }
+      ],
+      "latency_p50_ms": 24.818000005325302,
+      "latency_p95_ms": 25.099457998294383
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12736,
+          "file": "src/cli/cmd/index/embed_phase.rs",
+          "name": "run_embed_phase",
+          "start": 16,
+          "end": 86,
+          "snippet": "pub(super) async fn run_embed_phase(     chunk_ids_and_texts: Vec<(i64, String)>,     db: &Database,     cfg: &Config,  "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11832,
+          "file": "docs/architecture.md",
+          "name": "Storage: SQLite + sqlite-vec, nothing else",
+          "start": 88,
+          "end": 93,
+          "snippet": "### Storage: SQLite + sqlite-vec, nothing else  All data lives in a single SQLite file per project. The sqlite-vec exten"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11823,
+          "file": "docs/adr/001-scope-boundaries.md",
+          "name": "2. SQLite is the storage layer",
+          "start": 21,
+          "end": 30,
+          "snippet": "### 2. SQLite is the storage layer  All persistent state \u2014 chunks, embeddings, graph edges, memory, registry \u2014 lives in "
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11834,
+          "file": "docs/architecture.md",
+          "name": "Embedding format",
+          "start": 98,
+          "end": 108,
+          "snippet": "### Embedding format  Chunks are embedded using EmbeddingGemma's recommended format: ``` title: {name} | text: {content}"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 11510,
+          "file": "migrations/002_vectors.sql",
+          "name": "embeddings",
+          "start": 4,
+          "end": 7,
+          "snippet": "CREATE VIRTUAL TABLE IF NOT EXISTS embeddings USING vec0(     chunk_id INTEGER PRIMARY KEY,     embedding FLOAT[768] )"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12937,
+          "file": "src/storage/db.rs",
+          "name": "insert_embedding",
+          "start": 141,
+          "end": 147,
+          "snippet": "pub fn insert_embedding(&self, chunk_id: i64, blob: &[u8]) -> Result<()> {         self.conn.execute(             \"INSER"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 11530,
+          "file": "migrations/017_snapshot_vectors.sql",
+          "name": "snapshot_embeddings",
+          "start": 3,
+          "end": 6,
+          "snippet": "CREATE VIRTUAL TABLE IF NOT EXISTS snapshot_embeddings USING vec0(     chunk_id  INTEGER PRIMARY KEY,     embedding FLOA"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12163,
+          "file": "docs/examples/onboarding-a-new-codebase.md",
+          "name": "12,341 chunks stored, 12,341 embeddings",
+          "start": 10,
+          "end": 12,
+          "snippet": "# 12,341 chunks stored, 12,341 embeddings ``` "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13177,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2836,
+          "end": 2955,
+          "snippet": "          \"snippet\": \"          \\\"snippet\\\": \\\"### Storage: SQLite + sqlite-vec, nothing else  All data lives in a singl"
+        }
+      ],
+      "latency_p50_ms": 45.78237500390969,
+      "latency_p95_ms": 49.5282500050962
+    }
+  },
+  {
+    "id": "C1",
+    "cat": "crosscut",
+    "query": "code that touches both database storage and vector embeddings",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13178,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2941,
+          "end": 3060,
+          "snippet": "          \"snippet\": \"CREATE VIRTUAL TABLE IF NOT EXISTS snapshot_embeddings USING vec0(     chunk_id  INTEGER PRIMARY K"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13144,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1576,
+          "end": 1695,
+          "snippet": "        \"start\": 499,         \"snippet\": \"impl ServerDb {     /// Convenience: decode a raw embedding blob to f32 vec fo"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12492,
+          "file": "src/server/db.rs",
+          "name": null,
+          "start": 499,
+          "end": 504,
+          "snippet": "impl ServerDb {     /// Convenience: decode a raw embedding blob to f32 vec for use with search_notes.     pub fn decode"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12163,
+          "file": "docs/examples/onboarding-a-new-codebase.md",
+          "name": "12,341 chunks stored, 12,341 embeddings",
+          "start": 10,
+          "end": 12,
+          "snippet": "# 12,341 chunks stored, 12,341 embeddings ``` "
+        },
+        {
+          "rank": 5,
+          "chunk_id": 11832,
+          "file": "docs/architecture.md",
+          "name": "Storage: SQLite + sqlite-vec, nothing else",
+          "start": 88,
+          "end": 93,
+          "snippet": "### Storage: SQLite + sqlite-vec, nothing else  All data lives in a single SQLite file per project. The sqlite-vec exten"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13177,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2836,
+          "end": 2955,
+          "snippet": "          \"snippet\": \"          \\\"snippet\\\": \\\"### Storage: SQLite + sqlite-vec, nothing else  All data lives in a singl"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12736,
+          "file": "src/cli/cmd/index/embed_phase.rs",
+          "name": "run_embed_phase",
+          "start": 16,
+          "end": 86,
+          "snippet": "pub(super) async fn run_embed_phase(     chunk_ids_and_texts: Vec<(i64, String)>,     db: &Database,     cfg: &Config,  "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13143,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1471,
+          "end": 1590,
+          "snippet": "        \"file\": \"SKILL.md\",         \"name\": \"Query\",         \"start\": 115,         \"snippet\": \"### Query  ```bash spelun"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13176,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2731,
+          "end": 2850,
+          "snippet": "          \"file\": \"src/cli/cmd/search.rs\",           \"name\": \"SearchArgs\",           \"start\": 6,           \"end\": 53,   "
+        }
+      ],
+      "latency_p50_ms": 29.394915996817872,
+      "latency_p95_ms": 35.495542018907145
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12736,
+          "file": "src/cli/cmd/index/embed_phase.rs",
+          "name": "run_embed_phase",
+          "start": 16,
+          "end": 86,
+          "snippet": "pub(super) async fn run_embed_phase(     chunk_ids_and_texts: Vec<(i64, String)>,     db: &Database,     cfg: &Config,  "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11832,
+          "file": "docs/architecture.md",
+          "name": "Storage: SQLite + sqlite-vec, nothing else",
+          "start": 88,
+          "end": 93,
+          "snippet": "### Storage: SQLite + sqlite-vec, nothing else  All data lives in a single SQLite file per project. The sqlite-vec exten"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13178,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 2941,
+          "end": 3060,
+          "snippet": "          \"snippet\": \"CREATE VIRTUAL TABLE IF NOT EXISTS snapshot_embeddings USING vec0(     chunk_id  INTEGER PRIMARY K"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13144,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1576,
+          "end": 1695,
+          "snippet": "        \"start\": 499,         \"snippet\": \"impl ServerDb {     /// Convenience: decode a raw embedding blob to f32 vec fo"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12766,
+          "file": "src/cli/cmd/plumbing/knn.rs",
+          "name": "knn",
+          "start": 7,
+          "end": 62,
+          "snippet": "pub(super) async fn knn(args: PlumbingKnnArgs, db: &Database) -> Result<()> {     // Read entire stdin and parse as JSON"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 11823,
+          "file": "docs/adr/001-scope-boundaries.md",
+          "name": "2. SQLite is the storage layer",
+          "start": 21,
+          "end": 30,
+          "snippet": "### 2. SQLite is the storage layer  All persistent state \u2014 chunks, embeddings, graph edges, memory, registry \u2014 lives in "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 11838,
+          "file": "docs/architecture.md",
+          "name": "Data flow: index",
+          "start": 123,
+          "end": 134,
+          "snippet": "## Data flow: index  ``` files on disk   \u2192 SourceParser (tree-sitter AST \u2192 Chunk[])   \u2192 SecretScanner (drop credential c"
+        }
+      ],
+      "latency_p50_ms": 44.500332995085046,
+      "latency_p95_ms": 46.113832999253646
+    }
+  },
+  {
+    "id": "C2",
+    "cat": "crosscut",
+    "query": "what handles both CLI argument parsing and config loading",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13180,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3151,
+          "end": 3270,
+          "snippet": "      \"latency_p95_ms\": 46.25183399184607     }   },   {     \"id\": \"C2\",     \"cat\": \"crosscut\",     \"query\": \"what handl"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13145,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1681,
+          "end": 1800,
+          "snippet": "        \"relevant\": 0       },       \"12766\": {         \"file\": \"src/cli/cmd/plumbing/knn.rs\",         \"name\": \"knn\",   "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12418,
+          "file": "src/config.rs",
+          "name": "load",
+          "start": 199,
+          "end": 244,
+          "snippet": "pub fn load(path: Option<&Path>) -> Result<Self> {         // \u2500\u2500 1. Load global personal config \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12018,
+          "file": "docs/getting-started.md",
+          "name": "~/.config/spelunk/config.toml",
+          "start": 55,
+          "end": 56,
+          "snippet": "# ~/.config/spelunk/config.toml "
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12786,
+          "file": "src/cli/mod.rs",
+          "name": "Cli",
+          "start": 31,
+          "end": 38,
+          "snippet": "pub struct Cli {     /// Path to config file (default: ~/.config/spelunk/config.toml)     #[arg(short, long, global = tr"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13179,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3046,
+          "end": 3165,
+          "snippet": "          \"chunk_id\": 11510,           \"file\": \"migrations/002_vectors.sql\",           \"name\": \"embeddings\",           \""
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12417,
+          "file": "src/config.rs",
+          "name": null,
+          "start": 191,
+          "end": 257,
+          "snippet": "impl Config {     /// Load config with layered overrides:     ///   1. Defaults     ///   2. `~/.config/spelunk/config.t"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 11960,
+          "file": "docs/commands.md",
+          "name": "Commands Reference",
+          "start": 1,
+          "end": 6,
+          "snippet": "# Commands Reference  All commands accept `--config <path>` to override the default config file location.  --- "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12421,
+          "file": "src/lib.rs",
+          "name": "config",
+          "start": 3,
+          "end": 3,
+          "snippet": "pub mod config;"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13024,
+          "file": "src/main.rs",
+          "name": "main",
+          "start": 11,
+          "end": 79,
+          "snippet": "async fn main() -> Result<()> {     // Register sqlite-vec for every SQLite connection opened in this process.     // SA"
+        }
+      ],
+      "latency_p50_ms": 33.96462497767061,
+      "latency_p95_ms": 44.13054202450439
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13024,
+          "file": "src/main.rs",
+          "name": "main",
+          "start": 11,
+          "end": 79,
+          "snippet": "async fn main() -> Result<()> {     // Register sqlite-vec for every SQLite connection opened in this process.     // SA"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13180,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3151,
+          "end": 3270,
+          "snippet": "      \"latency_p95_ms\": 46.25183399184607     }   },   {     \"id\": \"C2\",     \"cat\": \"crosscut\",     \"query\": \"what handl"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12418,
+          "file": "src/config.rs",
+          "name": "load",
+          "start": 199,
+          "end": 244,
+          "snippet": "pub fn load(path: Option<&Path>) -> Result<Self> {         // \u2500\u2500 1. Load global personal config \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13145,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1681,
+          "end": 1800,
+          "snippet": "        \"relevant\": 0       },       \"12766\": {         \"file\": \"src/cli/cmd/plumbing/knn.rs\",         \"name\": \"knn\",   "
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13179,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3046,
+          "end": 3165,
+          "snippet": "          \"chunk_id\": 11510,           \"file\": \"migrations/002_vectors.sql\",           \"name\": \"embeddings\",           \""
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12395,
+          "file": "src/bin/spelunk_server.rs",
+          "name": "Args",
+          "start": 14,
+          "end": 45,
+          "snippet": "struct Args {     /// Port to listen on     #[arg(long, default_value = \"7777\")]     port: u16,      /// Host/address to"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12396,
+          "file": "src/bin/spelunk_server.rs",
+          "name": "main",
+          "start": 48,
+          "end": 95,
+          "snippet": "async fn main() -> Result<()> {     // Register sqlite-vec extension for every connection in this process.     #[allow(c"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12773,
+          "file": "src/cli/cmd/explore.rs",
+          "name": "ExploreArgs",
+          "start": 6,
+          "end": 29,
+          "snippet": "pub struct ExploreArgs {     /// The question to answer about the codebase     pub question: String,      /// Path to th"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11897,
+          "file": "docs/plans/shared-memory-server.md",
+          "name": "Configuration",
+          "start": 59,
+          "end": 69,
+          "snippet": "## Configuration  Config loads in layers, later layers override earlier ones:  ``` 1. ~/.config/spelunk/config.toml   gl"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12786,
+          "file": "src/cli/mod.rs",
+          "name": "Cli",
+          "start": 31,
+          "end": 38,
+          "snippet": "pub struct Cli {     /// Path to config file (default: ~/.config/spelunk/config.toml)     #[arg(short, long, global = tr"
+        }
+      ],
+      "latency_p50_ms": 48.68479198194109,
+      "latency_p95_ms": 50.60929199680686
+    }
+  },
+  {
+    "id": "C3",
+    "cat": "crosscut",
+    "query": "code involved in both source parsing and chunk storage",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13146,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1786,
+          "end": 1905,
+          "snippet": "      \"13024\": {         \"file\": \"src/main.rs\",         \"name\": \"main\",         \"start\": 11,         \"snippet\": \"async f"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13181,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3256,
+          "end": 3375,
+          "snippet": "        {           \"rank\": 1,           \"chunk_id\": 13024,           \"file\": \"src/main.rs\",           \"name\": \"main\",  "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13070,
+          "file": "src/indexer/parser/mod.rs",
+          "name": "SourceParser",
+          "start": 126,
+          "end": 126,
+          "snippet": "pub struct SourceParser;"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12769,
+          "file": "src/cli/cmd/plumbing/parse_file.rs",
+          "name": "ParsedChunk",
+          "start": 8,
+          "end": 15,
+          "snippet": "struct ParsedChunk {     kind: String,     name: Option<String>,     start_line: usize,     end_line: usize,     content"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12730,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "process_text_file",
+          "start": 256,
+          "end": 330,
+          "snippet": "fn process_text_file(     path: &std::path::Path,     path_str: &str,     db: &Database,     args: &IndexArgs,     acc: "
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13081,
+          "file": "src/indexer/parser/text.rs",
+          "name": "parse_markdown",
+          "start": 98,
+          "end": 156,
+          "snippet": "pub(super) fn parse_markdown(source: &str, file_path: &str) -> Vec<Chunk> {     let lines: Vec<&str> = source.lines().co"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13073,
+          "file": "src/indexer/parser/text.rs",
+          "name": "parse_notebook",
+          "start": 8,
+          "end": 92,
+          "snippet": "pub(super) fn parse_notebook(source: &str, file_path: &str) -> Vec<Chunk> {     #[derive(serde::Deserialize)]     struct"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12953,
+          "file": "src/storage/mod.rs",
+          "name": "chunks",
+          "start": 7,
+          "end": 7,
+          "snippet": "mod chunks;"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13030,
+          "file": "src/indexer/chunker.rs",
+          "name": "Chunk",
+          "start": 38,
+          "end": 55,
+          "snippet": "pub struct Chunk {     #[allow(dead_code)]     pub file_path: String,     #[allow(dead_code)]     pub language: String, "
+        }
+      ],
+      "latency_p50_ms": 30.2863749966491,
+      "latency_p95_ms": 34.28020898718387
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 12730,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "process_text_file",
+          "start": 256,
+          "end": 330,
+          "snippet": "fn process_text_file(     path: &std::path::Path,     path_str: &str,     db: &Database,     args: &IndexArgs,     acc: "
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13073,
+          "file": "src/indexer/parser/text.rs",
+          "name": "parse_notebook",
+          "start": 8,
+          "end": 92,
+          "snippet": "pub(super) fn parse_notebook(source: &str, file_path: &str) -> Vec<Chunk> {     #[derive(serde::Deserialize)]     struct"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13116,
+          "file": "src/indexer/docparser.rs",
+          "name": "parse_spreadsheet",
+          "start": 125,
+          "end": 193,
+          "snippet": "fn parse_spreadsheet(bytes: &[u8], file_path: &str) -> Vec<Chunk> {     use calamine::{Reader, open_workbook_auto_from_r"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 13081,
+          "file": "src/indexer/parser/text.rs",
+          "name": "parse_markdown",
+          "start": 98,
+          "end": 156,
+          "snippet": "pub(super) fn parse_markdown(source: &str, file_path: &str) -> Vec<Chunk> {     let lines: Vec<&str> = source.lines().co"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12731,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "store_chunks",
+          "start": 333,
+          "end": 364,
+          "snippet": "fn store_chunks(     chunks: &[crate::indexer::Chunk],     path_str: &str,     file_id: i64,     db: &Database,     acc:"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12770,
+          "file": "src/cli/cmd/plumbing/parse_file.rs",
+          "name": "parse_file",
+          "start": 17,
+          "end": 47,
+          "snippet": "pub(super) fn parse_file(args: PlumbingParseFileArgs) -> Result<()> {     let path = &args.file;     let language = matc"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13030,
+          "file": "src/indexer/chunker.rs",
+          "name": "Chunk",
+          "start": 38,
+          "end": 55,
+          "snippet": "pub struct Chunk {     #[allow(dead_code)]     pub file_path: String,     #[allow(dead_code)]     pub language: String, "
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12725,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "run_parse_phase",
+          "start": 38,
+          "end": 116,
+          "snippet": "pub(super) fn run_parse_phase(     root: &std::path::Path,     db: &Database,     args: &IndexArgs,     mp: &MultiProgre"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 12727,
+          "file": "src/cli/cmd/index/parse_phase.rs",
+          "name": "process_doc_file",
+          "start": 167,
+          "end": 197,
+          "snippet": "fn process_doc_file(     path: &std::path::Path,     path_str: &str,     doc_lang: &'static str,     db: &Database,     "
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13146,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1786,
+          "end": 1905,
+          "snippet": "      \"13024\": {         \"file\": \"src/main.rs\",         \"name\": \"main\",         \"start\": 11,         \"snippet\": \"async f"
+        }
+      ],
+      "latency_p50_ms": 43.692083010682836,
+      "latency_p95_ms": 46.07808400760405
+    }
+  },
+  {
+    "id": "C4",
+    "cat": "crosscut",
+    "query": "what connects search results to graph edge traversal",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13147,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1891,
+          "end": 2010,
+          "snippet": "        \"name\": \"chunks\",         \"start\": 7,         \"snippet\": \"mod chunks;\",         \"relevant\": 0       },       \"13"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12139,
+          "file": "docs/memory.md",
+          "name": "Also surface 1-hop relates_to neighbours of each result",
+          "start": 93,
+          "end": 95,
+          "snippet": "# Also surface 1-hop relates_to neighbours of each result spelunk memory search \"authentication decisions\" --expand-grap"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13183,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3466,
+          "end": 3585,
+          "snippet": "          \"name\": \"parse_notebook\",           \"start\": 8,           \"end\": 92,           \"snippet\": \"pub(super) fn parse"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13148,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1996,
+          "end": 2115,
+          "snippet": "        \"snippet\": \"pub struct SearchResult {     pub chunk_id: i64,     pub file_path: String,     pub language: String"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13014,
+          "file": "src/search/explore.rs",
+          "name": "ExploreResult",
+          "start": 23,
+          "end": 27,
+          "snippet": "pub struct ExploreResult {     pub answer: String,     pub sources: Vec<String>,     pub steps: Vec<ExploreStep>, }"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13184,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3571,
+          "end": 3690,
+          "snippet": "        },         {           \"rank\": 3,           \"chunk_id\": 12139,           \"file\": \"docs/memory.md\",           \"na"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13156,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 631,
+          "end": 750,
+          "snippet": "          \"start\": 96,           \"end\": 99,           \"snippet\": \"# Search mode: hybrid (default), semantic, text spelun"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13150,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 1,
+          "end": 120,
+          "snippet": "[   {     \"id\": \"S1\",     \"cat\": \"structural\",     \"query\": \"where is compute_pagerank called\",     \"knn\": {       \"resu"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13004,
+          "file": "src/search/mod.rs",
+          "name": "SearchResult",
+          "start": 10,
+          "end": 42,
+          "snippet": "pub struct SearchResult {     pub chunk_id: i64,     pub file_path: String,     pub language: String,     pub node_type:"
+        }
+      ],
+      "latency_p50_ms": 25.195458001689985,
+      "latency_p95_ms": 28.17520801909268
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13004,
+          "file": "src/search/mod.rs",
+          "name": "SearchResult",
+          "start": 10,
+          "end": 42,
+          "snippet": "pub struct SearchResult {     pub chunk_id: i64,     pub file_path: String,     pub language: String,     pub node_type:"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 11962,
+          "file": "docs/commands.md",
+          "name": "spelunk search",
+          "start": 30,
+          "end": 55,
+          "snippet": "## spelunk search  Semantic search over indexed code.  ``` spelunk search <query> [options] ```  | Flag | Default | Desc"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12586,
+          "file": "src/cli/cmd/memory/mod.rs",
+          "name": "MemorySearchArgs",
+          "start": 109,
+          "end": 132,
+          "snippet": "pub struct MemorySearchArgs {     /// Natural language query     pub query: String,      /// Number of results to return"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 13147,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1891,
+          "end": 2010,
+          "snippet": "        \"name\": \"chunks\",         \"start\": 7,         \"snippet\": \"mod chunks;\",         \"relevant\": 0       },       \"13"
+        },
+        {
+          "rank": 6,
+          "chunk_id": 13183,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3466,
+          "end": 3585,
+          "snippet": "          \"name\": \"parse_notebook\",           \"start\": 8,           \"end\": 92,           \"snippet\": \"pub(super) fn parse"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 12139,
+          "file": "docs/memory.md",
+          "name": "Also surface 1-hop relates_to neighbours of each result",
+          "start": 93,
+          "end": 95,
+          "snippet": "# Also surface 1-hop relates_to neighbours of each result spelunk memory search \"authentication decisions\" --expand-grap"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13014,
+          "file": "src/search/explore.rs",
+          "name": "ExploreResult",
+          "start": 23,
+          "end": 27,
+          "snippet": "pub struct ExploreResult {     pub answer: String,     pub sources: Vec<String>,     pub steps: Vec<ExploreStep>, }"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11521,
+          "file": "migrations/003_graph.sql",
+          "name": "graph_edges",
+          "start": 15,
+          "end": 15,
+          "snippet": "CREATE INDEX IF NOT EXISTS graph_edges_source_name ON graph_edges(source_name)"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13148,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1996,
+          "end": 2115,
+          "snippet": "        \"snippet\": \"pub struct SearchResult {     pub chunk_id: i64,     pub file_path: String,     pub language: String"
+        }
+      ],
+      "latency_p50_ms": 44.75904200808145,
+      "latency_p95_ms": 45.17729202052578
+    }
+  },
+  {
+    "id": "C5",
+    "cat": "crosscut",
+    "query": "code that links memory entries to vector similarity search",
+    "knn": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 13148,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1996,
+          "end": 2115,
+          "snippet": "        \"snippet\": \"pub struct SearchResult {     pub chunk_id: i64,     pub file_path: String,     pub language: String"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 13185,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3676,
+          "end": 3795,
+          "snippet": "        },         {           \"rank\": 4,           \"chunk_id\": 12586,           \"file\": \"src/cli/cmd/memory/mod.rs\",   "
+        },
+        {
+          "rank": 3,
+          "chunk_id": 13149,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 2101,
+          "end": 2139,
+          "snippet": "      },       \"12139\": {         \"file\": \"docs/memory.md\",         \"name\": \"Also surface 1-hop relates_to neighbours of"
+        },
+        {
+          "rank": 4,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12102,
+          "file": "docs/agent-guide.md",
+          "name": "Stream entries as they arrive (requires memory_server_url)",
+          "start": 206,
+          "end": 211,
+          "snippet": "# Stream entries as they arrive (requires memory_server_url) spelunk memory watch ```  Conflict detection: If you write "
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12115,
+          "file": "docs/agent-guide.md",
+          "name": "read-memory",
+          "start": 436,
+          "end": 464,
+          "snippet": "### read-memory  ``` spelunk plumbing read-memory [--kind <kind>] [--id <n>] [--limit N] ```  Emit memory entries as NDJ"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13186,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3781,
+          "end": 3900,
+          "snippet": "          \"file\": \"bench/linearrag/labels.json\",           \"name\": null,           \"start\": 1681,           \"end\": 1761,"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 12139,
+          "file": "docs/memory.md",
+          "name": "Also surface 1-hop relates_to neighbours of each result",
+          "start": 93,
+          "end": 95,
+          "snippet": "# Also surface 1-hop relates_to neighbours of each result spelunk memory search \"authentication decisions\" --expand-grap"
+        },
+        {
+          "rank": 9,
+          "chunk_id": 13142,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1366,
+          "end": 1485,
+          "snippet": "      },       \"12646\": {         \"file\": \"src/cli/cmd/link.rs\",         \"name\": \"link\",         \"start\": 27,         \"s"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 13143,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1471,
+          "end": 1590,
+          "snippet": "        \"file\": \"SKILL.md\",         \"name\": \"Query\",         \"start\": 115,         \"snippet\": \"### Query  ```bash spelun"
+        }
+      ],
+      "latency_p50_ms": 27.2907079779543,
+      "latency_p95_ms": 29.496624978492036
+    },
+    "linearrag": {
+      "results": [
+        {
+          "rank": 1,
+          "chunk_id": 11839,
+          "file": "docs/architecture.md",
+          "name": "Data flow: search",
+          "start": 135,
+          "end": 146,
+          "snippet": "## Data flow: search  ``` query string   \u2192 EmbeddingBackend.embed(formatted query)   \u2192 Database.search_similar(query_vec"
+        },
+        {
+          "rank": 2,
+          "chunk_id": 12115,
+          "file": "docs/agent-guide.md",
+          "name": "read-memory",
+          "start": 436,
+          "end": 464,
+          "snippet": "### read-memory  ``` spelunk plumbing read-memory [--kind <kind>] [--id <n>] [--limit N] ```  Emit memory entries as NDJ"
+        },
+        {
+          "rank": 3,
+          "chunk_id": 12102,
+          "file": "docs/agent-guide.md",
+          "name": "Stream entries as they arrive (requires memory_server_url)",
+          "start": 206,
+          "end": 211,
+          "snippet": "# Stream entries as they arrive (requires memory_server_url) spelunk memory watch ```  Conflict detection: If you write "
+        },
+        {
+          "rank": 4,
+          "chunk_id": 12236,
+          "file": "docs/plumbing-and-porcelain.md",
+          "name": "Semantic search via embed + knn",
+          "start": 52,
+          "end": 64,
+          "snippet": "### Semantic search via embed + knn  Embed a query string and pipe the vector directly into KNN search:  ```bash echo \"a"
+        },
+        {
+          "rank": 5,
+          "chunk_id": 12225,
+          "file": "docs/server.md",
+          "name": "Conflict detection",
+          "start": 153,
+          "end": 168,
+          "snippet": "### Conflict detection  When `POST /v1/projects/{project_id}/memory`, the server checks if a semantically similar entry "
+        },
+        {
+          "rank": 6,
+          "chunk_id": 12295,
+          "file": "SKILL.md",
+          "name": "Query",
+          "start": 115,
+          "end": 131,
+          "snippet": "### Query  ```bash spelunk memory search \"<question>\"        # semantic search over stored entries spelunk memory search"
+        },
+        {
+          "rank": 7,
+          "chunk_id": 13148,
+          "file": "bench/linearrag/labels.json",
+          "name": null,
+          "start": 1996,
+          "end": 2115,
+          "snippet": "        \"snippet\": \"pub struct SearchResult {     pub chunk_id: i64,     pub file_path: String,     pub language: String"
+        },
+        {
+          "rank": 8,
+          "chunk_id": 13185,
+          "file": "bench/linearrag/results.json",
+          "name": null,
+          "start": 3676,
+          "end": 3795,
+          "snippet": "        },         {           \"rank\": 4,           \"chunk_id\": 12586,           \"file\": \"src/cli/cmd/memory/mod.rs\",   "
+        },
+        {
+          "rank": 9,
+          "chunk_id": 11513,
+          "file": "migrations/015_memory_edges.sql",
+          "name": "memory_edges",
+          "start": 14,
+          "end": 14,
+          "snippet": "CREATE INDEX IF NOT EXISTS idx_memory_edges_to   ON memory_edges(to_id)"
+        },
+        {
+          "rank": 10,
+          "chunk_id": 12149,
+          "file": "docs/memory.md",
+          "name": "Showing a single entry",
+          "start": 136,
+          "end": 144,
+          "snippet": "## Showing a single entry  ```bash spelunk memory show 42 spelunk memory show 42 --format json ```  `memory show` displa"
+        }
+      ],
+      "latency_p50_ms": 44.19504199177027,
+      "latency_p95_ms": 45.37154102581553
+    }
+  }
+]

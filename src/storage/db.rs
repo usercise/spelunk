@@ -36,6 +36,7 @@ impl Database {
         db.apply_usage_migration()?;
         db.apply_snapshot_migration()?;
         db.apply_snapshot_vector_migration()?;
+        db.apply_compound_graph_idx_migration()?;
         Ok(db)
     }
 
@@ -132,6 +133,16 @@ impl Database {
         self.conn
             .execute_batch(include_str!("../../migrations/017_snapshot_vectors.sql"))
             .context("running snapshot vector migration")?;
+        Ok(())
+    }
+
+    /// Create compound indexes on graph_edges for LinearRAG mention lookups. Idempotent.
+    pub fn apply_compound_graph_idx_migration(&self) -> Result<()> {
+        self.conn
+            .execute_batch(include_str!(
+                "../../migrations/018_graph_edges_compound_idx.sql"
+            ))
+            .context("running compound graph index migration")?;
         Ok(())
     }
 
