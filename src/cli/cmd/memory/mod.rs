@@ -38,6 +38,8 @@ pub enum MemoryCommand {
     Since(MemorySinceArgs),
     /// Stream new memory entries from the server in real time (requires memory_server_url)
     Watch(MemoryWatchArgs),
+    /// List all stored antipatterns (shortcut for `list --kind antipattern`)
+    Failures(MemoryFailuresArgs),
 }
 
 #[derive(Args, Debug)]
@@ -249,10 +251,26 @@ pub struct MemoryWatchArgs {
     pub format: String,
 }
 
+#[derive(Args, Debug)]
+pub struct MemoryFailuresArgs {
+    /// Number of entries to show
+    #[arg(short, long, default_value = "20")]
+    pub limit: usize,
+
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+
+    /// Return only entries valid at this point in time (ISO 8601)
+    #[arg(long, value_name = "DATE")]
+    pub as_of: Option<String>,
+}
+
 use super::status::format_age;
 
 mod add;
 mod archive;
+mod failures;
 mod graph_cmd;
 mod harvest;
 mod harvest_claude;
@@ -283,6 +301,7 @@ pub async fn memory(args: MemoryArgs, cfg: crate::config::Config) -> Result<()> 
         MemoryCommand::Graph(a) => graph_cmd::memory_graph(a, &mem_path, &cfg).await,
         MemoryCommand::Since(a) => since::memory_since(a, &mem_path, &cfg).await,
         MemoryCommand::Watch(a) => watch::memory_watch(a, &cfg).await,
+        MemoryCommand::Failures(a) => failures::memory_failures(a, &mem_path, &cfg).await,
     }
 }
 

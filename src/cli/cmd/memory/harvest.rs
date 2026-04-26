@@ -15,7 +15,10 @@ pub(super) async fn memory_harvest(
     match args.source.as_str() {
         "git" => memory_harvest_git(args, mem_path, cfg).await,
         "claude-code" => super::harvest_claude::harvest_claude_code(args, mem_path, cfg).await,
-        other => anyhow::bail!("Unknown --source '{other}'. Valid values: git, claude-code"),
+        "failures" => memory_harvest_failures(args, mem_path, cfg).await,
+        other => {
+            anyhow::bail!("Unknown --source '{other}'. Valid values: git, claude-code, failures")
+        }
     }
 }
 
@@ -380,4 +383,325 @@ fn is_routine_subject(subject: &str) -> bool {
         "cargo.lock",
     ];
     patterns.iter().any(|p| s.contains(p))
+}
+
+/// Harvest antipatterns from failure-signal commits (reverts, bug fixes, regressions).
+async fn memory_harvest_failures(
+    args: MemoryHarvestArgs,
+    mem_path: &std::path::Path,
+    cfg: &Config,
+) -> Result<()> {
+    use crate::llm::LlmBackend;
+
+    let git_ref = match &args.branch {
+        Some(branch) => branch.clone(),
+        None => args.git_range.clone(),
+    };
+    let range_label = match &args.branch {
+        Some(branch) => format!("full history of '{branch}'"),
+        None => format!("'{git_ref}'"),
+    };
+
+    let git_out = std::process::Command::new("git")
+        .args(["log", &git_ref, "--format=%H%x00%s%x00%b%x00---"])
+        .output()
+        .context("running git log")?;
+    if !git_out.status.success() {
+        anyhow::bail!(
+            "git log failed: {}",
+            String::from_utf8_lossy(&git_out.stderr)
+        );
+    }
+
+    let raw = String::from_utf8(git_out.stdout).context("git log output not UTF-8")?;
+    let all_commits: Vec<(String, String, String)> = raw
+        .split("---\n")
+        .filter(|s| !s.trim().is_empty())
+        .filter_map(|entry| {
+            let parts: Vec<&str> = entry.splitn(4, '\x00').collect();
+            if parts.len() < 3 {
+                return None;
+            }
+            Some((
+                parts[0].trim().to_string(),
+                parts[1].trim().to_string(),
+                parts[2].trim().to_string(),
+            ))
+        })
+        .collect();
+
+    // Keep only failure-signal commits.
+    let failure_commits: Vec<_> = all_commits
+        .iter()
+        .filter(|(_, subject, _)| is_failure_subject(subject))
+        .collect();
+
+    if failure_commits.is_empty() {
+        println!("No failure-signal commits found in {range_label}.");
+        println!("(Looking for reverts, bug fixes, regressions, crashes, etc.)");
+        return Ok(());
+    }
+
+    let backend = open_memory_backend(cfg, mem_path)?;
+    let known_shas = backend.harvested_shas().await?;
+    let new_commits: Vec<_> = failure_commits
+        .into_iter()
+        .filter(|(sha, _, _)| !known_shas.contains(sha.as_str()))
+        .collect();
+
+    if new_commits.is_empty() {
+        println!("All failure-signal commits already harvested.");
+        return Ok(());
+    }
+
+    let batch_size = args.batch_size.max(1);
+    let total = new_commits.len();
+    let num_batches = total.div_ceil(batch_size);
+    println!(
+        "Analysing {} failure-signal commit(s) in {} ({} batch(es) of up to {})…",
+        total, range_label, num_batches, batch_size
+    );
+
+    let system = "You help build a project memory store from git history. \
+        Respond ONLY with valid JSON matching the provided schema. No other text.";
+
+    let schema = serde_json::json!({
+        "name": "harvest_result",
+        "strict": true,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "sha": {"type": "string"},
+                            "title": {"type": "string"},
+                            "body": {"type": "string"},
+                            "tags": {"type": "array", "items": {"type": "string"}}
+                        },
+                        "required": ["sha", "title", "body", "tags"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "required": ["entries"],
+            "additionalProperties": false
+        }
+    });
+
+    let sp = super::super::ui::spinner("Loading LLM for failures harvest…");
+    let llm = crate::backends::ActiveLlm::load(cfg)
+        .await
+        .context("loading LLM")?;
+    sp.finish_and_clear();
+    let embedder = crate::backends::ActiveEmbedder::load(cfg)
+        .await
+        .context("loading embedding model")?;
+
+    let mut stored = 0usize;
+    let mut dedup_skipped = 0usize;
+    const DEDUP_THRESHOLD: f64 = 0.15;
+
+    let estimate_tokens = |s: &str| s.len() / 3;
+    let context_length = cfg.llm_context_length;
+
+    let mut work: std::collections::VecDeque<Vec<(String, String, String)>> = new_commits
+        .chunks(batch_size)
+        .map(|c| {
+            c.iter()
+                .map(|(a, b, c)| (a.clone(), b.clone(), c.clone()))
+                .collect()
+        })
+        .collect();
+
+    let mut batch_num = 0usize;
+
+    while let Some(batch) = work.pop_front() {
+        batch_num += 1;
+
+        let commit_list = batch
+            .iter()
+            .map(|(sha, subject, body)| {
+                if body.is_empty() {
+                    format!("COMMIT {sha}\n{subject}")
+                } else {
+                    let boundary = body.floor_char_boundary(400);
+                    format!("COMMIT {sha}\n{subject}\n\n{}", &body[..boundary])
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n");
+
+        let user = format!(
+            "Review these failure-signal git commits (reverts, bug fixes, regressions, crashes).\n\
+             For EACH commit, extract an antipattern rule: what went wrong and what should be \
+             avoided in future.\n\n\
+             Write each entry as:\n\
+             - title: a short imperative rule starting with \"Never\", \"Avoid\", or \"Don't\" \
+               (e.g. \"Never call block_on inside an async context\")\n\
+             - body: explain what was wrong, what broke, and what to do instead. Include \
+               context so a future developer understands the failure mode.\n\
+             - tags: 2-4 keywords\n\n\
+             SKIP a commit if it is too vague to yield a useful rule (e.g. \"fix typo\").\n\
+             Return one entry per meaningful failure pattern found.\n\n\
+             Commits:\n{commit_list}"
+        );
+
+        let input_tokens = estimate_tokens(system) + estimate_tokens(&user);
+        let out_budget = (batch.len() * 400).clamp(256, context_length / 2);
+
+        if input_tokens + out_budget > context_length && batch.len() > 1 {
+            batch_num -= 1;
+            let mid = batch.len() / 2;
+            work.push_front(batch[mid..].to_vec());
+            work.push_front(batch[..mid].to_vec());
+            continue;
+        }
+
+        let max_tokens = context_length
+            .saturating_sub(input_tokens)
+            .min(out_budget)
+            .max(128);
+
+        if num_batches > 1 || work.front().is_some() {
+            println!("\nBatch {} ({} commits)…", batch_num, batch.len());
+        }
+
+        let messages = vec![
+            crate::llm::Message::system(system),
+            crate::llm::Message::user(user),
+        ];
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::llm::Token>(256);
+        let generate = llm.generate(&messages, max_tokens, tx, Some(schema.clone()));
+        let collect = async move {
+            let mut buf = String::new();
+            while let Some(t) = rx.recv().await {
+                buf.push_str(&t);
+            }
+            buf
+        };
+        let (_, raw_json) =
+            tokio::try_join!(generate, async { Ok::<_, anyhow::Error>(collect.await) })?;
+        let raw_json = crate::utils::strip_ansi(&raw_json);
+
+        let parsed: serde_json::Value = serde_json::from_str(&raw_json).with_context(|| {
+            format!("parsing LLM failures response (batch {batch_num}):\n{raw_json}")
+        })?;
+
+        let entries = parsed["entries"].as_array().cloned().unwrap_or_default();
+        if entries.is_empty() {
+            println!("  No actionable antipatterns in this batch.");
+            continue;
+        }
+
+        println!("Embedding {} entries…", entries.len());
+        for entry in &entries {
+            let sha_short = entry["sha"].as_str().unwrap_or("").to_string();
+            let title = entry["title"].as_str().unwrap_or("").to_string();
+            let body = entry["body"].as_str().unwrap_or("").to_string();
+            let tags: Vec<String> = entry["tags"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let full_sha = batch
+                .iter()
+                .find(|(s, _, _)| s.starts_with(&sha_short))
+                .map(|(s, _, _)| s.clone())
+                .unwrap_or(sha_short.clone());
+
+            if backend.has_source_ref(&full_sha).await? {
+                println!("  [skip] already harvested {full_sha}");
+                continue;
+            }
+
+            let embed_text = format!("title: {title} | text: {body}");
+            let vecs = embedder.embed(&[&embed_text]).await?;
+            let Some(vec) = vecs.into_iter().next() else {
+                continue;
+            };
+            let blob = vec_to_blob(&vec);
+
+            let neighbors = backend.search(&blob, 1, None).await?;
+            if let Some(top) = neighbors.first()
+                && top.distance.unwrap_or(1.0) < DEDUP_THRESHOLD
+            {
+                println!(
+                    "  [dedup] '{}' too similar to #{} '{}' (dist={:.3})",
+                    title,
+                    top.id,
+                    top.title,
+                    top.distance.unwrap_or(0.0)
+                );
+                dedup_skipped += 1;
+                continue;
+            }
+
+            let note_id = backend
+                .add(NoteInput {
+                    kind: "antipattern".to_string(),
+                    title: title.clone(),
+                    body: body.clone(),
+                    tags,
+                    linked_files: vec![],
+                    embedding: Some(blob),
+                    source_ref: Some(full_sha.clone()),
+                    valid_at: None,
+                    supersedes: None,
+                })
+                .await?;
+
+            let short_sha = &full_sha[..full_sha.len().min(8)];
+            println!("  + [antipattern] #{note_id}: {title}  \x1b[2m({short_sha})\x1b[0m");
+            stored += 1;
+        }
+    }
+
+    println!(
+        "\nStored {stored} antipattern(s). Skipped {} near-duplicate.",
+        dedup_skipped
+    );
+    Ok(())
+}
+
+/// Returns true for commits that signal a failure (revert, bug fix, regression, crash, etc.).
+fn is_failure_subject(subject: &str) -> bool {
+    let s = subject.trim().to_lowercase();
+    if s.starts_with("revert \"") || s.starts_with("revert: ") || s.starts_with("revert ") {
+        return true;
+    }
+    let failure_signals = [
+        "fix(",
+        "fix!(",
+        "fix: ",
+        "fix!: ",
+        "bug: ",
+        "bug(",
+        "bugfix",
+        "hotfix",
+        "regression",
+        "crash",
+        "broken",
+        "broke",
+        "incorrect",
+        "wrong ",
+        "oops",
+        "mistake",
+        "error: ",
+        "panic",
+        "deadlock",
+        "memory leak",
+        "data loss",
+        "data corruption",
+        "infinite loop",
+        "stack overflow",
+    ];
+    failure_signals.iter().any(|p| s.contains(p))
 }
