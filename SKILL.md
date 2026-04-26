@@ -21,6 +21,8 @@ spelunk index <path> --force   # full re-index (after changing embedding model)
 spelunk check                  # verify the index is fresh before starting work
 ```
 
+Add a `.spelunkignore` file (same syntax as `.gitignore`) to exclude paths from indexing. Takes higher precedence than `.gitignore`.
+
 ---
 
 ## Code search
@@ -31,6 +33,7 @@ spelunk search "<query>"
 spelunk search "<query>" --limit 20
 spelunk search "<query>" --graph          # include call-graph neighbours
 spelunk search "<query>" --format text|json|ndjson
+spelunk search "<query>" --mode text      # FTS only, no embedding model needed
 
 # Deep search — iterative, uses LLM (requires llm_model in config)
 spelunk explore "<question>"
