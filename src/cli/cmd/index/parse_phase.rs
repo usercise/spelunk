@@ -1,6 +1,6 @@
 use super::mentions::extract_mention_tokens;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar};
 
@@ -271,8 +271,13 @@ fn process_text_file(
     if matches!(language, "text" | "markdown") && is_binary_file(path) {
         return Ok(());
     }
-    let source =
-        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let source = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("skipping {path_str}: {e}");
+            return Ok(());
+        }
+    };
     let hash = format!("{}", blake3::hash(source.as_bytes()));
 
     if !args.force

@@ -22,7 +22,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BENCH_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+BENCH_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${BENCH_DIR}/.." && pwd)"
 BASELINES_DIR="${REPO_ROOT}/baselines"
 TASKS_FILE="${BENCH_DIR}/swebench/tasks_50.json"
@@ -92,7 +92,10 @@ if [[ "$CONDITION" == "spelunk" ]]; then
     fi
 fi
 
-mapfile -t ALL_TASKS < <(python3 -c "
+ALL_TASKS=()
+while IFS= read -r line; do
+    ALL_TASKS+=("$line")
+done < <(python3 -c "
 import json
 with open('${TASKS_FILE}') as f:
     tasks = json.load(f)
@@ -153,7 +156,7 @@ import json, statistics
 from pathlib import Path
 
 task_results = [json.loads(r) for r in [
-$(printf '    %s,\n' "${TASK_RESULTS[@]}")
+$(printf "    '%s',\n" "${TASK_RESULTS[@]}")
 ]]
 
 ran = [r for r in task_results if not r.get("skipped") and not r.get("error")]

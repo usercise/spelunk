@@ -29,6 +29,18 @@ Baseline results (no-spelunk condition) live in `baselines/` at the repo root an
 - `spelunk` in PATH (build: `cargo build --release`)
 - Docker (SWE-bench only)
 
+## SWE-bench repo setup
+
+The SWE-bench local scripts expect each task's repo cloned at the pre-fix commit under `bench/repos/<task_id>/`, with an `ISSUE.txt` alongside. Run once before benchmarking:
+
+```bash
+bash bench/setup_repos.sh
+```
+
+This fetches task metadata from HuggingFace (`princeton-nlp/SWE-bench_Verified`) and clones each repo at the correct base commit. Re-running is idempotent — already-correct checkouts are skipped. Requires internet access and `uv`.
+
+Options: `--tasks N` (first N only) · `--repos-dir DIR` · `--dataset SLUG`
+
 **For Claude benchmarks (secondary):**
 - `ANTHROPIC_API_KEY` in environment
 - Docker
