@@ -1,6 +1,6 @@
 use super::mentions::extract_mention_tokens;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ignore::WalkBuilder;
 use indicatif::{MultiProgress, ProgressBar};
 
